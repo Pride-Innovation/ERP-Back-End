@@ -1,0 +1,79 @@
+package pride.bank.erp.user;
+
+import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import pride.bank.erp.apiResponse.Response;
+import pride.bank.erp.exception.NotFoundException;
+import pride.bank.erp.helper.Constants;
+
+import static pride.bank.erp.helper.Constants.ASCENDING_SORT_DIRECTION;
+
+
+@RestController
+@RequestMapping(Constants.GENERAL_ROUTE)
+public class UserController {
+    @Autowired
+    private UserService userService;
+
+    @GetMapping("/users")
+    public ResponseEntity<Page<User>> getAllUsers(
+            @RequestParam(required = false, defaultValue = "10") int pageSize,
+            @RequestParam(required = false, defaultValue = ASCENDING_SORT_DIRECTION) String sortDirection,
+            @RequestParam(required = false, defaultValue = "0") int pageNumber,
+            @RequestParam(required = false, defaultValue = "id") String sortBy,
+            @RequestParam(required = false) String first_name,
+            @RequestParam(required = false) String last_name,
+            @RequestParam(required = false) String email,
+            @RequestParam(required = false) String phone,
+            @RequestParam(required = false) String address
+    ) {
+        Page<User> users = userService.fetchUsers(
+                pageSize,
+                sortDirection,
+                pageNumber,
+                sortBy,
+                first_name,
+                last_name,
+                email,
+                phone,
+                address
+        );
+        return new ResponseEntity<>(users, HttpStatus.OK);
+    }
+
+    @PostMapping("/users/{roleId}")
+    public ResponseEntity<Response> createUser(@PathVariable Long roleId, @RequestBody @Valid User user)
+            throws NotFoundException {
+        Response response = userService.saveUser(user, roleId);
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
+    }
+
+    @PutMapping("/users/{roleId}")
+    public ResponseEntity<User> updateUser(@PathVariable Long roleId, @RequestBody @Valid User user)
+            throws NotFoundException {
+        User response = userService.updateUser(user, roleId);
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
+    }
+
+    @GetMapping("/users/{userID}")
+    public ResponseEntity<User> getSingleUser(
+            @PathVariable Long userID
+    ) throws NotFoundException {
+        User user = userService.findUser(userID);
+        return new ResponseEntity<>(user, HttpStatus.OK);
+    }
+
+    @DeleteMapping("/users/{userID}")
+    public ResponseEntity<?> deleteUser(@PathVariable Long userID) {
+        try {
+            var response = userService.deleteUser(userID);
+            return new ResponseEntity<>(response, HttpStatus.OK);
+        } catch (Exception e) {
+            return new ResponseEntity<>(e.getMessage(), HttpStatus.BAD_REQUEST);
+        }
+    }
+}

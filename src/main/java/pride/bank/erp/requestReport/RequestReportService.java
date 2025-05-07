@@ -1,0 +1,105 @@
+package pride.bank.erp.requestReport;
+
+import jakarta.transaction.Transactional;
+import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import pride.bank.erp.exception.NotFoundException;
+import pride.bank.erp.notification.Email;
+import pride.bank.erp.request.Request;
+import pride.bank.erp.request.RequestRepository;
+import pride.bank.erp.request.RequestService;
+import pride.bank.erp.status.Status;
+import pride.bank.erp.status.StatusService;
+import pride.bank.erp.user.User;
+import pride.bank.erp.user.UserRepository;
+import pride.bank.erp.user.UserService;
+
+import java.util.Optional;
+
+@Service
+@RequiredArgsConstructor
+public class RequestReportService {
+    private final RequestReportRepository requestReportRepository;
+    private final RequestService requestService;
+    private final UserService userService;
+    private final StatusService statusService;
+    private final RequestRepository requestRepository;
+    private final Email emailService;
+    private final UserRepository userRepository;
+
+    @Value("${application.admin.email}")
+    private String adminEmailAddress;
+
+    @Transactional
+    public RequestReport approveRequest(RequestReportDTO body)
+            throws NotFoundException {
+        Request request = requestService.findRequest(body.getRequestId());
+        User approver = userService.findUser(body.getApproverId());
+        Status status = statusService.findOneStatus(body.getStatusId());
+
+        String message = handleStatusUpdate(request, status, body.getComment());
+
+        RequestReport requestReport = RequestReport.builder()
+                .approver(approver)
+                .request(request)
+                .status(status)
+                .comment(body.getComment())
+                .build();
+
+        RequestReport response = requestReportRepository.save(requestReport);
+        response.setMessage(message);
+        return response;
+    }
+
+    @Transactional
+    private String handleStatusUpdate(
+            Request request,
+            Status status,
+            String comment
+    ) {
+        request.setStatus(status);
+        requestRepository.save(request);
+        String statusName = status.getName();
+
+        if ("rejected".equalsIgnoreCase(statusName)) {
+            setRequestPosition(request, request.getRequester());
+            return notifyIndividual(request.getRequester().getEmail(), comment);
+        } else if ("approved".equalsIgnoreCase(statusName)) {
+            String notification = "Requests has already been approved. Pending your action";
+            Optional<User> admin = userRepository.findByEmail(adminEmailAddress);
+
+            if (admin.isEmpty()) {
+                throw new IllegalStateException("Admin user not found for email: " + adminEmailAddress);
+            }
+
+            setRequestPosition(request, admin.get());
+            return notifyIndividual(adminEmailAddress, notification);
+        }
+        return null;
+    }
+
+    private String notifyIndividual(String email, String comment) {
+        boolean emailStatus = emailService.sendEmailVerification(
+                email,
+                "Request Status",
+                null,
+                comment,
+                "View Request",
+                null,
+                "requests",
+                null
+        );
+
+        if (!emailStatus) {
+            return String.format("Request approval notification not sent to %s", email);
+        }
+        return String.format("Request approval notification has been sent to %s", email);
+    }
+
+    private void setRequestPosition(Request request, User newPosition) {
+        request.setCurrentApprover(newPosition);
+        requestRepository.save(request);
+    }
+
+}

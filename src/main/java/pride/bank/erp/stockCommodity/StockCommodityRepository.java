@@ -1,0 +1,19 @@
+package pride.bank.erp.stockCommodity;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+
+@Repository
+public interface StockCommodityRepository extends JpaRepository<StockCommodity, Long> {
+    @Query("SELECT sc FROM StockCommodity sc WHERE sc.stock.id = :stockId")
+    List<StockCommodity> findByStockId(@Param("stockId") Long stockId);
+
+    @Modifying
+    @Query("DELETE FROM StockCommodity sc WHERE sc.stock.id = :stockId")
+    void deleteByStockId(@Param("stockId") Long stockId);
+}
