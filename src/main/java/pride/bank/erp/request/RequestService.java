@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import pride.bank.erp.commodity.Commodity;
 import pride.bank.erp.commodity.CommodityService;
+import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
 import pride.bank.erp.helper.DeleteResponse;
@@ -52,19 +53,19 @@ public class RequestService {
     private final RequestCommodityRepository requestCommodityRepository;
     private final UserRepository userRepository;
     private final Email emailService;
+    private final CurrentUserService currentUserService;
 
     @Transactional
     public Request createRequest(
             Request body,
             MultipartFile file,
             Long statusId,
-            Long requesterId,
             List<RequestCommodityDTO> requestCommoditiesRequest
     ) throws IOException, NotFoundException {
 
         String filePath = fileUpload.uploadFileToLocalDirectory(file);
         Status status = statusService.findOneStatus(statusId);
-        User requester = userService.findUser(requesterId);
+        User requester = currentUserService.getCurrentUser();
 
         Request request = Request.builder()
                 .name(body.getName())
@@ -77,7 +78,7 @@ public class RequestService {
                 .build();
 
         Request savedRequest = requestRepository.save(request);
-        User supervisor = findSupervisorToApproveRequest(requester.getId());
+        User supervisor = findSupervisorToApproveRequest();
 
         savedRequest.setCurrentApprover(supervisor);
         savedRequest = requestRepository.save(savedRequest);
@@ -180,21 +181,32 @@ public class RequestService {
     }
 
     public Request findRequest(Long requestId) throws NotFoundException {
-        return requestRepository.findById(requestId)
+        Request request = requestRepository.findById(requestId)
                 .orElseThrow(() -> new NotFoundException("Request with ID " + requestId + " not found"));
+
+        List<RequestCommodity> requestCommodities = requestCommodityRepository.findByRequestId(requestId);
+        List<CommodityWithQuantityDTO> commodities = commodityWithQuantityDTO(requestCommodities);
+        request.setCommodities(commodities);
+        return request;
     }
 
     @Transactional
     private void addCommoditiesToRequest(Request request, List<RequestCommodityDTO> requestCommodities)
             throws NotFoundException {
-        for (RequestCommodityDTO dto : requestCommodities) {
-            Commodity commodity = commodityService.findCommodity(dto.getCommodityId());
-            RequestCommodity requestCommodity = RequestCommodity.builder()
-                    .request(request)
-                    .commodity(commodity)
-                    .quantity(dto.getQuantity())
-                    .build();
-            requestCommodityRepository.save(requestCommodity);
+        try {
+            for (RequestCommodityDTO dto : requestCommodities) {
+                Commodity commodity = commodityService.findCommodity(dto.getCommodityId());
+                RequestCommodity requestCommodity = RequestCommodity.builder()
+                        .request(request)
+                        .commodity(commodity)
+                        .quantity(dto.getQuantity())
+                        .build();
+                requestCommodityRepository.save(requestCommodity);
+            }
+        } catch (NotFoundException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new RuntimeException("Failed to add commodities to request", ex);
         }
     }
 
@@ -213,10 +225,15 @@ public class RequestService {
     }
 
     @Transactional
-    private User findSupervisorToApproveRequest(Long requesterId)
+    private User findSupervisorToApproveRequest()
             throws NotFoundException {
-        User requester = userService.findUser(requesterId);
-        List<User> supervisors = userRepository.findByTitleId(requester.getTitle().getReportsTo().getId());
+        User requester = currentUserService.getCurrentUser();
+        Long supervisorTitleId = requester.getTitle().getReportsTo().getId();
+        List<User> supervisors = userRepository.findByTitleId(supervisorTitleId);
+
+        if (supervisors.isEmpty()) {
+            throw new NotFoundException("No supervisor found for title ID: " + supervisorTitleId);
+        }
         return supervisors.get(0);
     }
 
@@ -237,6 +254,5 @@ public class RequestService {
         }
         return String.format("Request approval notification has been sent to %s", supervisor.getEmail());
     }
-
 
 }
