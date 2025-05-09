@@ -44,7 +44,7 @@ public class StatusService {
 
     public Status findOneStatus(Long statusId) throws NotFoundException {
         return statusRepository.findById(statusId)
-                .orElseThrow(() -> new NotFoundException("Role with ID " + statusId + " is not found"));
+                .orElseThrow(() -> new NotFoundException("Status with ID " + statusId + " is not found"));
     }
 
     public DeleteResponse deleteStatus(Long statusId) {
