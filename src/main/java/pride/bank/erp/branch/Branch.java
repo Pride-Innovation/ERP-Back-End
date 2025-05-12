@@ -31,6 +31,8 @@ public class Branch {
     private Long id;
 
     private String name;
+    private String telephone;
+    private String email;
 
     @OneToMany(mappedBy = "branch", cascade = CascadeType.PERSIST)
     @JsonIgnore

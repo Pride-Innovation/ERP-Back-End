@@ -11,6 +11,7 @@ import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import pride.bank.erp.exception.NotFoundException;
@@ -72,13 +73,13 @@ public class RoleController {
     public ResponseEntity<Role> updateRole(@PathVariable Long roleID, @RequestBody Role role)
             throws NotFoundException {
         Role response = roleService.updateRole(roleID, role);
-        return new ResponseEntity<>(response, HttpStatus.CREATED);
+        return new ResponseEntity<>(response, HttpStatusCode.valueOf(201));
     }
 
     @DeleteMapping("/roles/{roleID}")
     public ResponseEntity<DeleteResponse> deleteRole(@PathVariable Long roleID) {
         var response = roleService.deleteRole(roleID);
-        return new ResponseEntity<>(response, HttpStatus.OK);
+        return new ResponseEntity<>(response, HttpStatusCode.valueOf(204));
     }
 
 }
