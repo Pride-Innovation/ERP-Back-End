@@ -15,6 +15,8 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Component;
 import pride.bank.erp.permission.Permission;
 import pride.bank.erp.permission.PermissionRepository;
+import pride.bank.erp.region.Region;
+import pride.bank.erp.region.RegionRepository;
 import pride.bank.erp.role.Role;
 import pride.bank.erp.role.RoleRepository;
 import pride.bank.erp.user.User;
@@ -35,6 +37,7 @@ public class DataInitializer {
     private final RoleRepository roleRepository;
     private final UserRepository userRepository;
     private final BCryptPasswordEncoder passwordEncoder;
+    private final RegionRepository regionRepository;
 
     /*
      * Configurations for Super Admin
@@ -77,6 +80,7 @@ public class DataInitializer {
 
             Role adminRole = initializeAdminRole(permissions);
             initializeAdminUser(adminRole);
+            initializeRegions();
         };
     }
 
@@ -109,6 +113,31 @@ public class DataInitializer {
                 .orElseGet(() -> permissionRepository.save(
                         new Permission(null, permissionName, new HashSet<>()))
                 );
+    }
+
+    private void initializeRegions() {
+        List<Region> regions = Arrays.asList(
+                new Region(null, Central_A, null),
+                new Region(null, Central_B, null),
+                new Region(null, Eastern, null),
+                new Region(null, Northern, null),
+                new Region(null, Western, null)
+        );
+
+        for (Region region : regions) {
+            verifyRegion(region);
+        }
+    }
+
+    private void verifyRegion(Region region) {
+        regionRepository.findByName(region.getName()).ifPresentOrElse(
+                existingRegion -> {
+                    // Region already exists
+                },
+                () -> {
+                    regionRepository.save(region);
+                }
+        );
     }
 
     private Role initializeSuperAdminRole(List<Permission> permissions) {

@@ -7,13 +7,20 @@ Managing Director
 
 package pride.bank.erp.branch;
 
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import pride.bank.erp.district.District;
+import pride.bank.erp.district.DistrictService;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
 import pride.bank.erp.helper.DeleteResponse;
+import pride.bank.erp.region.Region;
+import pride.bank.erp.region.RegionService;
+import pride.bank.erp.user.User;
+import pride.bank.erp.user.UserService;
 
 import java.util.Objects;
 
@@ -24,6 +31,9 @@ import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
 public class BranchService {
     private final BranchRepository branchRepository;
     private final BranchSearchDao branchSearchDao;
+    private final UserService userService;
+    private final DistrictService districtService;
+    private final RegionService regionService;
 
     public Page<Branch> fetchAllBranches(
             int pageSize,
@@ -50,9 +60,26 @@ public class BranchService {
         }
     }
 
-    public Branch createBranch(Branch request) {
+    @Transactional
+    public Branch createBranch(BranchDTO request)
+            throws NotFoundException {
+        User branchManager = userService.findUser(request.getBranchManager());
+        User branchOperationsManager = userService.findUser(request.getBranchOperationsManager());
+        User creditAdministrator = userService.findUser(request.getCreditAdministrator());
+        User relationshipManager = userService.findUser(request.getRelationshipManager());
+        District district = districtService.findDistrict(request.getDistrict());
+        Region region = regionService.findRegion(request.getRegion());
+
         Branch branch = Branch.builder()
                 .name(request.getName())
+                .telephone(request.getTelephone())
+                .email(request.getEmail())
+                .branchManager(branchManager)
+                .branchOperationsManager(branchOperationsManager)
+                .creditAdministrator(creditAdministrator)
+                .relationshipManager(relationshipManager)
+                .district(district)
+                .region(region)
                 .build();
         return branchRepository.save(branch);
     }

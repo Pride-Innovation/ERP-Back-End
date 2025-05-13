@@ -45,7 +45,8 @@ public class BranchController {
     }
 
     @PostMapping("/branches")
-    public ResponseEntity<Branch> createBranch(@RequestBody Branch branch) {
+    public ResponseEntity<Branch> createBranch(@RequestBody BranchDTO branch)
+            throws NotFoundException {
         Branch response = branchService.createBranch(branch);
         return new ResponseEntity<>(response, HttpStatusCode.valueOf(201));
     }

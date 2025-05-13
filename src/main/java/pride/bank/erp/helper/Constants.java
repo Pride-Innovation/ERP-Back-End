@@ -65,5 +65,9 @@ public class Constants {
     public static final String CREATE_STATUS = "CREATE_STATUS";
     public static final String DELETE_STATUS = "DELETE_STATUS";
     public static final String UPDATE_STATUS = "UPDATE_STATUS";
-
+    public static final String Central_A = "Central A";
+    public static final String Central_B = "Central B";
+    public static final String Eastern = "Eastern";
+    public static final String Northern = "Northern";
+    public static final String Western = "Western";
 }
