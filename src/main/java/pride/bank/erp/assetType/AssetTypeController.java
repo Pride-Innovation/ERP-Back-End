@@ -9,6 +9,7 @@ package pride.bank.erp.assetType;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -18,6 +19,8 @@ import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
 import pride.bank.erp.helper.DeleteResponse;
 
+import static pride.bank.erp.helper.Constants.ASCENDING_SORT_DIRECTION;
+
 @RestController
 @RequestMapping(Constants.GENERAL_ROUTE)
 @RequiredArgsConstructor
@@ -25,7 +28,11 @@ public class AssetTypeController {
     public final AssetTypeService assetTypeService;
 
     @GetMapping("/asset-types")
-    public ResponseEntity<Page<AssetType>> fetchAllAssetTypes(Pageable pageable) {
+    public ResponseEntity<Page<AssetType>> fetchAllAssetTypes(
+            @RequestParam(required = false, defaultValue = "10") int pageSize,
+            @RequestParam(required = false, defaultValue = "0") int pageNumber
+    ) {
+        Pageable pageable = PageRequest.of(pageNumber, pageSize);
         Page<AssetType> response = assetTypeService.fetchAllAssetTypes(pageable);
         return new ResponseEntity<>(response, HttpStatus.OK);
     }

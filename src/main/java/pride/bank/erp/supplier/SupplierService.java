@@ -29,7 +29,7 @@ public class SupplierService {
                 .email(request.getEmail())
                 .address(request.getAddress())
                 .name(request.getName())
-                .contact(request.getContact())
+                .telephone(request.getTelephone())
                 .build();
         return supplierRepository.save(supplier);
     }
@@ -47,7 +47,7 @@ public class SupplierService {
         supplier.setAddress(request.getAddress());
         supplier.setEmail(request.getEmail());
         supplier.setName(request.getName());
-        supplier.setContact(request.getContact());
+        supplier.setTelephone(request.getTelephone());
         return supplierRepository.save(supplier);
     }
 

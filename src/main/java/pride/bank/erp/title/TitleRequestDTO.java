@@ -16,5 +16,5 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public class TitleRequestDTO {
     private String name;
-    private Long reportsToID;
+    private Long reportsTo;
 }

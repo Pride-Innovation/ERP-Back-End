@@ -37,7 +37,7 @@ public class Title {
     @JoinColumn(name = "branch_id")
     private Branch branch;
 
-    @OneToOne
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "reports_to_id")
     private Title reportsTo;
 }

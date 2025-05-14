@@ -9,6 +9,7 @@ package pride.bank.erp.supplier;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -26,7 +27,11 @@ public class SupplierController {
     private final SupplierService supplierService;
 
     @GetMapping("/suppliers")
-    public ResponseEntity<Page<Supplier>> fetchAllSuppliers(Pageable pageable) {
+    public ResponseEntity<Page<Supplier>> fetchAllSuppliers(
+            @RequestParam(required = false, defaultValue = "10") int pageSize,
+            @RequestParam(required = false, defaultValue = "0") int pageNumber
+    ) {
+        Pageable pageable = PageRequest.of(pageNumber, pageSize);
         Page<Supplier> suppliers = supplierService.fetchAllSuppliers(pageable);
         return new ResponseEntity<>(suppliers, HttpStatus.OK);
     }

@@ -53,7 +53,7 @@ public class TitleService {
 
     public Title createTitle(TitleRequestDTO request)
             throws NotFoundException {
-        Title reportsTo = findTitle(request.getReportsToID());
+        Title reportsTo = findTitle(request.getReportsTo());
         Title title = Title.builder()
                 .name(request.getName())
                 .reportsTo(reportsTo)
@@ -65,8 +65,8 @@ public class TitleService {
             throws NotFoundException {
         Title title = findTitle(id);
 
-        if (request.getReportsToID() != null) {
-            Title reportsTo = findTitle(request.getReportsToID());
+        if (request.getReportsTo() != null) {
+            Title reportsTo = findTitle(request.getReportsTo());
             title.setReportsTo(reportsTo);
         }
 

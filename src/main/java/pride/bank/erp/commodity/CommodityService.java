@@ -11,6 +11,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import pride.bank.erp.assetType.AssetType;
+import pride.bank.erp.assetType.AssetTypeService;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
 import pride.bank.erp.helper.DeleteResponse;
@@ -25,6 +27,7 @@ import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
 public class CommodityService {
     private final CommodityRepository commodityRepository;
     private final CommoditySearchDao commoditySearchDao;
+    private final AssetTypeService assetTypeService;
 
     public Page<Commodity> fetchAllCommodities(
             int pageSize,
@@ -51,10 +54,13 @@ public class CommodityService {
         }
     }
 
-    public Commodity createCommodity(Commodity request) {
+    public Commodity createCommodity(CommodityDTO request)
+            throws NotFoundException {
+        AssetType assetType = assetTypeService.findOneAssetType(request.getAssetType());
         Commodity commodity = Commodity.builder()
                 .name(request.getName())
                 .groupName(request.getGroupName())
+                .assetType(assetType)
                 .build();
         return commodityRepository.save(commodity);
     }

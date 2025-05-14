@@ -46,7 +46,8 @@ public class CommodityController {
     }
 
     @PostMapping("/commodities")
-    public ResponseEntity<Commodity> createCommodity(@RequestBody Commodity commodity) {
+    public ResponseEntity<Commodity> createCommodity(@RequestBody CommodityDTO commodity)
+            throws NotFoundException {
         Commodity response = commodityService.createCommodity(commodity);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
