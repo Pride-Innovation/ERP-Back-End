@@ -72,6 +72,6 @@ public class TitleController {
     @DeleteMapping("/titles/{id}")
     public ResponseEntity<DeleteResponse> deleteTitle(@PathVariable Long id) {
         DeleteResponse response = titleService.deleteTitle(id);
-        return new ResponseEntity<>(response, HttpStatusCode.valueOf(201));
+        return new ResponseEntity<>(response, HttpStatusCode.valueOf(204));
     }
 }

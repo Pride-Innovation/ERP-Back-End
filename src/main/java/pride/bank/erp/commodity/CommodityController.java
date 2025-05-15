@@ -53,7 +53,7 @@ public class CommodityController {
     }
 
     @PutMapping("/commodities/{id}")
-    public ResponseEntity<Commodity> updateCommodity(@RequestBody Commodity commodity, @PathVariable Long id)
+    public ResponseEntity<Commodity> updateCommodity(@RequestBody CommodityDTO commodity, @PathVariable Long id)
             throws NotFoundException {
         Commodity response = commodityService.updateCommodity(commodity, id);
         return new ResponseEntity<>(response, HttpStatusCode.valueOf(201));
@@ -62,7 +62,7 @@ public class CommodityController {
     @DeleteMapping("/commodities/{id}")
     public ResponseEntity<DeleteResponse> deleteCommodity(@PathVariable Long id) {
         DeleteResponse response = commodityService.deleteCommodity(id);
-        return new ResponseEntity<>(response, HttpStatusCode.valueOf(201));
+        return new ResponseEntity<>(response, HttpStatusCode.valueOf(204));
     }
 
     @GetMapping("/commodities/{id}")

@@ -65,11 +65,13 @@ public class CommodityService {
         return commodityRepository.save(commodity);
     }
 
-    public Commodity updateCommodity(Commodity request, Long id) throws NotFoundException {
+    public Commodity updateCommodity(CommodityDTO request, Long id) throws NotFoundException {
         Commodity commodity = findCommodity(id);
+        AssetType assetType = assetTypeService.findOneAssetType(request.getAssetType());
 
         commodity.setName(request.getName());
         commodity.setGroupName(request.getGroupName());
+        commodity.setAssetType(assetType);
         return commodityRepository.save(commodity);
     }
 
