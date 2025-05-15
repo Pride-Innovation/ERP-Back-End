@@ -25,6 +25,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import pride.bank.erp.branch.Branch;
+import pride.bank.erp.department.Department;
 import pride.bank.erp.helper.Constants;
 import pride.bank.erp.request.Request;
 import pride.bank.erp.role.Role;
@@ -121,6 +122,12 @@ public class User implements UserDetails {
     @JoinColumn(name = "title_id")
     @NotAudited
     private Title title;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "department_id")
+    // @OnDelete(action = OnDeleteAction.CASCADE)
+    @NotAudited
+    private Department department;
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {

@@ -52,7 +52,7 @@ public class BranchController {
     }
 
     @PutMapping("/branches/{id}")
-    public ResponseEntity<Branch> updateBranch(@RequestBody Branch branch, @PathVariable Long id)
+    public ResponseEntity<Branch> updateBranch(@RequestBody BranchDTO branch, @PathVariable Long id)
             throws NotFoundException {
         Branch response = branchService.updateBranch(branch, id);
         return new ResponseEntity<>(response, HttpStatusCode.valueOf(201));

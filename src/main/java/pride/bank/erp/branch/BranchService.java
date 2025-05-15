@@ -84,9 +84,22 @@ public class BranchService {
         return branchRepository.save(branch);
     }
 
-    public Branch updateBranch(Branch request, Long id) throws NotFoundException {
+    @Transactional
+    public Branch updateBranch(BranchDTO request, Long id) throws NotFoundException {
         Branch branch = findBranch(id);
+        User branchManager = userService.findUser(request.getBranchManager());
+        User branchOperationsManager = userService.findUser(request.getBranchOperationsManager());
+        User creditAdministrator = userService.findUser(request.getCreditAdministrator());
+        User relationshipManager = userService.findUser(request.getRelationshipManager());
+        District district = districtService.findDistrict(request.getDistrict());
+        Region region = regionService.findRegion(request.getRegion());
         branch.setName(request.getName());
+        branch.setBranchManager(branchManager);
+        branch.setBranchOperationsManager(branchOperationsManager);
+        branch.setCreditAdministrator(creditAdministrator);
+        branch.setRelationshipManager(relationshipManager);
+        branch.setDistrict(district);
+        branch.setRegion(region);
         return branchRepository.save(branch);
 
     }

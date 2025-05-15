@@ -38,20 +38,26 @@ public class Branch {
     @JsonIgnore
     private Set<User> users;
 
+    /*
     @OneToOne
     @JoinColumn(name = "branch_manager_id", unique = true)
+    This is to ensure a unique entry on the column
+     */
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "branch_manager_id")
     private User branchManager;
 
-    @OneToOne
-    @JoinColumn(name = "branch_operations_manager_id", unique = true)
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "branch_operations_manager_id")
     private User branchOperationsManager;
 
-    @OneToOne
-    @JoinColumn(name = "relationship_manager_id", unique = true)
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "relationship_manager_id")
     private User relationshipManager;
 
-    @OneToOne
-    @JoinColumn(name = "credit_administrator_id", unique = true)
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "credit_administrator_id")
     private User creditAdministrator;
 
     @OneToMany(mappedBy = "branch", cascade = CascadeType.PERSIST)

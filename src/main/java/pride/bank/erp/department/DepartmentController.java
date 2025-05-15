@@ -32,6 +32,7 @@ public class DepartmentController {
     @PostMapping("/departments")
     public ResponseEntity<Department> createDepartment(@RequestBody DepartmentDTO request)
             throws NotFoundException {
+        System.out.println("Here we are!!");
         Department response = departmentService.createDepartment(request);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
