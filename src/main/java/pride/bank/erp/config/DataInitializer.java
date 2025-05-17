@@ -7,12 +7,17 @@ Managing Director
 
 package pride.bank.erp.config;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Component;
+import pride.bank.erp.district.District;
+import pride.bank.erp.district.DistrictRepository;
 import pride.bank.erp.permission.Permission;
 import pride.bank.erp.permission.PermissionRepository;
 import pride.bank.erp.region.Region;
@@ -38,6 +43,8 @@ public class DataInitializer {
     private final UserRepository userRepository;
     private final BCryptPasswordEncoder passwordEncoder;
     private final RegionRepository regionRepository;
+    private final DistrictRepository districtRepository;
+    private final ObjectMapper objectMapper;
 
     /*
      * Configurations for Super Admin
@@ -81,6 +88,7 @@ public class DataInitializer {
             Role adminRole = initializeAdminRole(permissions);
             initializeAdminUser(adminRole);
             initializeRegions();
+            initializeDistricts();
         };
     }
 
@@ -210,5 +218,25 @@ public class DataInitializer {
                     .build();
             return userRepository.save(admin);
         });
+    }
+
+    public void initializeDistricts() {
+        try {
+            var resource = new ClassPathResource("districts.json");
+            List<District> districts = objectMapper.readValue(
+                    resource.getInputStream(),
+                    new TypeReference<List<District>>() {
+                    });
+
+            List<District> newDistricts = districts.stream()
+                    .filter(d -> districtRepository.findByName(d.getName()).isEmpty())
+                    .toList();
+
+            if (!newDistricts.isEmpty()) {
+                districtRepository.saveAll(newDistricts);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 }
