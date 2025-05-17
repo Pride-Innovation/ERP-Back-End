@@ -16,6 +16,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Component;
+import pride.bank.erp.assetType.AssetType;
+import pride.bank.erp.assetType.AssetTypeRepository;
 import pride.bank.erp.district.District;
 import pride.bank.erp.district.DistrictRepository;
 import pride.bank.erp.permission.Permission;
@@ -45,6 +47,8 @@ public class DataInitializer {
     private final RegionRepository regionRepository;
     private final DistrictRepository districtRepository;
     private final ObjectMapper objectMapper;
+    private final AssetTypeRepository assetTypeRepository;
+
 
     /*
      * Configurations for Super Admin
@@ -89,6 +93,7 @@ public class DataInitializer {
             initializeAdminUser(adminRole);
             initializeRegions();
             initializeDistricts();
+            initializeAssetTypes();
         };
     }
 
@@ -223,17 +228,30 @@ public class DataInitializer {
     public void initializeDistricts() {
         try {
             var resource = new ClassPathResource("districts.json");
-            List<District> districts = objectMapper.readValue(
-                    resource.getInputStream(),
-                    new TypeReference<List<District>>() {
-                    });
-
+            List<District> districts = objectMapper.readValue(resource.getInputStream(), new TypeReference<>() {
+            });
             List<District> newDistricts = districts.stream()
                     .filter(d -> districtRepository.findByName(d.getName()).isEmpty())
                     .toList();
 
             if (!newDistricts.isEmpty()) {
                 districtRepository.saveAll(newDistricts);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void initializeAssetTypes() {
+        try {
+            var resource = new ClassPathResource("assetTypes.json");
+            List<AssetType> assetTypes = objectMapper.readValue(resource.getInputStream(), new TypeReference<>() {
+            });
+            List<AssetType> newAssets = assetTypes.stream()
+                    .filter(assetType -> assetTypeRepository.findByName(assetType.getName()).isEmpty())
+                    .toList();
+            if (!newAssets.isEmpty()) {
+                assetTypeRepository.saveAll(assetTypes);
             }
         } catch (Exception e) {
             e.printStackTrace();
