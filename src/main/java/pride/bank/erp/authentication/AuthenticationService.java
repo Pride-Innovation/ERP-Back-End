@@ -57,8 +57,9 @@ public class AuthenticationService {
                 .firstName(request.getFirstName())
                 .lastName(request.getLastName())
                 .password(passwordEncoder.encode(generatedPassword))
-                .address(request.getAddress())
-                .phone(request.getPhone())
+                .staffNumber(request.getStaffNumber())
+                .available(request.isAvailable())
+                .gender(request.getGender())
                 .title(title)
                 .isEnabled(false)
                 .build();

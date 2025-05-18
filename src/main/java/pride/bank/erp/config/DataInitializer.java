@@ -59,10 +59,6 @@ public class DataInitializer {
     private String lastname;
     @Value("${application.super.admin.password}")
     private String password;
-    @Value("${application.super.admin.phone}")
-    private String phone;
-    @Value("${application.super.admin.address}")
-    private String address;
 
     @Value("${application.admin.email}")
     private String emailAdmin;
@@ -70,10 +66,7 @@ public class DataInitializer {
     private String firstnameAdmin;
     @Value("${application.admin.password}")
     private String passwordAdmin;
-    @Value("${application.admin.phone}")
-    private String phoneAdmin;
-    @Value("${application.admin.address}")
-    private String addressAdmin;
+
 
     @Bean
     CommandLineRunner initDatabase() {
@@ -179,8 +172,9 @@ public class DataInitializer {
                     .lastName(lastname)
                     .email(email)
                     .password(passwordEncoder.encode(password))
-                    .phone(phone)
-                    .address(address)
+                    .staffNumber("P00001B")
+                    .gender("Male")
+                    .available(true)
                     .isEnabled(true)
                     .title(title)
                     .branch(null)
@@ -196,9 +190,10 @@ public class DataInitializer {
                     .lastName(firstnameAdmin)
                     .email(emailAdmin)
                     .password(passwordEncoder.encode(passwordAdmin))
-                    .phone(phoneAdmin)
-                    .address(addressAdmin)
                     .isEnabled(true)
+                    .staffNumber("P00001C")
+                    .gender("Male")
+                    .available(true)
                     .title(title)
                     .branch(null)
                     .build();

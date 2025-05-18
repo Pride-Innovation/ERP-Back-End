@@ -57,6 +57,8 @@ public class User implements UserDetails {
     @Size(max = 20, min = 3, message = Constants.NAME_VALIDATOR)
     private String lastName;
 
+    private String otherName;
+
     @Column(unique = true)
     @Email(message = Constants.EMAIL_VALIDATOR)
     @NotNull(message = Constants.NULL_FIELD_VALIDATOR)
@@ -67,13 +69,15 @@ public class User implements UserDetails {
     @NotBlank(message = Constants.BLANK_FIELD_VALIDATOR)
     private String password;
 
+    @NotBlank(message = Constants.BLANK_FIELD_VALIDATOR)
     @NotNull(message = Constants.NULL_FIELD_VALIDATOR)
-    @Pattern(regexp = Constants.PHONE_REGEX, message = Constants.PHONE_VALIDATOR)
-    private String phone;
+    private String staffNumber;
 
     @NotBlank(message = Constants.BLANK_FIELD_VALIDATOR)
     @NotNull(message = Constants.NULL_FIELD_VALIDATOR)
-    private String address;
+    private String gender;
+
+    private boolean available;
 
     private String profileImage;
 

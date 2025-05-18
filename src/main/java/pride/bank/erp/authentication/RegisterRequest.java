@@ -41,9 +41,11 @@ public class RegisterRequest {
 
     @NotNull(message = Constants.NULL_FIELD_VALIDATOR)
     @Pattern(regexp = Constants.PHONE_REGEX, message = Constants.PHONE_VALIDATOR)
-    private String phone;
+    private String staffNumber;
 
     @NotBlank(message = Constants.BLANK_FIELD_VALIDATOR)
     @NotNull(message = Constants.NULL_FIELD_VALIDATOR)
-    private String address;
+    private String gender;
+    private boolean available;
+
 }

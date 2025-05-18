@@ -54,8 +54,9 @@ public class UserService {
                 .firstName(user.getFirstName())
                 .lastName(user.getLastName())
                 .email(user.getEmail())
-                .address(user.getAddress())
-                .phone(user.getPhone())
+                .gender(user.getGender())
+                .available(user.isAvailable())
+                .staffNumber(user.getStaffNumber())
                 .title(title)
                 .isEnabled(false)
                 .password(passwordEncoder.encode(generatedPassword))
@@ -89,8 +90,9 @@ public class UserService {
 
         user.setFirstName(request.getFirstName());
         user.setLastName(request.getLastName());
-        user.setAddress(request.getAddress());
-        user.setPhone(request.getPhone());
+        user.setStaffNumber(request.getStaffNumber());
+        user.setGender(request.getGender());
+        user.setAvailable(request.isAvailable());
         user.setTitle(title);
         user.setEmail(request.getEmail());
 

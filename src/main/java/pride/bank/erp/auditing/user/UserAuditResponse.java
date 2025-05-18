@@ -18,11 +18,12 @@ public class UserAuditResponse {
     private String email;
     private String firstName;
     private String lastName;
-    private String address;
-    private String phone;
+    private String staffNumber;
+    private String gender;
     private String profileImage;
     private int revisionNumber;
     private String revisionType; // ADD, MOD, DEL
     private LocalDateTime createDate;
     private String createdBy;
+    private boolean available;
 }

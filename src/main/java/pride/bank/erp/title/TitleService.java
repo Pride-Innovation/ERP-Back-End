@@ -14,6 +14,8 @@ import org.springframework.stereotype.Service;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
 import pride.bank.erp.helper.DeleteResponse;
+import pride.bank.erp.role.Role;
+import pride.bank.erp.role.RoleService;
 
 import java.util.Objects;
 
@@ -25,6 +27,7 @@ import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
 public class TitleService {
     private final TitleSearchDao titleSearchDao;
     private final TitleRepository titleRepository;
+    private final RoleService roleService;
 
     public Page<Title> fetchAllTitles(
             int pageSize,
@@ -54,9 +57,12 @@ public class TitleService {
     public Title createTitle(TitleRequestDTO request)
             throws NotFoundException {
         Title reportsTo = findTitle(request.getReportsTo());
+        Role role = roleService.findOneRole(request.getRole());
+
         Title title = Title.builder()
                 .name(request.getName())
                 .reportsTo(reportsTo)
+                .role(role)
                 .build();
         return titleRepository.save(title);
     }
@@ -64,6 +70,7 @@ public class TitleService {
     public Title updateTitle(TitleRequestDTO request, Long id)
             throws NotFoundException {
         Title title = findTitle(id);
+        Role role = roleService.findOneRole(request.getRole());
 
         if (request.getReportsTo() != null) {
             Title reportsTo = findTitle(request.getReportsTo());
@@ -71,6 +78,7 @@ public class TitleService {
         }
 
         title.setName(request.getName());
+        title.setRole(role);
         return titleRepository.save(title);
 
     }

@@ -63,13 +63,14 @@ public class UserAuditService {
                     user.getEmail(),
                     user.getFirstName(),
                     user.getLastName(),
-                    user.getAddress(),
-                    user.getPhone(),
+                    user.getStaffNumber(),
+                    user.getGender(),
                     user.getProfileImage(),
                     revisionEntity.getId(),
                     revisionType,
                     user.getCreateDate(),
-                    creator != null ? creator.getFirstName() + " " + creator.getLastName() : "Unknown"
+                    creator != null ? creator.getFirstName() + " " + creator.getLastName() : "Unknown",
+                    user.isAvailable()
             ));
         }
 

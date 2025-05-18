@@ -17,4 +17,5 @@ import lombok.NoArgsConstructor;
 public class TitleRequestDTO {
     private String name;
     private Long reportsTo;
+    private Long role;
 }
