@@ -13,6 +13,8 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import pride.bank.erp.assetType.AssetType;
+import pride.bank.erp.commodity.Commodity;
 import pride.bank.erp.stock.Stock;
 
 import java.util.List;
@@ -34,4 +36,8 @@ public class Supplier {
     @OneToMany(mappedBy = "supplier", cascade = CascadeType.PERSIST)
     @JsonIgnore
     private List<Stock> stocks;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "commodity_id")
+    private Commodity commodity;
 }

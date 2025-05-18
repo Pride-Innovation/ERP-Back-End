@@ -37,13 +37,14 @@ public class SupplierController {
     }
 
     @PostMapping("/suppliers")
-    public ResponseEntity<Supplier> createSupplier(@RequestBody Supplier supplier) {
+    public ResponseEntity<Supplier> createSupplier(@RequestBody SupplierDTO supplier)
+            throws NotFoundException {
         Supplier response = supplierService.createSupplier(supplier);
         return new ResponseEntity<>(response, HttpStatusCode.valueOf(201));
     }
 
     @PutMapping("/suppliers/{id}")
-    public ResponseEntity<Supplier> updateSupplier(@PathVariable Long id, @RequestBody Supplier supplier)
+    public ResponseEntity<Supplier> updateSupplier(@PathVariable Long id, @RequestBody SupplierDTO supplier)
             throws NotFoundException {
         Supplier response = supplierService.updateSupplier(supplier, id);
         return new ResponseEntity<>(response, HttpStatusCode.valueOf(201));

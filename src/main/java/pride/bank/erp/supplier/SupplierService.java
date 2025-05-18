@@ -11,6 +11,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import pride.bank.erp.commodity.Commodity;
+import pride.bank.erp.commodity.CommodityService;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
 import pride.bank.erp.helper.DeleteResponse;
@@ -19,17 +21,24 @@ import pride.bank.erp.helper.DeleteResponse;
 @RequiredArgsConstructor
 public class SupplierService {
     private final SupplierRepository supplierRepository;
+    private final CommodityService commodityService;
+
 
     public Page<Supplier> fetchAllSuppliers(Pageable pageable) {
         return supplierRepository.findAll(pageable);
     }
 
-    public Supplier createSupplier(Supplier request) {
+    public Supplier createSupplier(SupplierDTO request)
+            throws NotFoundException {
+
+        Commodity commodity = commodityService.findCommodity(request.getCommodity());
+
         Supplier supplier = Supplier.builder()
                 .email(request.getEmail())
                 .address(request.getAddress())
                 .name(request.getName())
                 .telephone(request.getTelephone())
+                .commodity(commodity)
                 .build();
         return supplierRepository.save(supplier);
     }
@@ -40,7 +49,8 @@ public class SupplierService {
                 .orElseThrow(() -> new NotFoundException("Supplier with ID " + supplierId + " not found"));
     }
 
-    public Supplier updateSupplier(Supplier request, Long id) throws NotFoundException {
+    public Supplier updateSupplier(SupplierDTO request, Long id) throws NotFoundException {
+        Commodity commodity = commodityService.findCommodity(request.getCommodity());
         Supplier supplier = findSupplier(id);
         assert supplier != null;
 
@@ -48,6 +58,7 @@ public class SupplierService {
         supplier.setEmail(request.getEmail());
         supplier.setName(request.getName());
         supplier.setTelephone(request.getTelephone());
+        supplier.setCommodity(commodity);
         return supplierRepository.save(supplier);
     }
 
