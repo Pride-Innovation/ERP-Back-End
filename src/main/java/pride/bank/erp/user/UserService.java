@@ -20,8 +20,8 @@ import pride.bank.erp.helper.Constants;
 import pride.bank.erp.helper.DeleteResponse;
 import pride.bank.erp.helper.PasswordGenerator;
 import pride.bank.erp.notification.Email;
-import pride.bank.erp.role.Role;
-import pride.bank.erp.role.RoleService;
+import pride.bank.erp.title.Title;
+import pride.bank.erp.title.TitleService;
 
 import java.util.Objects;
 
@@ -34,21 +34,19 @@ public class UserService {
 
     private final BCryptPasswordEncoder passwordEncoder;
     private final UserRepository userRepository;
-    private final RoleService roleService;
     private final JwtService jwtService;
     private final Email emailService;
     private final UserSearchDao userSearchDao;
+    private final TitleService titleService;
 
     public User findUser(Long userId) throws NotFoundException {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new NotFoundException("User with ID " + userId + " not found"));
     }
 
-    public Response saveUser(User user, Long roleId) throws NotFoundException {
-        Role role = roleService.findOneRole(roleId);
-        if (role == null) {
-            throw new NotFoundException("Role with ID " + roleId + " not found");
-        }
+    public Response saveUser(User user, Long titleId)
+            throws NotFoundException {
+        Title title = titleService.findTitle(titleId);
 
         String generatedPassword = PasswordGenerator.generatePassword();
 
@@ -58,7 +56,7 @@ public class UserService {
                 .email(user.getEmail())
                 .address(user.getAddress())
                 .phone(user.getPhone())
-                .role(role)
+                .title(title)
                 .isEnabled(false)
                 .password(passwordEncoder.encode(generatedPassword))
                 .build();
@@ -84,15 +82,16 @@ public class UserService {
         return new Response("success", "Verification email has been sent to " + savedUser.getEmail());
     }
 
-    public User updateUser(@NonNull User request, Long roleId) throws NotFoundException {
+    public User updateUser(@NonNull User request, Long titleId)
+            throws NotFoundException {
         User user = findUser(request.getId());
-        Role role = roleService.findOneRole(roleId);
+        Title title = titleService.findTitle(titleId);
 
         user.setFirstName(request.getFirstName());
         user.setLastName(request.getLastName());
         user.setAddress(request.getAddress());
         user.setPhone(request.getPhone());
-        user.setRole(role);
+        user.setTitle(title);
         user.setEmail(request.getEmail());
 
         return userRepository.save(user);

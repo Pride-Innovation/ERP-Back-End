@@ -24,7 +24,7 @@ import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import pride.bank.erp.helper.Constants;
 import pride.bank.erp.permission.Permission;
-import pride.bank.erp.user.User;
+import pride.bank.erp.title.Title;
 
 import java.time.LocalDateTime;
 import java.util.HashSet;
@@ -69,7 +69,7 @@ public class Role {
     @OneToMany(mappedBy = "role", cascade = CascadeType.PERSIST)
     @JsonIgnore
     @NotAudited
-    private List<User> users;
+    private List<Title> titles;
 
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(

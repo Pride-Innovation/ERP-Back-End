@@ -28,7 +28,6 @@ import pride.bank.erp.branch.Branch;
 import pride.bank.erp.department.Department;
 import pride.bank.erp.helper.Constants;
 import pride.bank.erp.request.Request;
-import pride.bank.erp.role.Role;
 import pride.bank.erp.title.Title;
 import pride.bank.erp.token.Token;
 
@@ -94,12 +93,6 @@ public class User implements UserDetails {
     // @Column(insertable = false)
     private Long lastModifiedBy;
 
-    @ManyToOne(fetch = FetchType.EAGER, optional = false)
-    @JoinColumn(name = "role_id", nullable = false)
-    // @OnDelete(action = OnDeleteAction.CASCADE)
-    @NotAudited
-    private Role role;
-
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL)
     @JsonIgnore
     @NotAudited
@@ -131,7 +124,10 @@ public class User implements UserDetails {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return role.getPermissions().stream()
+        if (title == null || title.getRole() == null || title.getRole().getPermissions() == null) {
+            return List.of();
+        }
+        return title.getRole().getPermissions().stream()
                 .map(permission -> new SimpleGrantedAuthority(permission.getName()))
                 .collect(Collectors.toList());
     }

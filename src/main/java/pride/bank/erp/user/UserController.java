@@ -52,17 +52,17 @@ public class UserController {
         return new ResponseEntity<>(users, HttpStatus.OK);
     }
 
-    @PostMapping("/users/{roleId}")
-    public ResponseEntity<Response> createUser(@PathVariable Long roleId, @RequestBody @Valid User user)
+    @PostMapping("/users/{titleId}")
+    public ResponseEntity<Response> createUser(@PathVariable Long titleId, @RequestBody @Valid User user)
             throws NotFoundException {
-        Response response = userService.saveUser(user, roleId);
+        Response response = userService.saveUser(user, titleId);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 
-    @PutMapping("/users/{roleId}")
-    public ResponseEntity<User> updateUser(@PathVariable Long roleId, @RequestBody @Valid User user)
+    @PutMapping("/users/{titleId}")
+    public ResponseEntity<User> updateUser(@PathVariable Long titleId, @RequestBody @Valid User user)
             throws NotFoundException {
-        User response = userService.updateUser(user, roleId);
+        User response = userService.updateUser(user, titleId);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 

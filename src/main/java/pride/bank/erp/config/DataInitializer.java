@@ -26,6 +26,8 @@ import pride.bank.erp.region.Region;
 import pride.bank.erp.region.RegionRepository;
 import pride.bank.erp.role.Role;
 import pride.bank.erp.role.RoleRepository;
+import pride.bank.erp.title.Title;
+import pride.bank.erp.title.TitleRepository;
 import pride.bank.erp.user.User;
 import pride.bank.erp.user.UserRepository;
 
@@ -35,7 +37,6 @@ import java.util.HashSet;
 import java.util.List;
 
 import static pride.bank.erp.helper.Constants.*;
-
 
 @Component
 @RequiredArgsConstructor
@@ -48,11 +49,8 @@ public class DataInitializer {
     private final DistrictRepository districtRepository;
     private final ObjectMapper objectMapper;
     private final AssetTypeRepository assetTypeRepository;
+    private final TitleRepository titleRepository;
 
-
-    /*
-     * Configurations for Super Admin
-     */
     @Value("${application.super.admin.email}")
     private String email;
     @Value("${application.super.admin.first.name}")
@@ -66,10 +64,6 @@ public class DataInitializer {
     @Value("${application.super.admin.address}")
     private String address;
 
-
-    /*
-     * Configurations for Admin
-     */
     @Value("${application.admin.email}")
     private String emailAdmin;
     @Value("${application.admin.first.name}")
@@ -81,16 +75,19 @@ public class DataInitializer {
     @Value("${application.admin.address}")
     private String addressAdmin;
 
-
     @Bean
     CommandLineRunner initDatabase() {
         return args -> {
             List<Permission> permissions = initializePermissions();
             Role superAdminRole = initializeSuperAdminRole(permissions);
-            initializeSuperAdminUser(superAdminRole);
-
             Role adminRole = initializeAdminRole(permissions);
-            initializeAdminUser(adminRole);
+
+            Title superAdminTitle = initializeTitle("Super Admin Title", superAdminRole);
+            Title adminTitle = initializeTitle("Admin Title", adminRole);
+
+            initializeSuperAdminUser(superAdminTitle);
+            initializeAdminUser(adminTitle);
+
             initializeRegions();
             initializeDistricts();
             initializeAssetTypes();
@@ -128,31 +125,6 @@ public class DataInitializer {
                 );
     }
 
-    private void initializeRegions() {
-        List<Region> regions = Arrays.asList(
-                new Region(null, Central_A, null),
-                new Region(null, Central_B, null),
-                new Region(null, Eastern, null),
-                new Region(null, Northern, null),
-                new Region(null, Western, null)
-        );
-
-        for (Region region : regions) {
-            verifyRegion(region);
-        }
-    }
-
-    private void verifyRegion(Region region) {
-        regionRepository.findByName(region.getName()).ifPresentOrElse(
-                existingRegion -> {
-                    // Region already exists
-                },
-                () -> {
-                    regionRepository.save(region);
-                }
-        );
-    }
-
     private Role initializeSuperAdminRole(List<Permission> permissions) {
         return roleRepository.findByName(SUPER_ADMIN)
                 .orElseGet(() -> roleRepository.save(
@@ -170,30 +142,39 @@ public class DataInitializer {
     private Role initializeAdminRole(List<Permission> permissions) {
         return roleRepository.findByName(ADMIN)
                 .orElseGet(() -> roleRepository.save(
-                                new Role(
-                                        null,
-                                        ADMIN,
-                                        LocalDateTime.now(),
-                                        LocalDateTime.now(),
-                                        1L,
-                                        1L,
-                                        null,
-                                        new HashSet<>(Arrays.asList(
-                                                ensurePermission(READ_USER),
-                                                ensurePermission(CREATE_USER),
-                                                ensurePermission(UPDATE_USER),
-                                                ensurePermission(READ_REQUEST),
-                                                ensurePermission(CREATE_REQUEST),
-                                                ensurePermission(UPDATE_REQUEST),
-                                                ensurePermission(DELETE_REQUEST)
-                                        )))
-                        )
-                );
+                        new Role(
+                                null,
+                                ADMIN,
+                                LocalDateTime.now(),
+                                LocalDateTime.now(),
+                                1L,
+                                1L,
+                                null,
+                                new HashSet<>(Arrays.asList(
+                                        ensurePermission(READ_USER),
+                                        ensurePermission(CREATE_USER),
+                                        ensurePermission(UPDATE_USER),
+                                        ensurePermission(READ_REQUEST),
+                                        ensurePermission(CREATE_REQUEST),
+                                        ensurePermission(UPDATE_REQUEST),
+                                        ensurePermission(DELETE_REQUEST)
+                                )))
+                ));
     }
 
-    private void initializeSuperAdminUser(Role adminRole) {
+    private Title initializeTitle(String titleName, Role role) {
+        return titleRepository.findByName(titleName)
+                .orElseGet(() -> titleRepository.save(
+                        Title.builder()
+                                .name(titleName)
+                                .role(role)
+                                .build()
+                ));
+    }
+
+    private void initializeSuperAdminUser(Title title) {
         userRepository.findByEmail(email).orElseGet(() -> {
-            User admin = User.builder()
+            User superAdmin = User.builder()
                     .firstName(firstname)
                     .lastName(lastname)
                     .email(email)
@@ -201,14 +182,14 @@ public class DataInitializer {
                     .phone(phone)
                     .address(address)
                     .isEnabled(true)
-                    .role(adminRole)
+                    .title(title)
                     .branch(null)
                     .build();
-            return userRepository.save(admin);
+            return userRepository.save(superAdmin);
         });
     }
 
-    private void initializeAdminUser(Role adminRole) {
+    private void initializeAdminUser(Title title) {
         userRepository.findByEmail(emailAdmin).orElseGet(() -> {
             User admin = User.builder()
                     .firstName(firstnameAdmin)
@@ -218,11 +199,33 @@ public class DataInitializer {
                     .phone(phoneAdmin)
                     .address(addressAdmin)
                     .isEnabled(true)
-                    .role(adminRole)
+                    .title(title)
                     .branch(null)
                     .build();
             return userRepository.save(admin);
         });
+    }
+
+    private void initializeRegions() {
+        List<Region> regions = Arrays.asList(
+                new Region(null, Central_A, null),
+                new Region(null, Central_B, null),
+                new Region(null, Eastern, null),
+                new Region(null, Northern, null),
+                new Region(null, Western, null)
+        );
+
+        for (Region region : regions) {
+            verifyRegion(region);
+        }
+    }
+
+    private void verifyRegion(Region region) {
+        regionRepository.findByName(region.getName()).ifPresentOrElse(
+                existingRegion -> {
+                },
+                () -> regionRepository.save(region)
+        );
     }
 
     public void initializeDistricts() {

@@ -14,6 +14,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import pride.bank.erp.branch.Branch;
+import pride.bank.erp.role.Role;
 import pride.bank.erp.user.User;
 
 import java.util.Set;
@@ -40,4 +41,9 @@ public class Title {
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "reports_to_id")
     private Title reportsTo;
+
+    @ManyToOne(fetch = FetchType.EAGER, optional = false)
+    @JoinColumn(name = "role_id", nullable = false)
+    // @OnDelete(action = OnDeleteAction.CASCADE)
+    private Role role;
 }

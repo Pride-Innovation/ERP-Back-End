@@ -21,8 +21,8 @@ import pride.bank.erp.config.JwtService;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.PasswordGenerator;
 import pride.bank.erp.notification.Email;
-import pride.bank.erp.role.Role;
-import pride.bank.erp.role.RoleRepository;
+import pride.bank.erp.title.Title;
+import pride.bank.erp.title.TitleService;
 import pride.bank.erp.token.Token;
 import pride.bank.erp.token.TokenRepository;
 import pride.bank.erp.token.TokenType;
@@ -39,44 +39,42 @@ import java.util.Optional;
 public class AuthenticationService {
 
     private final UserRepository userRepository;
-    private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
     private final TokenRepository tokenRepository;
     private final Email email;
+    private final TitleService titleService;
 
-    public AuthenticationResponse register(RegisterRequest request, Long roleID) {
+    public AuthenticationResponse register(RegisterRequest request, Long titleId)
+            throws NotFoundException {
 
-        Optional<Role> role = roleRepository.findById(roleID);
+        Title title = titleService.findTitle(titleId);
         String generatedPassword = PasswordGenerator.generatePassword();
 
-        if (role.isPresent()) {
-            var user = User.builder()
-                    .email(request.getEmail())
-                    .firstName(request.getFirstName())
-                    .lastName(request.getLastName())
-                    .password(passwordEncoder.encode(generatedPassword))
-                    .address(request.getAddress())
-                    .phone(request.getPhone())
-                    .role(role.get())
-                    .isEnabled(false)
-                    .build();
-            User savedUser = userRepository.save(user);
-            AuthenticationResponse response = generateToken(savedUser, role.get());
-            email.sendEmailVerification(
-                    user.getEmail(),
-                    "Account Verification",
-                    response.getAccessToken(),
-                    "Verify Your Account",
-                    "Verify Account",
-                    generatedPassword,
-                    "authentication",
-                    null
-            );
-            return response;
-        }
-        return null;
+        var user = User.builder()
+                .email(request.getEmail())
+                .firstName(request.getFirstName())
+                .lastName(request.getLastName())
+                .password(passwordEncoder.encode(generatedPassword))
+                .address(request.getAddress())
+                .phone(request.getPhone())
+                .title(title)
+                .isEnabled(false)
+                .build();
+        User savedUser = userRepository.save(user);
+        AuthenticationResponse response = generateToken(savedUser, title);
+        email.sendEmailVerification(
+                user.getEmail(),
+                "Account Verification",
+                response.getAccessToken(),
+                "Verify Your Account",
+                "Verify Account",
+                generatedPassword,
+                "authentication",
+                null
+        );
+        return response;
     }
 
     public AuthenticationResponse authenticate(AuthenticationRequest request) throws NotFoundException {
@@ -93,10 +91,10 @@ public class AuthenticationService {
             throw new DisabledException("Account is not verified. Please check your email to verify your account.");
         }
         revokeAllUserTokens(user);
-        return generateToken(user, user.getRole());
+        return generateToken(user, user.getTitle());
     }
 
-    private AuthenticationResponse generateToken(User user, Role role) {
+    private AuthenticationResponse generateToken(User user, Title title) {
         var jwtToken = jwtService.generateToken(user);
         var refreshToken = jwtService.generateRefreshToken(user);
 
@@ -109,7 +107,7 @@ public class AuthenticationService {
                 .firstName(user.getFirstName())
                 .lastName(user.getLastName())
                 .email(user.getEmail())
-                .role(role)
+                .title(title)
                 .build();
     }
 

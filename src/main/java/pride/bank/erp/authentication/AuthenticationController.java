@@ -27,12 +27,12 @@ public class AuthenticationController {
 
     private final AuthenticationService authenticationService;
 
-    @PostMapping("/auth/register/{roleID}")
+    @PostMapping("/auth/register/{titleId}")
     public ResponseEntity<AuthenticationResponse> register(
-            @PathVariable Long roleID,
+            @PathVariable Long titleId,
             @Valid @RequestBody RegisterRequest request
-    ) {
-        return ResponseEntity.ok(authenticationService.register(request, roleID));
+    ) throws NotFoundException {
+        return ResponseEntity.ok(authenticationService.register(request, titleId));
     }
 
     @PostMapping("/auth/login")

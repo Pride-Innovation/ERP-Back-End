@@ -11,7 +11,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import pride.bank.erp.role.Role;
+import pride.bank.erp.title.Title;
 
 @Builder
 @AllArgsConstructor
@@ -24,5 +24,5 @@ public class AuthenticationResponse {
     private String firstName;
     private String lastName;
     private String email;
-    private Role role;
+    private Title title;
 }
