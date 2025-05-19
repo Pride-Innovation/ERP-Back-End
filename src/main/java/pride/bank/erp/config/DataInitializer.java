@@ -18,6 +18,8 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Component;
 import pride.bank.erp.assetType.AssetType;
 import pride.bank.erp.assetType.AssetTypeRepository;
+import pride.bank.erp.branch.Branch;
+import pride.bank.erp.branch.BranchRepository;
 import pride.bank.erp.district.District;
 import pride.bank.erp.district.DistrictRepository;
 import pride.bank.erp.permission.Permission;
@@ -50,6 +52,7 @@ public class DataInitializer {
     private final ObjectMapper objectMapper;
     private final AssetTypeRepository assetTypeRepository;
     private final TitleRepository titleRepository;
+    private final BranchRepository branchRepository;
 
     @Value("${application.super.admin.email}")
     private String email;
@@ -67,6 +70,13 @@ public class DataInitializer {
     @Value("${application.admin.password}")
     private String passwordAdmin;
 
+    @Value("${application.head.office.name}")
+    private String headOfficeName;
+    @Value("${application.head.office.email}")
+    private String headOfficeEmail;
+    @Value("${application.head.office.telephone}")
+    private String headOfficeTelephone;
+
 
     @Bean
     CommandLineRunner initDatabase() {
@@ -74,12 +84,12 @@ public class DataInitializer {
             List<Permission> permissions = initializePermissions();
             Role superAdminRole = initializeSuperAdminRole(permissions);
             Role adminRole = initializeAdminRole(permissions);
+            Branch headOfficeBranch = initializeBranch();
+            Title superAdminTitle = initializeTitle("Super Admin Title", superAdminRole, headOfficeBranch);
+            Title adminTitle = initializeTitle("Admin Title", adminRole, headOfficeBranch);
 
-            Title superAdminTitle = initializeTitle("Super Admin Title", superAdminRole);
-            Title adminTitle = initializeTitle("Admin Title", adminRole);
-
-            initializeSuperAdminUser(superAdminTitle);
-            initializeAdminUser(adminTitle);
+            initializeSuperAdminUser(superAdminTitle, headOfficeBranch);
+            initializeAdminUser(adminTitle, headOfficeBranch);
 
             initializeRegions();
             initializeDistricts();
@@ -155,17 +165,29 @@ public class DataInitializer {
                 ));
     }
 
-    private Title initializeTitle(String titleName, Role role) {
+    private Branch initializeBranch() {
+        return branchRepository.findByName(headOfficeName)
+                .orElseGet(() -> branchRepository.save(
+                        Branch.builder()
+                                .name(headOfficeName)
+                                .telephone(headOfficeTelephone)
+                                .email(headOfficeEmail)
+                                .build()
+                ));
+    }
+
+    private Title initializeTitle(String titleName, Role role, Branch branch) {
         return titleRepository.findByName(titleName)
                 .orElseGet(() -> titleRepository.save(
                         Title.builder()
                                 .name(titleName)
                                 .role(role)
+                                .branch(branch)
                                 .build()
                 ));
     }
 
-    private void initializeSuperAdminUser(Title title) {
+    private void initializeSuperAdminUser(Title title, Branch branch) {
         userRepository.findByEmail(email).orElseGet(() -> {
             User superAdmin = User.builder()
                     .firstName(firstname)
@@ -175,15 +197,15 @@ public class DataInitializer {
                     .staffNumber("P00001B")
                     .gender("Male")
                     .available(true)
+                    .branch(branch)
                     .isEnabled(true)
                     .title(title)
-                    .branch(null)
                     .build();
             return userRepository.save(superAdmin);
         });
     }
 
-    private void initializeAdminUser(Title title) {
+    private void initializeAdminUser(Title title, Branch branch) {
         userRepository.findByEmail(emailAdmin).orElseGet(() -> {
             User admin = User.builder()
                     .firstName(firstnameAdmin)
@@ -192,10 +214,10 @@ public class DataInitializer {
                     .password(passwordEncoder.encode(passwordAdmin))
                     .isEnabled(true)
                     .staffNumber("P00001C")
+                    .branch(branch)
                     .gender("Male")
                     .available(true)
                     .title(title)
-                    .branch(null)
                     .build();
             return userRepository.save(admin);
         });
