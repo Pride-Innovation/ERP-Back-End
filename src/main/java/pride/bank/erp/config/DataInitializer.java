@@ -196,7 +196,7 @@ public class DataInitializer {
                     .password(passwordEncoder.encode(password))
                     .staffNumber("P00001B")
                     .gender("Male")
-                    .available(true)
+                    .availability("present")
                     .branch(branch)
                     .isEnabled(true)
                     .title(title)
@@ -216,7 +216,7 @@ public class DataInitializer {
                     .staffNumber("P00001C")
                     .branch(branch)
                     .gender("Male")
-                    .available(true)
+                    .availability("present")
                     .title(title)
                     .build();
             return userRepository.save(admin);

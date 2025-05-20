@@ -48,37 +48,19 @@ public class User implements UserDetails {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
-    @NotNull(message = Constants.NULL_FIELD_VALIDATOR)
-    @Size(max = 20, min = 3, message = Constants.NAME_VALIDATOR)
     private String firstName;
-
-    @NotNull(message = Constants.NULL_FIELD_VALIDATOR)
-    @Size(max = 20, min = 3, message = Constants.NAME_VALIDATOR)
     private String lastName;
-
     private String otherName;
 
     @Column(unique = true)
-    @Email(message = Constants.EMAIL_VALIDATOR)
-    @NotNull(message = Constants.NULL_FIELD_VALIDATOR)
-    @NotBlank(message = Constants.BLANK_FIELD_VALIDATOR)
     private String email;
 
     @NotNull(message = Constants.NULL_FIELD_VALIDATOR)
     @NotBlank(message = Constants.BLANK_FIELD_VALIDATOR)
     private String password;
-
-    @NotBlank(message = Constants.BLANK_FIELD_VALIDATOR)
-    @NotNull(message = Constants.NULL_FIELD_VALIDATOR)
     private String staffNumber;
-
-    @NotBlank(message = Constants.BLANK_FIELD_VALIDATOR)
-    @NotNull(message = Constants.NULL_FIELD_VALIDATOR)
     private String gender;
-
-    private boolean available;
-
+    private String availability;
     private String profileImage;
 
     @CreatedDate

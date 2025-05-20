@@ -52,10 +52,10 @@ public class UserController {
         return new ResponseEntity<>(users, HttpStatus.OK);
     }
 
-    @PostMapping("/users/{titleId}")
-    public ResponseEntity<Response> createUser(@PathVariable Long titleId, @RequestBody @Valid User user)
+    @PostMapping("/users")
+    public ResponseEntity<UserResponse> createUser(@RequestBody @Valid UserDTO user)
             throws NotFoundException {
-        Response response = userService.saveUser(user, titleId);
+        UserResponse response = userService.saveUser(user);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 

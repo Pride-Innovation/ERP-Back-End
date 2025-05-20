@@ -25,5 +25,5 @@ public class UserAuditResponse {
     private String revisionType; // ADD, MOD, DEL
     private LocalDateTime createDate;
     private String createdBy;
-    private boolean available;
+    private String availability;
 }

@@ -70,7 +70,7 @@ public class UserAuditService {
                     revisionType,
                     user.getCreateDate(),
                     creator != null ? creator.getFirstName() + " " + creator.getLastName() : "Unknown",
-                    user.isAvailable()
+                    user.getAvailability()
             ));
         }
 

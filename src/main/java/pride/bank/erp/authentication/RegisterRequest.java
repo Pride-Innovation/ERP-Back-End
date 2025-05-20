@@ -46,6 +46,6 @@ public class RegisterRequest {
     @NotBlank(message = Constants.BLANK_FIELD_VALIDATOR)
     @NotNull(message = Constants.NULL_FIELD_VALIDATOR)
     private String gender;
-    private boolean available;
+    private String availability;
 
 }

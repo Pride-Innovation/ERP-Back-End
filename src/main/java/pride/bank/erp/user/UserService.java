@@ -7,6 +7,7 @@ Managing Director
 
 package pride.bank.erp.user;
 
+import jakarta.transaction.Transactional;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -14,6 +15,9 @@ import org.springframework.data.domain.Sort;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import pride.bank.erp.apiResponse.Response;
+import pride.bank.erp.branch.Branch;
+import pride.bank.erp.branch.BranchRepository;
+import pride.bank.erp.branch.BranchService;
 import pride.bank.erp.config.JwtService;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
@@ -24,6 +28,7 @@ import pride.bank.erp.title.Title;
 import pride.bank.erp.title.TitleService;
 
 import java.util.Objects;
+import java.util.Optional;
 
 import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
 
@@ -38,15 +43,19 @@ public class UserService {
     private final Email emailService;
     private final UserSearchDao userSearchDao;
     private final TitleService titleService;
+    private final BranchRepository branchRepository;
 
     public User findUser(Long userId) throws NotFoundException {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new NotFoundException("User with ID " + userId + " not found"));
     }
 
-    public Response saveUser(User user, Long titleId)
+    @Transactional
+    public UserResponse saveUser(UserDTO user)
             throws NotFoundException {
-        Title title = titleService.findTitle(titleId);
+        Title title = titleService.findTitle(user.getTitle());
+        Optional<Branch> branch = branchRepository.findById(user.getBranch());
+        assert branch.isPresent();
 
         String generatedPassword = PasswordGenerator.generatePassword();
 
@@ -55,9 +64,10 @@ public class UserService {
                 .lastName(user.getLastName())
                 .email(user.getEmail())
                 .gender(user.getGender())
-                .available(user.isAvailable())
+                .availability(user.getAvailability())
                 .staffNumber(user.getStaffNumber())
                 .title(title)
+                .branch(branch.get())
                 .isEnabled(false)
                 .password(passwordEncoder.encode(generatedPassword))
                 .build();
@@ -76,13 +86,25 @@ public class UserService {
                 );
 
         if (!emailSent) {
-            return new Response("failed", "Failed to send verification email to " + newUser.getEmail());
+            Response emailResponse = new Response("failed", "Failed to send verification email to " + newUser.getEmail());
+            return UserResponse
+                    .builder()
+                    .response(emailResponse)
+                    .user(null)
+                    .build();
         }
 
         User savedUser = userRepository.save(newUser);
-        return new Response("success", "Verification email has been sent to " + savedUser.getEmail());
+        Response emailResponse = new Response("success", "Verification email has been sent to " + savedUser.getEmail());
+        return UserResponse
+                .builder()
+                .response(emailResponse)
+                .user(savedUser)
+                .build();
     }
 
+
+    @Transactional
     public User updateUser(@NonNull User request, Long titleId)
             throws NotFoundException {
         User user = findUser(request.getId());
@@ -92,7 +114,7 @@ public class UserService {
         user.setLastName(request.getLastName());
         user.setStaffNumber(request.getStaffNumber());
         user.setGender(request.getGender());
-        user.setAvailable(request.isAvailable());
+        user.setAvailability(request.getAvailability());
         user.setTitle(title);
         user.setEmail(request.getEmail());
 
