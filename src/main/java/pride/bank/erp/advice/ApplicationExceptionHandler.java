@@ -21,11 +21,17 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import pride.bank.erp.exception.NotFoundException;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Properties;
 
 @RestControllerAdvice
 public class ApplicationExceptionHandler {
+
+    private static final Map<String, String> CONSTRAINT_MAP = loadConstraintMap();
 
     private static String extractKeyword(String errorMessage) {
         if (errorMessage == null || errorMessage.isEmpty()) {
@@ -39,7 +45,16 @@ public class ApplicationExceptionHandler {
         String dataTruncationPattern = "Data truncation";
 
         if (errorMessage.contains(duplicateEntryPattern)) {
-            return "Duplicate Entry";
+            String value = extractBetween(errorMessage, "Duplicate entry '");
+            String constraint = extractBetween(errorMessage, "for key '");
+
+            String column = mapConstraintToColumn(constraint);
+
+            if (column != null) {
+                return String.format("%s '%s' has already been taken", capitalize(column), value);
+            } else {
+                return String.format("Duplicate entry: '%s'", value);
+            }
         } else if (errorMessage.contains(foreignKeyPattern)) {
             return "Foreign Key Constraint Violation";
         } else if (errorMessage.contains(checkConstraintPattern)) {
@@ -52,6 +67,46 @@ public class ApplicationExceptionHandler {
 
         return "Unknown Database Constraint Violation";
     }
+
+    private static String extractBetween(String text, String start) {
+        int startIndex = text.indexOf(start);
+        if (startIndex == -1) return null;
+        startIndex += start.length();
+        int endIndex = text.indexOf("'", startIndex);
+        if (endIndex == -1) return null;
+        return text.substring(startIndex, endIndex);
+    }
+
+    private static String mapConstraintToColumn(String constraint) {
+        return CONSTRAINT_MAP.getOrDefault(constraint, null);
+    }
+
+    private static Map<String, String> loadConstraintMap() {
+        Properties props = new Properties();
+
+        try (InputStream input = ApplicationExceptionHandler.class.getClassLoader().getResourceAsStream("constraints.properties")) {
+            if (input == null) {
+                System.err.println("constraints.properties not found in classpath.");
+                return Collections.emptyMap();
+            }
+            props.load(input);
+        } catch (IOException ex) {
+            System.err.println("Could not load constraints.properties: " + ex.getMessage());
+            return Collections.emptyMap();
+        }
+
+        Map<String, String> map = new HashMap<>();
+        for (String key : props.stringPropertyNames()) {
+            map.put(key, props.getProperty(key));
+        }
+        return map;
+    }
+
+    private static String capitalize(String str) {
+        if (str == null || str.isEmpty()) return str;
+        return str.substring(0, 1).toUpperCase() + str.substring(1);
+    }
+
 
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     @ExceptionHandler(MethodArgumentNotValidException.class)

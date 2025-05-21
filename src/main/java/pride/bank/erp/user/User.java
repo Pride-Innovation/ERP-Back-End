@@ -87,6 +87,9 @@ public class User implements UserDetails {
     @NotAudited
     private boolean isEnabled = false;
 
+    @NotAudited
+    private boolean isAccountNonLocked = true;
+
     @OneToMany(mappedBy = "requester", cascade = CascadeType.PERSIST)
     @JsonIgnore
     @NotAudited
@@ -135,7 +138,7 @@ public class User implements UserDetails {
 
     @Override
     public boolean isAccountNonLocked() {
-        return true;
+        return isAccountNonLocked;
     }
 
     @Override

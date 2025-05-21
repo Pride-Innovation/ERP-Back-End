@@ -199,6 +199,7 @@ public class DataInitializer {
                     .availability("present")
                     .branch(branch)
                     .isEnabled(true)
+                    .isAccountNonLocked(true)
                     .title(title)
                     .build();
             return userRepository.save(superAdmin);
@@ -213,6 +214,7 @@ public class DataInitializer {
                     .email(emailAdmin)
                     .password(passwordEncoder.encode(passwordAdmin))
                     .isEnabled(true)
+                    .isAccountNonLocked(true)
                     .staffNumber("P00001C")
                     .branch(branch)
                     .gender("Male")
