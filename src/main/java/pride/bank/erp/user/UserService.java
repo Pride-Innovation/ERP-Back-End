@@ -19,6 +19,9 @@ import pride.bank.erp.branch.Branch;
 import pride.bank.erp.branch.BranchRepository;
 import pride.bank.erp.branch.BranchService;
 import pride.bank.erp.config.JwtService;
+import pride.bank.erp.department.Department;
+import pride.bank.erp.department.DepartmentRepository;
+import pride.bank.erp.department.DepartmentService;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
 import pride.bank.erp.helper.DeleteResponse;
@@ -44,6 +47,7 @@ public class UserService {
     private final UserSearchDao userSearchDao;
     private final TitleService titleService;
     private final BranchRepository branchRepository;
+    private final DepartmentRepository departmentRepository;
 
     public User findUser(Long userId) throws NotFoundException {
         return userRepository.findById(userId)
@@ -57,6 +61,12 @@ public class UserService {
         Optional<Branch> branch = branchRepository.findById(user.getBranch());
         assert branch.isPresent();
 
+        Department department = null;
+
+        if (user.getDepartment() != null) {
+            department = departmentRepository.findById(user.getDepartment()).orElse(null);
+        }
+
         String generatedPassword = PasswordGenerator.generatePassword();
 
         User newUser = User.builder()
@@ -68,7 +78,10 @@ public class UserService {
                 .staffNumber(user.getStaffNumber())
                 .title(title)
                 .branch(branch.get())
+                .department(department)
                 .isEnabled(false)
+                .blocked(false)
+                .isAccountNonLocked(true)
                 .password(passwordEncoder.encode(generatedPassword))
                 .build();
 
@@ -105,30 +118,39 @@ public class UserService {
 
 
     @Transactional
-    public User updateUser(@NonNull User request, Long titleId)
+    public User updateUser(@NonNull UserDTO request, Long userId)
             throws NotFoundException {
-        User user = findUser(request.getId());
-        Title title = titleService.findTitle(titleId);
+        User user = findUser(userId);
+        Title title = titleService.findTitle(request.getTitle());
+
+        Department department = null;
+
+        if (user.getDepartment() != null) {
+            department = departmentRepository.findById(request.getDepartment()).orElse(null);
+        }
 
         user.setFirstName(request.getFirstName());
         user.setLastName(request.getLastName());
+        user.setOtherName(request.getOtherName());
         user.setStaffNumber(request.getStaffNumber());
         user.setGender(request.getGender());
         user.setAvailability(request.getAvailability());
         user.setTitle(title);
+        user.setDepartment(department);
+        user.setEnabled(request.isEnabled());
+        user.setAccountNonLocked(request.isAccountNonLocked());
         user.setEmail(request.getEmail());
+        user.setBlocked(request.isBlocked());
 
         return userRepository.save(user);
     }
 
-    public DeleteResponse deleteUser(Long userId) {
-        if (userRepository.existsById(userId)) {
-            userRepository.deleteById(userId);
-            return new DeleteResponse(Constants.DELETED_SUCCESSFULLY, true);
-        } else {
-            return new DeleteResponse(Constants.ENTITY_NOT_FOUND, false);
-        }
+    public User deleteUser(Long userId) throws NotFoundException {
+        User user = findUser(userId);
+        user.setAccountNonLocked(false);
+        return userRepository.save(user);
     }
+
 
     public Page<User> fetchUsers(
             int pageSize,

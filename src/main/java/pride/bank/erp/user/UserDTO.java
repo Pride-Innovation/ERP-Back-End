@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.envers.NotAudited;
 import pride.bank.erp.helper.Constants;
 
 @Data
@@ -40,4 +41,7 @@ public class UserDTO {
     private String staffNumber;
     private Long title;
     private Long department;
+    private boolean isEnabled;
+    private boolean isAccountNonLocked;
+    private boolean blocked;
 }

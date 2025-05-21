@@ -62,6 +62,7 @@ public class User implements UserDetails {
     private String gender;
     private String availability;
     private String profileImage;
+    private boolean blocked;
 
     @CreatedDate
     @Column(updatable = false)

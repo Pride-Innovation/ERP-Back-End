@@ -11,9 +11,9 @@ import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import pride.bank.erp.apiResponse.Response;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
 
@@ -59,10 +59,10 @@ public class UserController {
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 
-    @PutMapping("/users/{titleId}")
-    public ResponseEntity<User> updateUser(@PathVariable Long titleId, @RequestBody @Valid User user)
+    @PutMapping("/users/{userId}")
+    public ResponseEntity<User> updateUser(@PathVariable Long userId, @RequestBody @Valid UserDTO user)
             throws NotFoundException {
-        User response = userService.updateUser(user, titleId);
+        User response = userService.updateUser(user, userId);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 
@@ -75,12 +75,9 @@ public class UserController {
     }
 
     @DeleteMapping("/users/{userID}")
-    public ResponseEntity<?> deleteUser(@PathVariable Long userID) {
-        try {
-            var response = userService.deleteUser(userID);
-            return new ResponseEntity<>(response, HttpStatus.OK);
-        } catch (Exception e) {
-            return new ResponseEntity<>(e.getMessage(), HttpStatus.BAD_REQUEST);
-        }
+    public ResponseEntity<User> deleteUser(@PathVariable Long userID)
+            throws NotFoundException {
+        User response = userService.deleteUser(userID);
+        return new ResponseEntity<>(response, HttpStatusCode.valueOf(204));
     }
 }

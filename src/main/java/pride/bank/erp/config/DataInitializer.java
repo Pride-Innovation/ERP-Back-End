@@ -200,6 +200,7 @@ public class DataInitializer {
                     .branch(branch)
                     .isEnabled(true)
                     .isAccountNonLocked(true)
+                    .blocked(false)
                     .title(title)
                     .build();
             return userRepository.save(superAdmin);
@@ -219,6 +220,7 @@ public class DataInitializer {
                     .branch(branch)
                     .gender("Male")
                     .availability("present")
+                    .blocked(false)
                     .title(title)
                     .build();
             return userRepository.save(admin);
