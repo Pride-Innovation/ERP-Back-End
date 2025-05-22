@@ -48,7 +48,6 @@ public class RequestService {
     private final FileUpload fileUpload;
     private final RequestSearchDao requestSearchDao;
     private final StatusService statusService;
-    private final UserService userService;
     private final CommodityService commodityService;
     private final RequestCommodityRepository requestCommodityRepository;
     private final UserRepository userRepository;
@@ -59,12 +58,11 @@ public class RequestService {
     public Request createRequest(
             Request body,
             MultipartFile file,
-            Long statusId,
             List<RequestCommodityDTO> requestCommoditiesRequest
     ) throws IOException, NotFoundException {
 
         String filePath = fileUpload.uploadFileToLocalDirectory(file);
-        Status status = statusService.findOneStatus(statusId);
+        Status status = statusService.findOneStatus(1L);
         User requester = currentUserService.getCurrentUser();
 
         Request request = Request.builder()
@@ -79,6 +77,7 @@ public class RequestService {
 
         Request savedRequest = requestRepository.save(request);
         User supervisor = findSupervisorToApproveRequest();
+        System.out.println(supervisor.getEmail());
 
         savedRequest.setCurrentApprover(supervisor);
         savedRequest = requestRepository.save(savedRequest);
@@ -99,11 +98,10 @@ public class RequestService {
             Long requestId,
             Request body,
             MultipartFile file,
-            Long statusId,
             List<RequestCommodityDTO> updatedRequestCommodities
     ) throws IOException, NotFoundException {
         Request existingRequest = findRequest(requestId);
-        Status status = statusService.findOneStatus(statusId);
+        Status status = statusService.findOneStatus(1L);
 
         if (file != null && !file.isEmpty()) {
             if (existingRequest.getSignaturePath() != null) {
@@ -228,6 +226,7 @@ public class RequestService {
     private User findSupervisorToApproveRequest()
             throws NotFoundException {
         User requester = currentUserService.getCurrentUser();
+
         Long supervisorTitleId = requester.getTitle().getReportsTo().getId();
         List<User> supervisors = userRepository.findByTitleId(supervisorTitleId);
 

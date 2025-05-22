@@ -16,10 +16,8 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.helper.Constants;
 import pride.bank.erp.requestCommodity.RequestCommodityDTO;
-import pride.bank.erp.user.User;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -31,8 +29,6 @@ import static pride.bank.erp.helper.Constants.ASCENDING_SORT_DIRECTION;
 public class RequestController {
     @Autowired
     private RequestService requestService;
-    @Autowired
-    private CurrentUserService currentUserService;
 
     @GetMapping("/requests")
     public ResponseEntity<Page<Request>> fetchAllRequests(
@@ -63,13 +59,10 @@ public class RequestController {
     public ResponseEntity<?> createRequest(
             @RequestParam(value = "file", required = false) MultipartFile file,
             @RequestParam("name") String name,
-            @RequestParam("quantity") int quantity,
             @RequestParam("priority") String priority,
             @RequestParam("description") String description,
-            @RequestParam("status") Long statusId,
             @RequestParam("requestCommodities") String requestCommodities
     ) {
-        User requester = currentUserService.getCurrentUser();
         List<RequestCommodityDTO> commodityList;
 
         try {
@@ -90,7 +83,6 @@ public class RequestController {
             Request savedRequest = requestService.createRequest(
                     request,
                     file,
-                    statusId,
                     commodityList
             );
             return ResponseEntity.status(HttpStatus.CREATED).body(savedRequest);
@@ -106,10 +98,8 @@ public class RequestController {
     public ResponseEntity<?> updateRequest(
             @RequestParam(value = "file", required = false) MultipartFile file,
             @RequestParam("name") String name,
-            @RequestParam("quantity") int quantity,
             @RequestParam("priority") String priority,
             @RequestParam("description") String description,
-            @RequestParam("status") Long statusId,
             @RequestParam("requestCommodities") String requestCommodities,
             @PathVariable Long id
     ) {
@@ -129,7 +119,7 @@ public class RequestController {
                 .description(description)
                 .build();
         try {
-            Request updatedRequest = requestService.updateRequest(id, request, file, statusId, commodityList);
+            Request updatedRequest = requestService.updateRequest(id, request, file, commodityList);
             return ResponseEntity.ok(updatedRequest);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
