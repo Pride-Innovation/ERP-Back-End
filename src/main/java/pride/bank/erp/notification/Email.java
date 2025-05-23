@@ -148,7 +148,7 @@ public class Email {
 
         String totalRow = String.format(
                 "<tr style='background-color: #835F1E; color: white;'>"
-                        + "<td style='padding: 10px; font-weight: bold;' colspan='2'>Total Quantity</td>"
+                        + "<td style='padding: 10px; font-weight: bold;' colspan='3'>Total Quantity</td>"
                         + "<td style='padding: 10px; font-weight: bold;'>%d</td>"
                         + "</tr>",
                 totalQuantity
@@ -167,11 +167,12 @@ public class Email {
                         + "<p><strong>Dear %s</strong></p>"
 //                        + "<p>A new store request has been initiated by <strong>%s</strong> for the following item(s):</p>"
                         +"%s"
-                        + "<table style='width: 50%%; border-collapse: collapse; font-size: 14px;'>"
+                        + "<table style='width: 60%%; border-collapse: collapse; font-size: 14px;'>"
                         + "<thead>"
                         + "<tr style='background-color: #05544B; color: #FFFFFF;'>"
                         + "<th style='padding: 10px; text-align: left;'>Request ID#</th>"
                         + "<th style='padding: 10px; text-align: left;'>Item Name</th>"
+                        + "<th style='padding: 10px; text-align: left;'>Unit of Measure</th>"
                         + "<th style='padding: 10px; text-align: left;'>Quantity</th>"
                         + "</tr>"
                         + "</thead>"
@@ -212,7 +213,8 @@ public class Email {
             tableRows.append(String.format(
                     "<tr style='%s'>"
                             + "<td style='padding: 10px;'>%d</td>"
-                            + "<td style='padding: 10px;'>%s (%s)</td>"
+                            + "<td style='padding: 10px;'>%s</td>"
+                            + "<td style='padding: 10px;'>%s</td>"
                             + "<td style='padding: 10px;'>%d</td>"
                             + "</tr>",
                     rowStyle,
