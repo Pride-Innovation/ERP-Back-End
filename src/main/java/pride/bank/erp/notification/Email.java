@@ -127,7 +127,7 @@ public class Email {
                 "<div style='font-family: Arial, sans-serif; line-height: 1.5; color: #333;'>"
                         + "<h2 style='color: #4CAF50;'>%s</h2>"
                         + "<p>Click the button below to <span style='text-transform: lowercase;'>%s</span>:</p>"
-                        + "<a href='%s' style='display: inline-block; padding: 10px 20px; color: white; background-color: #4CAF50; text-decoration: none; border-radius: 5px;'>%s</a>"
+                        + "<a href='%s' style='display: inline-block; padding: 10px 20px; color: white; background-color: #05544B; text-decoration: none; border-radius: 5px;'>%s</a>"
                         + "<p style='margin-top: 20px;'>This token is valid until: <strong>%s</strong></p>"
                         + "%s"
                         + "<p style='font-size: 14px; color: #777;'>If you did not request this email, please ignore it.</p>"
@@ -144,7 +144,15 @@ public class Email {
      */
     private String getRequestEmailContent(Request request, String approver, String buttonText) {
         StringBuilder tableRows = getStringBuilder(request);
-//        StringBuilder tableRows = new StringBuilder();
+        int totalQuantity = getTotalQuantity(request);
+
+        String totalRow = String.format(
+                "<tr style='background-color: #835F1E; color: white;'>"
+                        + "<td style='padding: 10px; font-weight: bold;' colspan='2'>Total Quantity</td>"
+                        + "<td style='padding: 10px; font-weight: bold;'>%d</td>"
+                        + "</tr>",
+                totalQuantity
+        );
 
         String viewRequestLink = String.format("%s/%s", verificationUrl, request.getId());
         String requester = String.format("%s %s", request.getRequester().getFirstName(), request.getRequester().getLastName());
@@ -153,38 +161,56 @@ public class Email {
                 "<div style='font-family: Arial, sans-serif; line-height: 1.5; color: #333;'>"
                         + "<p><strong>Dear %s</strong></p>"
                         + "<p>A new store request has been initiated by <strong>%s</strong> for the following item(s):</p>"
-                        + "<table border='1' cellpadding='10' cellspacing='0' style='border-collapse: collapse;'>"
-                        + "<thead><tr><th>Request ID#</th><th>Item Name</th><th>Quantity</th></tr></thead>"
+
+                        + "<table style='width: 50%%; border-collapse: collapse; font-size: 14px;'>"
+                        + "<thead>"
+                        + "<tr style='background-color: #05544B; color: #FFFFFF;'>"
+                        + "<th style='padding: 10px; text-align: left;'>Request ID#</th>"
+                        + "<th style='padding: 10px; text-align: left;'>Item Name</th>"
+                        + "<th style='padding: 10px; text-align: left;'>Quantity</th>"
+                        + "</tr>"
+                        + "</thead>"
                         + "<tbody>%s</tbody>"
+                        + "<tfoot>%s</tfoot>"
                         + "</table>"
+
                         + "<p style='margin-top: 20px;'>"
-                        + "<p>To view the request, click the link below</p>"
-                        + "<a href='%s' style='display: inline-block; padding: 10px 20px; color: white; background-color: #4CAF50; text-decoration: none; border-radius: 5px;'>"
+                        + "To view the request, click the link below:"
+                        + "</p>"
+                        + "<a href='%s' style='display: inline-block; padding: 10px 20px; color: white; background-color: #05544B; text-decoration: none; border-radius: 5px;'>"
                         + "%s"
                         + "</a>"
+
+                        + "<p style='color: #777; margin-top: 30px;'>"
+                        + "DO NOT REPLY TO THIS EMAIL. THIS IS AN AUTOMATED NOTIFICATION FROM THE ASSET MANAGEMENT SYSTEM."
                         + "</p>"
-                        + "<p style='color: #777'>DO NOT REPLY TO THIS MAIL. THIS IS AN AUTOMATED MAIL DELIVERY FROM ASSET MANAGEMENT SYSTEM</p>"
                         + "</div>",
                 approver,
                 requester,
                 tableRows,
+                totalRow,
                 viewRequestLink,
                 buttonText
         );
     }
 
+
     private static StringBuilder getStringBuilder(Request request) {
         StringBuilder tableRows = new StringBuilder();
+        List<CommodityWithQuantityDTO> commodities = request.getCommodities();
 
         int count = 1;
-        List<CommodityWithQuantityDTO> commodities = request.getCommodities();
         for (CommodityWithQuantityDTO commodity : commodities) {
+            boolean isEven = count % 2 == 0;
+            String rowStyle = isEven ? "background-color: #f9f9f9;" : "background-color: #EBE6DC;";
+
             tableRows.append(String.format(
-                    "<tr>"
-                            + "<td>%d</td>"
-                            + "<td>%s (%s)</td>"
-                            + "<td>%d</td>"
+                    "<tr style='%s'>"
+                            + "<td style='padding: 10px;'>%d</td>"
+                            + "<td style='padding: 10px;'>%s (%s)</td>"
+                            + "<td style='padding: 10px;'>%d</td>"
                             + "</tr>",
+                    rowStyle,
                     count++,
                     commodity.getCommodity().getName(),
                     commodity.getCommodity().getGroupName(),
@@ -193,4 +219,12 @@ public class Email {
         }
         return tableRows;
     }
+
+
+    private int getTotalQuantity(Request request) {
+        return request.getCommodities().stream()
+                .mapToInt(CommodityWithQuantityDTO::getQuantity)
+                .sum();
+    }
+
 }
