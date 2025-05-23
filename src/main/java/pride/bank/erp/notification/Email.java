@@ -75,7 +75,7 @@ public class Email {
                         .format(expirationInstant);
                 htmlContent = getAuthenticationEmailContent(token, expirationTime, headerText, buttonText, password);
             } else if ("requests".equalsIgnoreCase(type)) {
-                htmlContent = getRequestEmailContent(request, headerText, buttonText);
+                htmlContent = getRequestEmailContent(request, headerText, buttonText, password);
             } else {
                 logger.error("Invalid email type: {}", type);
                 return false;
@@ -142,7 +142,7 @@ public class Email {
      * @param request Request object containing commodity details
      * @return String containing the email's HTML content
      */
-    private String getRequestEmailContent(Request request, String approver, String buttonText) {
+    private String getRequestEmailContent(Request request, String approver, String buttonText, String comment) {
         StringBuilder tableRows = getStringBuilder(request);
         int totalQuantity = getTotalQuantity(request);
 
@@ -154,14 +154,19 @@ public class Email {
                 totalQuantity
         );
 
+
         String viewRequestLink = String.format("%s/%s", verificationUrl, request.getId());
         String requester = String.format("%s %s", request.getRequester().getFirstName(), request.getRequester().getLastName());
+
+        String text = comment != null
+                ? String.format("<p>%s</p>", comment) :
+                String.format("<p>A new store request has been initiated by <strong>%s</strong> for the following item(s):</p>", requester);
 
         return String.format(
                 "<div style='font-family: Arial, sans-serif; line-height: 1.5; color: #333;'>"
                         + "<p><strong>Dear %s</strong></p>"
-                        + "<p>A new store request has been initiated by <strong>%s</strong> for the following item(s):</p>"
-
+//                        + "<p>A new store request has been initiated by <strong>%s</strong> for the following item(s):</p>"
+                        +"%s"
                         + "<table style='width: 50%%; border-collapse: collapse; font-size: 14px;'>"
                         + "<thead>"
                         + "<tr style='background-color: #05544B; color: #FFFFFF;'>"
@@ -186,7 +191,7 @@ public class Email {
                         + "</p>"
                         + "</div>",
                 approver,
-                requester,
+                text,
                 tableRows,
                 totalRow,
                 viewRequestLink,
@@ -202,7 +207,7 @@ public class Email {
         int count = 1;
         for (CommodityWithQuantityDTO commodity : commodities) {
             boolean isEven = count % 2 == 0;
-            String rowStyle = isEven ? "background-color: #f9f9f9;" : "background-color: #EBE6DC;";
+            String rowStyle = isEven ? "background-color: #f9f9f9;" : "background-color: #FFFFFF;";
 
             tableRows.append(String.format(
                     "<tr style='%s'>"

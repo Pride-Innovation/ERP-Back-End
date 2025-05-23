@@ -71,7 +71,12 @@ public class RequestReportService {
 
         if ("rejected".equalsIgnoreCase(statusName)) {
             setRequestPosition(request, request.getRequester());
-            return notifyIndividual(request.getRequester().getEmail(), comment, request);
+            return notifyIndividual(
+                    request.getRequester().getEmail(),
+                    comment,
+                    request,
+                    request.getRequester().getFirstName()
+            );
         } else if ("approved".equalsIgnoreCase(statusName)) {
             String notification = "Requests has already been approved. Pending your action";
             Optional<User> admin = userRepository.findByEmail(adminEmailAddress);
@@ -81,19 +86,29 @@ public class RequestReportService {
             }
 
             setRequestPosition(request, admin.get());
-            return notifyIndividual(adminEmailAddress, notification, request);
+            return notifyIndividual(
+                    adminEmailAddress,
+                    notification,
+                    request,
+                    "Admin"
+            );
         }
         return null;
     }
 
-    private String notifyIndividual(String email, String comment, Request request) {
+    private String notifyIndividual(
+            String email,
+            String comment,
+            Request request,
+            String requesterName
+    ) {
         boolean emailStatus = emailService.sendEmailVerification(
                 email,
-                "Request Status",
+                String.format("Stores Request ID: %s", request.getId()),
                 null,
-                comment,
+                requesterName,
                 "View Request",
-                null,
+                comment,
                 "requests",
                 request
         );
