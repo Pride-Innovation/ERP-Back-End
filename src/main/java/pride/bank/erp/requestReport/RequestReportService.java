@@ -7,10 +7,10 @@ Managing Director
 
 package pride.bank.erp.requestReport;
 
-import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.notification.Email;
 import pride.bank.erp.request.Request;
@@ -71,7 +71,7 @@ public class RequestReportService {
 
         if ("rejected".equalsIgnoreCase(statusName)) {
             setRequestPosition(request, request.getRequester());
-            return notifyIndividual(request.getRequester().getEmail(), comment);
+            return notifyIndividual(request.getRequester().getEmail(), comment, request);
         } else if ("approved".equalsIgnoreCase(statusName)) {
             String notification = "Requests has already been approved. Pending your action";
             Optional<User> admin = userRepository.findByEmail(adminEmailAddress);
@@ -81,12 +81,12 @@ public class RequestReportService {
             }
 
             setRequestPosition(request, admin.get());
-            return notifyIndividual(adminEmailAddress, notification);
+            return notifyIndividual(adminEmailAddress, notification, request);
         }
         return null;
     }
 
-    private String notifyIndividual(String email, String comment) {
+    private String notifyIndividual(String email, String comment, Request request) {
         boolean emailStatus = emailService.sendEmailVerification(
                 email,
                 "Request Status",
@@ -95,7 +95,7 @@ public class RequestReportService {
                 "View Request",
                 null,
                 "requests",
-                null
+                request
         );
 
         if (!emailStatus) {

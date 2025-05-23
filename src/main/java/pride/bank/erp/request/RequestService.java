@@ -7,11 +7,11 @@ Managing Director
 
 package pride.bank.erp.request;
 
-import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import pride.bank.erp.commodity.Commodity;
 import pride.bank.erp.commodity.CommodityService;

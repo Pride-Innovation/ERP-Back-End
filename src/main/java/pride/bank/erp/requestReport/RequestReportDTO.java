@@ -10,6 +10,7 @@ package pride.bank.erp.requestReport;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import pride.bank.erp.request.CommodityWithQuantityDTO;
 
 @Data
 @AllArgsConstructor
