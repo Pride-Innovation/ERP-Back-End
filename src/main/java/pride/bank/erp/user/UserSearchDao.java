@@ -77,11 +77,11 @@ public class UserSearchDao {
         List<Predicate> predicates = new ArrayList<>();
 
         if (Objects.nonNull(userSearchCriteria.getFirstName())) {
-            predicates.add(criteriaBuilder.like(userRoot.get("first_name"), "%" + userSearchCriteria.getFirstName() + "%"));
+            predicates.add(criteriaBuilder.like(userRoot.get("firstName"), "%" + userSearchCriteria.getFirstName() + "%"));
         }
 
         if (Objects.nonNull(userSearchCriteria.getLastName())) {
-            predicates.add(criteriaBuilder.like(userRoot.get("last_name"), "%" + userSearchCriteria.getLastName() + "%"));
+            predicates.add(criteriaBuilder.like(userRoot.get("lastName"), "%" + userSearchCriteria.getLastName() + "%"));
         }
 
         if (Objects.nonNull(userSearchCriteria.getEmail())) {

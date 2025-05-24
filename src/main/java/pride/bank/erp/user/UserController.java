@@ -32,8 +32,8 @@ public class UserController {
             @RequestParam(required = false, defaultValue = ASCENDING_SORT_DIRECTION) String sortDirection,
             @RequestParam(required = false, defaultValue = "0") int pageNumber,
             @RequestParam(required = false, defaultValue = "id") String sortBy,
-            @RequestParam(required = false) String first_name,
-            @RequestParam(required = false) String last_name,
+            @RequestParam(required = false) String firstName,
+            @RequestParam(required = false) String lastName,
             @RequestParam(required = false) String email,
             @RequestParam(required = false) String phone,
             @RequestParam(required = false) String address
@@ -43,8 +43,8 @@ public class UserController {
                 sortDirection,
                 pageNumber,
                 sortBy,
-                first_name,
-                last_name,
+                firstName,
+                lastName,
                 email,
                 phone
         );
