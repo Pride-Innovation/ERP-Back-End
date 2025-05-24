@@ -46,8 +46,7 @@ public class UserController {
                 first_name,
                 last_name,
                 email,
-                phone,
-                address
+                phone
         );
         return new ResponseEntity<>(users, HttpStatus.OK);
     }

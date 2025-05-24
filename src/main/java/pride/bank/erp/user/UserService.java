@@ -160,8 +160,7 @@ public class UserService {
             String firstName,
             String lastName,
             String email,
-            String phone,
-            String address
+            String phone
     ) {
         try {
             UserPage userPage = UserPage.builder()
@@ -173,8 +172,7 @@ public class UserService {
             UserSearchCriteria userSearchCriteria = UserSearchCriteria
                     .builder()
                     .firstName(firstName)
-                    .firstName(lastName)
-                    .address(address)
+                    .lastName(lastName)
                     .email(email)
                     .phone(phone)
                     .build();

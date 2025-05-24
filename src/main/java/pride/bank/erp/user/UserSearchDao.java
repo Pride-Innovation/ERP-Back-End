@@ -92,10 +92,6 @@ public class UserSearchDao {
             predicates.add(criteriaBuilder.like(userRoot.get("phone"), "%" + userSearchCriteria.getPhone() + "%"));
         }
 
-        if (Objects.nonNull(userSearchCriteria.getAddress())) {
-            predicates.add(criteriaBuilder.like(userRoot.get("address"), "%" + userSearchCriteria.getAddress() + "%"));
-        }
-
         return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
     }
 

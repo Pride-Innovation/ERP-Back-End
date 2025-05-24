@@ -165,7 +165,6 @@ public class Email {
         return String.format(
                 "<div style='font-family: Arial, sans-serif; line-height: 1.5; color: #333;'>"
                         + "<p><strong>Dear %s</strong></p>"
-//                        + "<p>A new store request has been initiated by <strong>%s</strong> for the following item(s):</p>"
                         +"%s"
                         + "<table style='width: 60%%; border-collapse: collapse; font-size: 14px;'>"
                         + "<thead>"
