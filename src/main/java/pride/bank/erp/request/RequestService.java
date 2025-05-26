@@ -217,6 +217,7 @@ public class RequestService {
                 .lastModifiedBy(request.getLastModifiedBy())
                 .requester(request.getRequester())
                 .requestReports(requestReportDAOS)
+                .currentApprover(request.getCurrentApprover())
                 .build();
     }
 
