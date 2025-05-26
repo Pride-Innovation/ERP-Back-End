@@ -28,7 +28,6 @@ import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
 import pride.bank.erp.user.User;
 import pride.bank.erp.user.UserRepository;
-import pride.bank.erp.user.UserService;
 
 import java.io.File;
 import java.io.IOException;
