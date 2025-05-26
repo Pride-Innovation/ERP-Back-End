@@ -23,6 +23,7 @@ import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import pride.bank.erp.requestCommodity.RequestCommodity;
 import pride.bank.erp.requestReport.RequestReport;
+import pride.bank.erp.requestReport.RequestReportDAO;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.user.User;
 
@@ -95,4 +96,7 @@ public class Request {
 
     @Transient
     private String emailMessage;
+
+    @Transient
+    private List<RequestReportDAO> requestReportDAOS;
 }

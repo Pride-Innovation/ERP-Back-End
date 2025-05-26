@@ -12,8 +12,10 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import pride.bank.erp.requestReport.RequestReport;
 
 import java.util.List;
+import java.util.Set;
 
 @Repository
 public interface RequestCommodityRepository extends JpaRepository<RequestCommodity, Long> {
@@ -23,4 +25,7 @@ public interface RequestCommodityRepository extends JpaRepository<RequestCommodi
     @Modifying
     @Query("DELETE FROM RequestCommodity rc WHERE rc.request.id = :requestId")
     void deleteByRequestId(@Param("requestId") Long requestId);
+
+    @Query("SELECT rr FROM RequestReport rr WHERE rr.request.id = :requestId")
+    Set<RequestReport> findReportByRequestId(@Param("requestId") Long requestId);
 }

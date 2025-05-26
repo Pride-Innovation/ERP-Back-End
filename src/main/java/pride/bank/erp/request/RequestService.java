@@ -24,6 +24,8 @@ import pride.bank.erp.notification.Email;
 import pride.bank.erp.requestCommodity.RequestCommodity;
 import pride.bank.erp.requestCommodity.RequestCommodityDTO;
 import pride.bank.erp.requestCommodity.RequestCommodityRepository;
+import pride.bank.erp.requestReport.RequestReport;
+import pride.bank.erp.requestReport.RequestReportDAO;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
 import pride.bank.erp.user.User;
@@ -35,6 +37,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
 
@@ -177,6 +180,7 @@ public class RequestService {
         return Objects.equals(direction, DESCENDING_SORT_DIRECTION) ? Sort.Direction.DESC : Sort.Direction.ASC;
     }
 
+    @Transactional
     public Request findRequest(Long requestId) throws NotFoundException {
         Request request = requestRepository.findById(requestId)
                 .orElseThrow(() -> new NotFoundException("Request with ID " + requestId + " not found"));
@@ -185,6 +189,46 @@ public class RequestService {
         List<CommodityWithQuantityDTO> commodities = commodityWithQuantityDTO(requestCommodities);
         request.setCommodities(commodities);
         return request;
+    }
+
+
+    @Transactional
+    public RequestDTO fetchSingleRequest(Long requestId) throws NotFoundException {
+        Request request = findRequest(requestId);
+
+        List<RequestCommodity> requestCommodities = requestCommodityRepository.findByRequestId(requestId);
+        List<CommodityWithQuantityDTO> commodities = commodityWithQuantityDTO(requestCommodities);
+        request.setCommodities(commodities);
+        Set<RequestReport> reports = requestCommodityRepository.findReportByRequestId(requestId);
+        List<RequestReportDAO> requestReportDAOS = reports.stream().map(this::buildObject).toList();
+
+        return RequestDTO.builder()
+                .id(request.getId())
+                .name(request.getName())
+                .priority(request.getPriority())
+                .commodities(commodities)
+                .description(request.getDescription())
+                .signaturePath(request.getSignaturePath())
+                .status(request.getStatus())
+                .timeOfSubmissionOfRequest(request.getTimeOfSubmissionOfRequest())
+                .createdBy(request.getCreatedBy())
+                .createDate(request.getCreateDate())
+                .lastModified(request.getLastModified())
+                .lastModifiedBy(request.getLastModifiedBy())
+                .requester(request.getRequester())
+                .requestReports(requestReportDAOS)
+                .build();
+    }
+
+    private RequestReportDAO buildObject(RequestReport rep) {
+        return RequestReportDAO
+                .builder()
+                .id(rep.getId())
+                .request(rep.getRequest())
+                .status(rep.getStatus())
+                .approver(rep.getApprover())
+                .comment(rep.getComment())
+                .build();
     }
 
     @Transactional

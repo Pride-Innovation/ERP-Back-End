@@ -142,7 +142,7 @@ public class RequestController {
     @GetMapping("/requests/{requestID}")
     public ResponseEntity<?> findRequest(@PathVariable Long requestID) {
         try {
-            Request response = requestService.findRequest(requestID);
+            RequestDTO response = requestService.fetchSingleRequest(requestID);
             return new ResponseEntity<>(response, HttpStatusCode.valueOf(200));
         } catch (Exception e) {
             return new ResponseEntity<>(e.getMessage(), HttpStatus.BAD_REQUEST);
