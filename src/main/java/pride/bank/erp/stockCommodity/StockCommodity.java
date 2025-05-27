@@ -12,6 +12,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import pride.bank.erp.branch.Branch;
 import pride.bank.erp.commodity.Commodity;
 import pride.bank.erp.stock.Stock;
 
@@ -26,8 +27,8 @@ public class StockCommodity {
     private Long id;
     private int orderedQuantity;
     private int deliveredQuantity;
-    private int expectedCost;
-    private int actualCost;
+    private int costPrice;
+    private int purchasePrice;
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "stock_id", nullable = false)

@@ -12,6 +12,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import pride.bank.erp.branch.Branch;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.stockCommodity.StockCommodity;
 import pride.bank.erp.supplier.Supplier;
@@ -29,6 +30,7 @@ public class Stock {
     @GeneratedValue(strategy = GenerationType.AUTO)
     private Long id;
     private String referenceNumber;
+    private String name;
     private int totalCost;
     private int balanceCost;
 
@@ -38,6 +40,10 @@ public class Stock {
 
     @OneToMany(mappedBy = "stock", cascade = CascadeType.ALL, orphanRemoval = true)
     private Set<StockCommodity> stockCommodities;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "branch_id", nullable = false)
+    private Branch branch;
 
     @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(name = "supplier_id", nullable = false)

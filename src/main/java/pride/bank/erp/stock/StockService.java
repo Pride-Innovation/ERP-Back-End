@@ -110,8 +110,8 @@ public class StockService {
                     .commodity(commodity)
                     .deliveredQuantity(dto.getDeliveredQuantity())
                     .orderedQuantity(dto.getOrderedQuantity())
-                    .actualCost(dto.getActualCost())
-                    .expectedCost(dto.getExpectedCost())
+                    .costPrice(dto.getCostPrice())
+                    .purchasePrice(dto.getPurchasePrice())
                     .stock(stock)
                     .build();
             stockCommodityRepository.save(stockCommodity);
@@ -125,15 +125,15 @@ public class StockService {
             Commodity commodity = stockCommodity.getCommodity();
             int orderedQuantity = stockCommodity.getOrderedQuantity();
             int deliveredQuantity = stockCommodity.getDeliveredQuantity();
-            int expectedCost = stockCommodity.getExpectedCost();
-            int actualCost = stockCommodity.getActualCost();
+            int costPrice = stockCommodity.getCostPrice();
+            int purchasePrice = stockCommodity.getPurchasePrice();
 
             CommodityWithDetailsDao dto = new CommodityWithDetailsDao(
                     commodity,
                     orderedQuantity,
                     deliveredQuantity,
-                    expectedCost,
-                    actualCost);
+                    costPrice,
+                    purchasePrice);
             commoditiesWithDetails.add(dto);
         }
 

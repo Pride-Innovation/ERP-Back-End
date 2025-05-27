@@ -21,6 +21,6 @@ public class CommodityWithDetailsDao {
     private Commodity commodity;
     private int orderedQuantity;
     private int deliveredQuantity;
-    private int expectedCost;
-    private int actualCost;
+    private int costPrice;
+    private int purchasePrice;
 }
