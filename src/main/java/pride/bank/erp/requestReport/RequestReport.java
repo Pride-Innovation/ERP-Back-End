@@ -12,10 +12,13 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.envers.Audited;
+import org.hibernate.envers.NotAudited;
 import org.springframework.data.annotation.CreatedBy;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedBy;
 import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import pride.bank.erp.request.Request;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.user.User;
@@ -27,6 +30,8 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
+@EntityListeners(AuditingEntityListener.class)
+@Audited
 public class RequestReport {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -34,14 +39,17 @@ public class RequestReport {
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "request_id", nullable = false)
+    @NotAudited
     private Request request;
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "approver_id", nullable = false)
+    @NotAudited
     private User approver;
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "status_id", nullable = false)
+    @NotAudited
     private Status status;
 
     private String comment;

@@ -229,6 +229,7 @@ public class RequestService {
                 .status(rep.getStatus())
                 .approver(rep.getApprover())
                 .comment(rep.getComment())
+                .createDate(rep.getCreateDate())
                 .build();
     }
 
