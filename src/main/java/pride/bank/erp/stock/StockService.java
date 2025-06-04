@@ -84,9 +84,18 @@ public class StockService {
             List<StockCommodityDTO> stockCommoditiesRequest
     )
             throws NotFoundException {
-        Status status = statusService.findOneStatus(statusID);
+        Status status = null;
         Supplier supplier = supplierService.findSupplier(supplierID);
+        Summation summation = calculateSums(stockCommoditiesRequest);
         Branch headOffice = branchService.findBranch(1L);
+
+        if (summation.getDeliveredCommoditiesSummation() == summation.getOrderedCommoditiesSummation()) {
+            status = statusService.findOneStatus(4L);
+        }
+
+        if (summation.getDeliveredCommoditiesSummation() < summation.getOrderedCommoditiesSummation()) {
+            status = statusService.findOneStatus(1L);
+        }
 
         Stock stock = Stock
                 .builder()
@@ -139,6 +148,20 @@ public class StockService {
         return stockRepository.findById(id).orElseThrow(
                 () -> new NotFoundException(String.format("No stock with id %s is found", id))
         );
+    }
+
+
+    private Summation calculateSums(List<StockCommodityDTO> stockCommodities) {
+        int orderedSum = 0;
+        int deliveredSum = 0;
+        for (StockCommodityDTO dto : stockCommodities) {
+            orderedSum += dto.getOrderedQuantity();
+            deliveredSum += dto.getDeliveredQuantity();
+        }
+        return Summation.builder()
+                .deliveredCommoditiesSummation(deliveredSum)
+                .orderedCommoditiesSummation(orderedSum)
+                .build();
     }
 
     @Transactional

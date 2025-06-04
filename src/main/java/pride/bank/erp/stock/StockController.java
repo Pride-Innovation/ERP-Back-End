@@ -9,6 +9,7 @@ package pride.bank.erp.stock;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -24,7 +25,11 @@ public class StockController {
     private final StockService stockService;
 
     @GetMapping("/stocks")
-    public ResponseEntity<Page<Stock>> fetchAllStocks(Pageable pageable) {
+    public ResponseEntity<Page<Stock>> fetchAllStocks(
+            @RequestParam(required = false, defaultValue = "10") int pageSize,
+            @RequestParam(required = false, defaultValue = "0") int pageNumber
+    ) {
+        Pageable pageable = PageRequest.of(pageNumber, pageSize);
         Page<Stock> response = stockService.fetchAllStocks(pageable);
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
