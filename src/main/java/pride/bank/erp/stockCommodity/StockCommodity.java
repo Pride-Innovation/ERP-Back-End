@@ -12,7 +12,6 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import pride.bank.erp.branch.Branch;
 import pride.bank.erp.commodity.Commodity;
 import pride.bank.erp.stock.Stock;
 

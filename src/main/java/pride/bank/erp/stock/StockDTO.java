@@ -19,7 +19,8 @@ import java.util.List;
 @NoArgsConstructor
 public class StockDTO {
     private Stock stock;
-    private Long statusID;
-    private Long supplierID;
+    private Long status;
+    private Long supplier;
+    private String referenceNumber;
     private List<StockCommodityDTO> stockCommoditiesRequest;
 }

@@ -23,4 +23,7 @@ public interface StockCommodityRepository extends JpaRepository<StockCommodity, 
     @Modifying
     @Query("DELETE FROM StockCommodity sc WHERE sc.stock.id = :stockId")
     void deleteByStockId(@Param("stockId") Long stockId);
+
+    @Query("SELECT sc FROM StockCommodity sc WHERE sc.stock.id IN :stockIds")
+    List<StockCommodity> findByStockIdIn(@Param("stockIds") List<Long> stockIds);
 }

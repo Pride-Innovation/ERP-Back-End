@@ -32,13 +32,18 @@ public class StockController {
     @PostMapping("/stocks")
     public ResponseEntity<Stock> createStock(@RequestBody StockDTO stockDTO)
             throws NotFoundException {
-        Stock response = stockService.createStock(
-                stockDTO.getStock(),
-                stockDTO.getStatusID(),
-                stockDTO.getSupplierID(),
-                stockDTO.getStockCommoditiesRequest()
-        );
-        return new ResponseEntity<>(response, HttpStatus.CREATED);
+        try {
+            Stock response = stockService.createStock(
+                    stockDTO.getStock(),
+                    stockDTO.getStatus(),
+                    stockDTO.getSupplier(),
+                    stockDTO.getStockCommoditiesRequest()
+            );
+            return new ResponseEntity<>(response, HttpStatus.CREATED);
+        } catch (Exception e) {
+            return null;
+        }
+
     }
 
     @PutMapping("/stocks/{stockID}")
@@ -47,8 +52,8 @@ public class StockController {
         Stock response = stockService.updateStock(
                 stockID,
                 stockDTO.getStock(),
-                stockDTO.getStatusID(),
-                stockDTO.getSupplierID(),
+                stockDTO.getStatus(),
+                stockDTO.getSupplier(),
                 stockDTO.getStockCommoditiesRequest()
         );
 

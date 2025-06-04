@@ -7,11 +7,13 @@ Managing Director
 
 package pride.bank.erp.stock;
 
-import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import pride.bank.erp.branch.Branch;
+import pride.bank.erp.branch.BranchService;
 import pride.bank.erp.commodity.Commodity;
 import pride.bank.erp.commodity.CommodityService;
 import pride.bank.erp.exception.NotFoundException;
@@ -25,6 +27,8 @@ import pride.bank.erp.supplier.SupplierService;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -34,11 +38,45 @@ public class StockService {
     private final SupplierService supplierService;
     private final CommodityService commodityService;
     private final StockCommodityRepository stockCommodityRepository;
+    private final BranchService branchService;
 
+    @Transactional
     public Page<Stock> fetchAllStocks(Pageable pageable) {
-        return stockRepository.findAll(pageable);
+        Page<Stock> stocks = stockRepository.findAll(pageable);
+
+        // Collect all stock IDs to batch-fetch their commodities
+        List<Long> stockIds = stocks.stream()
+                .map(Stock::getId)
+                .toList();
+
+        // Fetch all StockCommodity entries for these stock IDs
+        List<StockCommodity> allStockCommodities = stockCommodityRepository.findByStockIdIn(stockIds);
+
+        // Group them by stock ID
+        Map<Long, List<StockCommodity>> commoditiesByStockId = allStockCommodities.stream()
+                .collect(Collectors.groupingBy(sc -> sc.getStock().getId()));
+
+        // Populate the transient `commodities` field for each stock
+        stocks.forEach(stock -> {
+            List<StockCommodity> scList = commoditiesByStockId.getOrDefault(stock.getId(), List.of());
+            List<CommodityWithDetailsDao> details = scList.stream()
+                    .map(sc -> CommodityWithDetailsDao.builder()
+                            .commodity(sc.getCommodity())
+                            .orderedQuantity(sc.getOrderedQuantity())
+                            .deliveredQuantity(sc.getDeliveredQuantity())
+                            .costPrice(sc.getCostPrice())
+                            .purchasePrice(sc.getPurchasePrice())
+                            .build())
+                    .toList();
+
+            stock.setCommodities(details);
+        });
+
+        return stocks;
     }
 
+
+    @Transactional
     public Stock createStock(
             Stock request,
             Long statusID,
@@ -48,12 +86,15 @@ public class StockService {
             throws NotFoundException {
         Status status = statusService.findOneStatus(statusID);
         Supplier supplier = supplierService.findSupplier(supplierID);
+        Branch headOffice = branchService.findBranch(1L);
 
         Stock stock = Stock
                 .builder()
                 .referenceNumber(request.getReferenceNumber())
                 .totalCost(request.getTotalCost())
                 .balanceCost(request.getBalanceCost())
+                .name(request.getName())
+                .branch(headOffice)
                 .status(status)
                 .supplier(supplier)
                 .build();
