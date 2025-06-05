@@ -22,6 +22,7 @@ import pride.bank.erp.status.StatusService;
 import pride.bank.erp.stockCommodity.StockCommodity;
 import pride.bank.erp.stockCommodity.StockCommodityDTO;
 import pride.bank.erp.stockCommodity.StockCommodityRepository;
+import pride.bank.erp.store.StoreService;
 import pride.bank.erp.supplier.Supplier;
 import pride.bank.erp.supplier.SupplierService;
 
@@ -39,24 +40,21 @@ public class StockService {
     private final CommodityService commodityService;
     private final StockCommodityRepository stockCommodityRepository;
     private final BranchService branchService;
+    private final StoreService storeService;
 
     @Transactional
     public Page<Stock> fetchAllStocks(Pageable pageable) {
         Page<Stock> stocks = stockRepository.findAll(pageable);
 
-        // Collect all stock IDs to batch-fetch their commodities
         List<Long> stockIds = stocks.stream()
                 .map(Stock::getId)
                 .toList();
 
-        // Fetch all StockCommodity entries for these stock IDs
         List<StockCommodity> allStockCommodities = stockCommodityRepository.findByStockIdIn(stockIds);
 
-        // Group them by stock ID
         Map<Long, List<StockCommodity>> commoditiesByStockId = allStockCommodities.stream()
                 .collect(Collectors.groupingBy(sc -> sc.getStock().getId()));
 
-        // Populate the transient `commodities` field for each stock
         stocks.forEach(stock -> {
             List<StockCommodity> scList = commoditiesByStockId.getOrDefault(stock.getId(), List.of());
             List<CommodityWithDetailsDao> details = scList.stream()
@@ -113,6 +111,7 @@ public class StockService {
 
         List<StockCommodity> stockCommodities = stockCommodityRepository.findByStockId(savedStock.getId());
         List<CommodityWithDetailsDao> commodities = commodityWithDetailsDao(stockCommodities);
+        storeService.addCommoditiesToStore(commodities, 1L);
         savedStock.setCommodities(commodities);
         return savedStock;
     }
