@@ -46,6 +46,7 @@ public class StockController {
             );
             return new ResponseEntity<>(response, HttpStatus.CREATED);
         } catch (Exception e) {
+            e.printStackTrace();
             return null;
         }
 

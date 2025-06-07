@@ -2,6 +2,7 @@ package pride.bank.erp.store;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import pride.bank.erp.branch.Branch;
 import pride.bank.erp.commodity.Commodity;
@@ -18,4 +19,13 @@ public interface StoreRepository extends JpaRepository<Store, Long> {
             "JOIN FETCH s.branch " +
             "WHERE s.branch.id = :branchId")
     List<Store> findAllByBranchIdWithCommodityAndBranch(Long branchId);
+
+    List<Store> findByBranchIdAndCommodity_AssetTypeId(Long branchId, Long assetTypeId);
+
+    @Query("SELECT s FROM Store s " +
+            "WHERE s.branch.id = :branchId " +
+            "AND s.commodity.assetType.id = :assetTypeId")
+    List<Store> findByBranchAndAssetType(@Param("branchId") Long branchId,
+                                         @Param("assetTypeId") Long assetTypeId);
+
 }

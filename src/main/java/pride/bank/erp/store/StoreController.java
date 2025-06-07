@@ -24,4 +24,16 @@ public class StoreController {
         List<Store> response = storeService.fetchStoreDetailsPerBranch(branchId);
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
+
+    @GetMapping("/store/{branchId}/{assetTypeId}")
+    public ResponseEntity<List<Store>> fetchStoreDetailsPerBranchPerAssetType(
+            @PathVariable Long branchId,
+            @PathVariable Long assetTypeId
+    ) {
+        List<Store> response = storeService.fetchStoreDetailsPerBranchPerAssetType(
+                branchId,
+                assetTypeId
+        );
+        return new ResponseEntity<>(response, HttpStatus.OK);
+    }
 }

@@ -75,4 +75,10 @@ public class StoreService {
 
         return storeList;
     }
+
+    @Transactional
+    public List<Store> fetchStoreDetailsPerBranchPerAssetType(Long branchId, Long assetTypeId) {
+        return storeRepository
+                .findByBranchIdAndCommodity_AssetTypeId(branchId, assetTypeId);
+    }
 }
