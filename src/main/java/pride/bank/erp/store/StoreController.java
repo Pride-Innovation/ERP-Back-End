@@ -1,12 +1,12 @@
 package pride.bank.erp.store;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
 
@@ -26,13 +26,17 @@ public class StoreController {
     }
 
     @GetMapping("/store/{branchId}/{assetTypeId}")
-    public ResponseEntity<List<Store>> fetchStoreDetailsPerBranchPerAssetType(
+    public ResponseEntity<Page<Store>> fetchStoreDetailsPerBranchPerAssetType(
             @PathVariable Long branchId,
-            @PathVariable Long assetTypeId
+            @PathVariable Long assetTypeId,
+            @RequestParam(required = false, defaultValue = "10") int pageSize,
+            @RequestParam(required = false, defaultValue = "0") int pageNumber
     ) {
-        List<Store> response = storeService.fetchStoreDetailsPerBranchPerAssetType(
+        Pageable pageable = PageRequest.of(pageNumber, pageSize);
+        Page<Store> response = storeService.fetchStoreDetailsPerBranchPerAssetType(
                 branchId,
-                assetTypeId
+                assetTypeId,
+                pageable
         );
         return new ResponseEntity<>(response, HttpStatus.OK);
     }

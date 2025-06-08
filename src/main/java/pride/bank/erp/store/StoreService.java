@@ -1,6 +1,8 @@
 package pride.bank.erp.store;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pride.bank.erp.branch.Branch;
@@ -77,8 +79,8 @@ public class StoreService {
     }
 
     @Transactional
-    public List<Store> fetchStoreDetailsPerBranchPerAssetType(Long branchId, Long assetTypeId) {
+    public Page<Store> fetchStoreDetailsPerBranchPerAssetType(Long branchId, Long assetTypeId, Pageable pageable) {
         return storeRepository
-                .findByBranchIdAndCommodity_AssetTypeId(branchId, assetTypeId);
+                .findByBranchIdAndCommodity_AssetTypeId(branchId, assetTypeId, pageable);
     }
 }
