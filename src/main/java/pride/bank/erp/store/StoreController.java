@@ -25,10 +25,10 @@ public class StoreController {
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
 
-    @GetMapping("/store/{branchId}/{assetTypeId}")
+    @GetMapping("/store")
     public ResponseEntity<Page<Store>> fetchStoreDetailsPerBranchPerAssetType(
-            @PathVariable Long branchId,
-            @PathVariable Long assetTypeId,
+            @RequestParam Long branchId,
+            @RequestParam Long assetTypeId,
             @RequestParam(required = false, defaultValue = "10") int pageSize,
             @RequestParam(required = false, defaultValue = "0") int pageNumber
     ) {
