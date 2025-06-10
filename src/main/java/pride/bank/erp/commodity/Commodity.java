@@ -14,6 +14,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import pride.bank.erp.assetType.AssetType;
+import pride.bank.erp.issuedCommodity.IssuedCommodity;
 import pride.bank.erp.requestCommodity.RequestCommodity;
 import pride.bank.erp.stockCommodity.StockCommodity;
 
