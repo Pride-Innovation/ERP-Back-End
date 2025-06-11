@@ -10,9 +10,12 @@ import pride.bank.erp.issuedCommodity.IssuedCommodity;
 import pride.bank.erp.issuedCommodity.IssuedCommodityRepository;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
+import pride.bank.erp.stock.CommodityWithDetailsDao;
+import pride.bank.erp.store.StoreService;
 import pride.bank.erp.user.User;
 import pride.bank.erp.user.UserService;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -23,6 +26,7 @@ public class IssuanceService {
     private final StatusService statusService;
     private final CommodityService commodityService;
     private final IssuedCommodityRepository issuedCommodityRepository;
+    private final StoreService storeService;
 
     @Transactional
     public Issuance issueCommodities(IssuanceDTO request)
@@ -38,10 +42,7 @@ public class IssuanceService {
                 .build();
         Issuance savedIssuance = issuanceRepository.save(issuance);
         addIssuedCommodities(savedIssuance, request.getCommodities());
-
-        /*
-         * TO DO Update Stock after issuing items to users
-         */
+        updateBranchStockLevel(request.getCommodities());
         return savedIssuance;
     }
 
@@ -59,5 +60,31 @@ public class IssuanceService {
                     .build();
             issuedCommodityRepository.save(stockCommodity);
         }
+    }
+
+    @Transactional
+    private void updateBranchStockLevel(List<IssuanceCommodityDTO> issuanceCommodityDTOS)
+            throws NotFoundException {
+        List<CommodityWithDetailsDao> commodities = commodityWithDetailsDao(issuanceCommodityDTOS);
+        storeService.addCommoditiesToStore(commodities, 2L);
+        storeService.reduceCommoditiesFromStore(commodities, 1L);
+    }
+
+
+    private List<CommodityWithDetailsDao> commodityWithDetailsDao(List<IssuanceCommodityDTO> issuanceCommodityDTOS)
+            throws NotFoundException {
+        List<CommodityWithDetailsDao> commoditiesWithDetails = new ArrayList<>();
+
+        for (IssuanceCommodityDTO dto : issuanceCommodityDTOS) {
+            Commodity commodity = commodityService.findCommodity(dto.getCommodityId());
+            CommodityWithDetailsDao details = CommodityWithDetailsDao
+                    .builder()
+                    .commodity(commodity)
+                    .deliveredQuantity(dto.getQuantity())
+                    .build();
+            commoditiesWithDetails.add(details);
+        }
+
+        return commoditiesWithDetails;
     }
 }

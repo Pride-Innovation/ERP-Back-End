@@ -83,4 +83,41 @@ public class StoreService {
         return storeRepository
                 .findByBranchIdAndCommodity_AssetTypeId(branchId, assetTypeId, pageable);
     }
+
+
+    /**
+     * Reduces the quantity of commodities in the store for a specific branch.
+     * <p>
+     * For each commodity in the input list:
+     * - If the commodity exists in the store for the branch and has sufficient quantity,
+     * its quantity is decreased.
+     * - If the commodity does not exist or quantity is insufficient, an exception is thrown.
+     *
+     * @param commodities a list of CommodityWithDetailsDao objects containing commodity and quantity to reduce
+     * @param branchID    the ID of the branch where the commodities should be reduced
+     * @throws NotFoundException        if the branch or commodity is not found
+     * @throws IllegalArgumentException if there is insufficient quantity to reduce
+     */
+    @Transactional
+    public void reduceCommoditiesFromStore(List<CommodityWithDetailsDao> commodities, Long branchID)
+            throws NotFoundException, IllegalArgumentException {
+        Branch branch = branchService.findBranch(branchID);
+
+        for (CommodityWithDetailsDao dao : commodities) {
+            Commodity commodity = dao.getCommodity();
+
+            Store store = storeRepository.findByBranchAndCommodity(branch, commodity)
+                    .orElseThrow(() -> new NotFoundException(String.format("Commodity %s not found in store for the store", commodity.getName())));
+
+            int currentQuantity = store.getQuantity();
+            int quantityToReduce = dao.getDeliveredQuantity();
+
+            if (currentQuantity < quantityToReduce) {
+                throw new IllegalArgumentException("Insufficient quantity for commodity: " + commodity.getName());
+            }
+
+            store.setQuantity(currentQuantity - quantityToReduce);
+            storeRepository.save(store);
+        }
+    }
 }
