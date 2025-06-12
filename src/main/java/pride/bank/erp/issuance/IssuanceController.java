@@ -3,12 +3,10 @@ package pride.bank.erp.issuance;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
+import pride.bank.erp.issuedCommodity.IssuedCommodity;
 
 @RestController
 @RequestMapping(Constants.GENERAL_ROUTE)
@@ -21,5 +19,11 @@ public class IssuanceController {
             throws NotFoundException {
         Issuance response = issuanceService.issueCommodities(issuanceDTO);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
+    }
+
+    @GetMapping("/last-issued/{commodityId}")
+    public ResponseEntity<IssuedCommodity> getLastIssuedCommodity(@PathVariable Long commodityId) {
+        IssuedCommodity response = issuanceService.getLastIssuedCommodity(commodityId);
+        return new ResponseEntity<>(response, HttpStatus.OK);
     }
 }
