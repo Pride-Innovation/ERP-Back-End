@@ -30,6 +30,6 @@ public class AssetController {
     public ResponseEntity<Asset> createAsset(@RequestBody AssetDTO assetDTO)
             throws NotFoundException {
         Asset asset = assetService.createAsset(assetDTO);
-        return null;
+        return new ResponseEntity<>(asset, HttpStatus.CREATED);
     }
 }
