@@ -1,0 +1,154 @@
+package pride.bank.erp.asset;
+
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.TypedQuery;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
+import org.springframework.data.domain.*;
+import org.springframework.stereotype.Repository;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+
+import static pride.bank.erp.helper.Constants.*;
+
+
+@Repository
+public class AssetSearchDao {
+    private final EntityManager entityManager;
+    private final CriteriaBuilder criteriaBuilder;
+
+    /**
+     * Constructor initializes the AssetSearchDao with an EntityManager.
+     *
+     * @param entityManager the entity manager used to access the database.
+     */
+    public AssetSearchDao(EntityManager entityManager) {
+        this.entityManager = entityManager;
+        this.criteriaBuilder = entityManager.getCriteriaBuilder();
+    }
+
+
+    /**
+     * Finds all assets with the specified filters and pagination settings.
+     *
+     * @param assetPage           an object containing pagination and sorting information.
+     * @param assetSearchCriteria an object containing search criteria to filter assets.
+     * @return a paginated list of assets that match the specified search criteria.
+     */
+    public Page<Asset> findAllWithFilters(
+            AssetPage assetPage,
+            AssetSearchCriteria assetSearchCriteria
+    ) {
+        CriteriaQuery<Asset> criteriaQuery = criteriaBuilder.createQuery(Asset.class);
+        Root<Asset> assetRoot = criteriaQuery.from(Asset.class);
+
+        Predicate predicate = getPredicate(assetSearchCriteria, assetRoot);
+        criteriaQuery.where(predicate);
+
+        setOrder(assetPage, criteriaQuery, assetRoot);
+
+        TypedQuery<Asset> typedQuery = entityManager.createQuery(criteriaQuery);
+        typedQuery.setFirstResult(pageNumber(assetPage) * pageSize(assetPage));
+        typedQuery.setMaxResults(pageSize(assetPage));
+
+        Pageable pageable = getPageable(assetPage);
+        long assetsCount = getAssetsCountMethod(assetSearchCriteria);
+        return new PageImpl<>(typedQuery.getResultList(), pageable, assetsCount);
+    }
+
+
+    /**
+     * Builds a predicate for filtering assets based on search criteria.
+     *
+     * @param assetSearchCriteria the criteria to filter assets.
+     * @param assetRoot           the root entity in the query.
+     * @return a predicate containing the filtering conditions.
+     */
+    private Predicate getPredicate(AssetSearchCriteria assetSearchCriteria, Root<Asset> assetRoot) {
+        List<Predicate> predicates = new ArrayList<>();
+
+        if (Objects.nonNull(assetSearchCriteria.getAssetName())) {
+            predicates.add(criteriaBuilder.like(assetRoot.get("assetName"), "%" + assetSearchCriteria.getAssetName() + "%"));
+        }
+
+        return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
+    }
+
+    /**
+     * Sets the sorting order for the query based on the properties in AssetPage.
+     *
+     * @param assetPage     contains sorting information.34
+     * @param criteriaQuery the criteria query to apply the order.
+     * @param assetRoot     the root entity in the criteria query.
+     */
+    private void setOrder(AssetPage assetPage, CriteriaQuery<Asset> criteriaQuery, Root<Asset> assetRoot) {
+        if (sortDirection(assetPage).equals(Sort.Direction.ASC)) {
+            criteriaQuery.orderBy(criteriaBuilder.asc(assetRoot.get(sortBy(assetPage))));
+        } else {
+            criteriaQuery.orderBy(criteriaBuilder.desc(assetRoot.get(sortBy(assetPage))));
+        }
+    }
+
+
+    /**
+     * Creates pagination settings based on AssetPage properties.
+     *
+     * @param assetPage contains pagination information such as page number and size.
+     * @return a Pageable instance with pagination and optional sorting settings.
+     */
+    private Pageable getPageable(AssetPage assetPage) {
+        Sort sort = Sort.by(sortDirection(assetPage), sortBy(assetPage));
+        return PageRequest.of(pageNumber(assetPage), pageSize(assetPage), sort);
+    }
+
+
+    /**
+     * Counts the total number of assets that match the search criteria.
+     *
+     * @param assetSearchCriteria the criteria to filter assets.
+     * @return the total count of assets matching the criteria.
+     */
+    private long getAssetsCountMethod(AssetSearchCriteria assetSearchCriteria) {
+        CriteriaQuery<Long> countQuery = criteriaBuilder.createQuery(Long.class);
+        Root<Asset> countRoot = countQuery.from(Asset.class);
+
+        Predicate countPredicate = getPredicate(assetSearchCriteria, countRoot);
+        countQuery.select(criteriaBuilder.count(countRoot)).where(countPredicate);
+
+        return entityManager.createQuery(countQuery).getSingleResult();
+    }
+
+    /**
+     * Determines the sort direction.
+     *
+     * @param assetPage the criteria to determine the sort direction.
+     * @return the sort direction.
+     */
+    private Sort.Direction sortDirection(AssetPage assetPage) {
+        return assetPage.getSortDirection() != null ? assetPage.getSortDirection() : Sort.Direction.ASC;
+    }
+
+
+    /**
+     * Methods below determine the sorting options.
+     *
+     * @param assetPage the criteria to determine the sorting criteria.
+     * @return the field to sort, page size or page number of the record.
+     */
+    private String sortBy(AssetPage assetPage) {
+        return assetPage.getSortBy() != null ? assetPage.getSortBy() : DEFAULT_SORT_FIELD;
+    }
+
+    private Integer pageSize(AssetPage assetPage) {
+        return assetPage.getPageSize() != null ? assetPage.getPageSize() : DEFAULT_PAGE_SIZE;
+    }
+
+    private Integer pageNumber(AssetPage assetPage) {
+        return assetPage.getPageNumber() != null ? assetPage.getPageNumber() : DEFAULT_PAGE_NUMBER;
+    }
+
+}

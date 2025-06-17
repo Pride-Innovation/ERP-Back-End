@@ -3,6 +3,7 @@ package pride.bank.erp.asset;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pride.bank.erp.assetType.AssetType;
@@ -10,12 +11,18 @@ import pride.bank.erp.assetType.AssetTypeService;
 import pride.bank.erp.branch.Branch;
 import pride.bank.erp.branch.BranchService;
 import pride.bank.erp.exception.NotFoundException;
+import pride.bank.erp.role.RolePage;
+import pride.bank.erp.role.RoleSearchCriteria;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
 import pride.bank.erp.supplier.Supplier;
 import pride.bank.erp.supplier.SupplierService;
 import pride.bank.erp.user.User;
 import pride.bank.erp.user.UserService;
+
+import java.util.Objects;
+
+import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
 
 @Service
 @RequiredArgsConstructor
@@ -26,9 +33,31 @@ public class AssetService {
     private final StatusService statusService;
     private final AssetTypeService assetTypeService;
     private final SupplierService supplierService;
+    private final AssetSearchDao assetSearchDao;
 
-    public Page<Asset> fetchAllAssets(Pageable pageable) {
-        return assetRepository.findAll(pageable);
+    public Page<Asset> fetchAllAssets(
+            int pageSize,
+            String sortDirection,
+            int pageNumber,
+            String sortBy,
+            String assetName
+    ) {
+
+        try {
+            AssetPage assetPage = AssetPage.builder()
+                    .pageSize(pageSize)
+                    .sortDirection(determineSortDirection(sortDirection))
+                    .pageNumber(pageNumber)
+                    .sortBy(sortBy)
+                    .build();
+            AssetSearchCriteria assetSearchCriteria = AssetSearchCriteria
+                    .builder()
+                    .assetName(assetName)
+                    .build();
+            return assetSearchDao.findAllWithFilters(assetPage, assetSearchCriteria);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     @Transactional
@@ -88,5 +117,10 @@ public class AssetService {
                 .branch(branch)
                 .build();
         return assetRepository.save(asset);
+    }
+
+
+    private Sort.Direction determineSortDirection(String direction) {
+        return Objects.equals(direction, DESCENDING_SORT_DIRECTION) ? Sort.Direction.DESC : Sort.Direction.ASC;
     }
 }
