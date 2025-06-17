@@ -16,6 +16,7 @@ import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.InsufficientAuthenticationException;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -184,6 +185,15 @@ public class ApplicationExceptionHandler {
         ProblemDetail errorDetail = ProblemDetail
                 .forStatusAndDetail(HttpStatus.CONFLICT, extractKeyword(ex.getMessage()));
         errorDetail.setProperty("message", extractKeyword(ex.getMessage()));
+        return errorDetail;
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public ProblemDetail handleMissingServletRequestParameterException(MissingServletRequestParameterException ex) {
+        ProblemDetail errorDetail = ProblemDetail
+                .forStatusAndDetail(HttpStatus.FORBIDDEN, ex.getMessage());
+        errorDetail.setProperty("message", ex.getMessage());
         return errorDetail;
     }
 

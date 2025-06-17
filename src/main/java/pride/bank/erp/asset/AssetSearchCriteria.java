@@ -9,4 +9,5 @@ import lombok.*;
 @AllArgsConstructor
 public class AssetSearchCriteria {
     private String assetName;
+    private Long assetTypeId;
 }

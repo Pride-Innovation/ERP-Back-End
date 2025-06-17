@@ -22,14 +22,16 @@ public class AssetController {
             @RequestParam(required = false, defaultValue = ASCENDING_SORT_DIRECTION) String sortDirection,
             @RequestParam(required = false, defaultValue = "0") int pageNumber,
             @RequestParam(required = false, defaultValue = "id") String sortBy,
-            @RequestParam(required = false) String assetName
+            @RequestParam(required = false) String assetName,
+            @RequestParam Long assetTypeId
     ) {
         Page<Asset> response = assetService.fetchAllAssets(
                 pageSize,
                 sortDirection,
                 pageNumber,
                 sortBy,
-                assetName
+                assetName,
+                assetTypeId
         );
         return new ResponseEntity<>(response, HttpStatus.OK);
     }

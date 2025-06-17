@@ -75,6 +75,12 @@ public class AssetSearchDao {
             predicates.add(criteriaBuilder.like(assetRoot.get("assetName"), "%" + assetSearchCriteria.getAssetName() + "%"));
         }
 
+        if (Objects.nonNull(assetSearchCriteria.getAssetTypeId())) {
+            predicates.add(
+                    criteriaBuilder.equal(assetRoot.get("assetType").get("id"), assetSearchCriteria.getAssetTypeId())
+            );
+        }
+
         return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
     }
 

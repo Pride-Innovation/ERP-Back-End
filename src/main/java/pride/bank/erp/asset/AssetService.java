@@ -40,7 +40,8 @@ public class AssetService {
             String sortDirection,
             int pageNumber,
             String sortBy,
-            String assetName
+            String assetName,
+            Long assetTypeId
     ) {
 
         try {
@@ -53,6 +54,7 @@ public class AssetService {
             AssetSearchCriteria assetSearchCriteria = AssetSearchCriteria
                     .builder()
                     .assetName(assetName)
+                    .assetTypeId(assetTypeId)
                     .build();
             return assetSearchDao.findAllWithFilters(assetPage, assetSearchCriteria);
         } catch (Exception e) {
