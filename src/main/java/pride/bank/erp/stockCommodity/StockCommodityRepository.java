@@ -14,6 +14,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface StockCommodityRepository extends JpaRepository<StockCommodity, Long> {
@@ -26,4 +27,6 @@ public interface StockCommodityRepository extends JpaRepository<StockCommodity, 
 
     @Query("SELECT sc FROM StockCommodity sc WHERE sc.stock.id IN :stockIds")
     List<StockCommodity> findByStockIdIn(@Param("stockIds") List<Long> stockIds);
+
+    Optional<StockCommodity> findByStockIdAndCommodityId(Long stockId, Long commodityId);
 }

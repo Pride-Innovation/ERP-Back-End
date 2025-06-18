@@ -12,6 +12,7 @@ import pride.bank.erp.assetType.AssetType;
 import pride.bank.erp.branch.Branch;
 import pride.bank.erp.commodity.Commodity;
 import pride.bank.erp.status.Status;
+import pride.bank.erp.stock.Stock;
 import pride.bank.erp.supplier.Supplier;
 import pride.bank.erp.user.User;
 
@@ -77,4 +78,9 @@ public class Asset {
     @JoinColumn(name = "commodity_id")
     @NotAudited
     private Commodity commodity;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "stock_id")
+    @NotAudited
+    private Stock stock;
 }

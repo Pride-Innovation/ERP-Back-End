@@ -2,7 +2,6 @@ package pride.bank.erp.asset;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,10 +12,12 @@ import pride.bank.erp.branch.BranchService;
 import pride.bank.erp.commodity.Commodity;
 import pride.bank.erp.commodity.CommodityService;
 import pride.bank.erp.exception.NotFoundException;
-import pride.bank.erp.role.RolePage;
-import pride.bank.erp.role.RoleSearchCriteria;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
+import pride.bank.erp.stock.Stock;
+import pride.bank.erp.stock.StockRepository;
+import pride.bank.erp.stockCommodity.StockCommodity;
+import pride.bank.erp.stockCommodity.StockCommodityRepository;
 import pride.bank.erp.supplier.Supplier;
 import pride.bank.erp.supplier.SupplierService;
 import pride.bank.erp.user.User;
@@ -37,6 +38,8 @@ public class AssetService {
     private final SupplierService supplierService;
     private final AssetSearchDao assetSearchDao;
     private final CommodityService commodityService;
+    private final StockRepository stockRepository;
+    private final StockCommodityRepository stockCommodityRepository;
 
     public Page<Asset> fetchAllAssets(
             int pageSize,
@@ -67,44 +70,16 @@ public class AssetService {
 
     @Transactional
     public Asset createAsset(AssetDTO request) throws NotFoundException {
-        Branch branch = null;
-        User assignedTo = null;
-        Status status = null;
-        AssetType assetType = null;
-        Supplier supplier = null;
-        Commodity commodity = null;
+        Branch branch = (request.getBranch() != null) ? branchService.findBranch(request.getBranch()) : null;
+        User assignedTo = (request.getAssignedTo() != null) ? userService.findUser(request.getAssignedTo()) : null;
+        Status status = (request.getAssetStatus() != null) ? statusService.findOneStatus(request.getAssetStatus()) : null;
+        AssetType assetType = (request.getAssetType() != null) ? assetTypeService.findOneAssetType(request.getAssetType()) : null;
+        Supplier supplier = (request.getSupplier() != null) ? supplierService.findSupplier(request.getSupplier()) : null;
+        Commodity commodity = commodityService.findCommodity(request.getCategory());
 
-        if (request.getBranch() != null) {
-            branch = branchService.findBranch(request.getBranch());
-        }
-
-        if (request.getAssignedTo() != null) {
-            assignedTo = userService.findUser(request.getAssignedTo());
-        }
-
-        if (request.getAssetStatus() != null) {
-            status = statusService.findOneStatus(request.getAssetStatus());
-        }
-
-        if (request.getAssetType() != null) {
-            assetType = assetTypeService.findOneAssetType(request.getAssetType());
-        }
-
-        if (request.getSupplier() != null) {
-            supplier = supplierService.findSupplier(request.getSupplier());
-        }
-
-        if (request.getCategory() != null) {
-            commodity = commodityService.findCommodity(request.getCategory());
-        }
-
-        /*
-         * TO DO
-         * find stock by LPO Number provided while creating the asset
-         * find stock commodity using stock id and commodity id;
-         * NB: Stock Commodity should have registered column which tracks the total number of assets registered from that which was stocked.
-         * This number should always be reduced. compared to delivered quantity.
-         */
+        Stock stock = findStockByLPONumber(request.getLpoNumber());
+        assert commodity != null;
+        checkIfStockContainsCommodityNotYetRegistered(stock, commodity);
 
         Asset asset = Asset.builder()
                 .assetDepreciationRate(request.getAssetDepreciationRate())
@@ -133,13 +108,41 @@ public class AssetService {
                 .detailNetBookValue(request.getDetailNetBookValue())
                 .description(request.getDescription())
                 .branch(branch)
+                .stock(stock)
                 .commodity(commodity)
                 .build();
         return assetRepository.save(asset);
     }
 
-
     private Sort.Direction determineSortDirection(String direction) {
         return Objects.equals(direction, DESCENDING_SORT_DIRECTION) ? Sort.Direction.DESC : Sort.Direction.ASC;
     }
+
+    private Stock findStockByLPONumber(String lpoNumber) throws
+            NotFoundException {
+        return stockRepository.findByLPONumber(lpoNumber).orElseThrow(
+                () -> new NotFoundException(String.format("Stock with LPO Number: %s is not found", lpoNumber))
+        );
+    }
+
+    private void checkIfStockContainsCommodityNotYetRegistered(Stock stock, Commodity commodity)
+            throws NotFoundException {
+
+        StockCommodity stockCommodity = stockCommodityRepository.findByStockIdAndCommodityId(stock.getId(), commodity.getId())
+                .orElseThrow(() -> new NotFoundException(
+                        String.format("Commodity '%s' is not associated with the given stock (LPO: %s)",
+                                commodity.getName(), stock.getLPONumber())
+                ));
+
+
+        int availableQuantity = stockCommodity.getDeliveredQuantity() - stockCommodity.getRegisteredNumber();
+
+        if (availableQuantity <= 0) {
+            throw new IllegalArgumentException("Insufficient quantity for commodity: " + commodity.getName());
+        }
+
+        stockCommodity.setRegisteredNumber(stockCommodity.getRegisteredNumber() + 1);
+        stockCommodityRepository.save(stockCommodity);
+    }
+
 }

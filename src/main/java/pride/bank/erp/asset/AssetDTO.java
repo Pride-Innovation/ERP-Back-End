@@ -37,4 +37,5 @@ public class AssetDTO {
     private Long assetStatus;
     private Long assetType;
     private Long category;
+    private String lpoNumber;
 }

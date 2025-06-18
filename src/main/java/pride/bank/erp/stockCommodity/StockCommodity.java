@@ -28,6 +28,7 @@ public class StockCommodity {
     private int deliveredQuantity;
     private int costPrice;
     private int purchasePrice;
+    private int registeredNumber;
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "stock_id", nullable = false)
