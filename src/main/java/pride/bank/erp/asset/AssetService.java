@@ -10,6 +10,8 @@ import pride.bank.erp.assetType.AssetType;
 import pride.bank.erp.assetType.AssetTypeService;
 import pride.bank.erp.branch.Branch;
 import pride.bank.erp.branch.BranchService;
+import pride.bank.erp.commodity.Commodity;
+import pride.bank.erp.commodity.CommodityService;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.role.RolePage;
 import pride.bank.erp.role.RoleSearchCriteria;
@@ -34,6 +36,7 @@ public class AssetService {
     private final AssetTypeService assetTypeService;
     private final SupplierService supplierService;
     private final AssetSearchDao assetSearchDao;
+    private final CommodityService commodityService;
 
     public Page<Asset> fetchAllAssets(
             int pageSize,
@@ -69,6 +72,7 @@ public class AssetService {
         Status status = null;
         AssetType assetType = null;
         Supplier supplier = null;
+        Commodity commodity = null;
 
         if (request.getBranch() != null) {
             branch = branchService.findBranch(request.getBranch());
@@ -89,6 +93,18 @@ public class AssetService {
         if (request.getSupplier() != null) {
             supplier = supplierService.findSupplier(request.getSupplier());
         }
+
+        if (request.getCategory() != null) {
+            commodity = commodityService.findCommodity(request.getCategory());
+        }
+
+        /*
+         * TO DO
+         * find stock by LPO Number provided while creating the asset
+         * find stock commodity using stock id and commodity id;
+         * NB: Stock Commodity should have registered column which tracks the total number of assets registered from that which was stocked.
+         * This number should always be reduced. compared to delivered quantity.
+         */
 
         Asset asset = Asset.builder()
                 .assetDepreciationRate(request.getAssetDepreciationRate())
@@ -117,6 +133,7 @@ public class AssetService {
                 .detailNetBookValue(request.getDetailNetBookValue())
                 .description(request.getDescription())
                 .branch(branch)
+                .commodity(commodity)
                 .build();
         return assetRepository.save(asset);
     }

@@ -10,6 +10,7 @@ import org.hibernate.envers.NotAudited;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import pride.bank.erp.assetType.AssetType;
 import pride.bank.erp.branch.Branch;
+import pride.bank.erp.commodity.Commodity;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.supplier.Supplier;
 import pride.bank.erp.user.User;
@@ -71,4 +72,9 @@ public class Asset {
     @JoinColumn(name = "assetType_id")
     @NotAudited
     private AssetType assetType;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "commodity_id")
+    @NotAudited
+    private Commodity commodity;
 }

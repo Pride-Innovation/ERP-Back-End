@@ -36,4 +36,5 @@ public class AssetDTO {
     private Long branch;
     private Long assetStatus;
     private Long assetType;
+    private Long category;
 }
