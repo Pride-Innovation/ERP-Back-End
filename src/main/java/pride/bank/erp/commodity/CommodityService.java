@@ -34,7 +34,8 @@ public class CommodityService {
             String sortDirection,
             int pageNumber,
             String sortBy,
-            String name
+            String name,
+            Long assetTypeId
     ) {
         try {
             CommodityPage commodityPage = CommodityPage.builder()
@@ -47,6 +48,7 @@ public class CommodityService {
             CommoditySearchCriteria commoditySearchCriteria = CommoditySearchCriteria
                     .builder()
                     .name(name)
+                    .assetTypeId(assetTypeId)
                     .build();
             return commoditySearchDao.findAllWithFilters(commodityPage, commoditySearchCriteria);
         } catch (Exception e) {

@@ -80,6 +80,12 @@ public class CommoditySearchDao {
             predicates.add(criteriaBuilder.like(commodityRoot.get("name"), "%" + commoditySearchCriteria.getName() + "%"));
         }
 
+        if (Objects.nonNull(commoditySearchCriteria.getAssetTypeId())) {
+            predicates.add(
+                    criteriaBuilder.equal(commodityRoot.get("assetType").get("id"), commoditySearchCriteria.getAssetTypeId())
+            );
+        }
+
         return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
     }
 

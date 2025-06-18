@@ -16,4 +16,5 @@ import lombok.Setter;
 @Builder
 public class CommoditySearchCriteria {
     private String name;
+    private Long assetTypeId;
 }

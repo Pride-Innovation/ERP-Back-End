@@ -33,14 +33,17 @@ public class CommodityController {
             @RequestParam(required = false, defaultValue = ASCENDING_SORT_DIRECTION) String sortDirection,
             @RequestParam(required = false, defaultValue = "0") int pageNumber,
             @RequestParam(required = false, defaultValue = "id") String sortBy,
-            @RequestParam(required = false) String name
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) Long assetTypeId
+
     ) {
         Page<Commodity> response = commodityService.fetchAllCommodities(
                 pageSize,
                 sortDirection,
                 pageNumber,
                 sortBy,
-                name
+                name,
+                assetTypeId
         );
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
