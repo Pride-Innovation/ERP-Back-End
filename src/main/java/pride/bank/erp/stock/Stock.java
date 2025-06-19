@@ -43,8 +43,8 @@ public class Stock {
     private String name;
     private int totalCost;
     private int balanceCost;
-    private String GRNNumber;
-    private String LPONumber;
+    private String grnNumber;
+    private String lpoNumber;
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "status_id")

@@ -9,8 +9,6 @@ package pride.bank.erp.stock;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -32,14 +30,14 @@ public class StockController {
             @RequestParam(required = false, defaultValue = ASCENDING_SORT_DIRECTION) String sortDirection,
             @RequestParam(required = false, defaultValue = "0") int pageNumber,
             @RequestParam(required = false, defaultValue = "id") String sortBy,
-            @RequestParam(required = false) String LPONumber
+            @RequestParam(required = false) String lpoNumber
     ) {
         Page<Stock> response = stockService.fetchAllStocks(
                 pageSize,
                 sortDirection,
                 pageNumber,
                 sortBy,
-                LPONumber
+                lpoNumber
         );
         return new ResponseEntity<>(response, HttpStatus.OK);
     }

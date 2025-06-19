@@ -8,5 +8,5 @@ import lombok.*;
 @NoArgsConstructor
 @AllArgsConstructor
 public class StockSearchCriteria {
-    private String LPONumber;
+    private String lpoNumber;
 }

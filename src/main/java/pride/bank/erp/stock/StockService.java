@@ -9,7 +9,6 @@ package pride.bank.erp.stock;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -53,7 +52,7 @@ public class StockService {
             String sortDirection,
             int pageNumber,
             String sortBy,
-            String LPONumber
+            String lpoNumber
     ) {
 
         StockPage stockPage = StockPage.builder()
@@ -64,7 +63,7 @@ public class StockService {
                 .build();
 
         StockSearchCriteria criteria = StockSearchCriteria.builder()
-                .LPONumber(LPONumber)
+                .lpoNumber(lpoNumber)
                 .build();
 
         Page<Stock> stocks = stockSearchDao.findAllWithFilters(stockPage, criteria);
@@ -125,6 +124,8 @@ public class StockService {
                 .balanceCost(request.getBalanceCost())
                 .name(request.getName())
                 .branch(headOffice)
+                .lpoNumber(request.getLpoNumber())
+                .grnNumber(request.getGrnNumber())
                 .status(status)
                 .supplier(supplier)
                 .build();

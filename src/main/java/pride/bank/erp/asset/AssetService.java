@@ -120,7 +120,7 @@ public class AssetService {
 
     private Stock findStockByLPONumber(String lpoNumber) throws
             NotFoundException {
-        return stockRepository.findByLPONumber(lpoNumber).orElseThrow(
+        return stockRepository.findByLpoNumber(lpoNumber).orElseThrow(
                 () -> new NotFoundException(String.format("Stock with LPO Number: %s is not found", lpoNumber))
         );
     }
@@ -131,14 +131,19 @@ public class AssetService {
         StockCommodity stockCommodity = stockCommodityRepository.findByStockIdAndCommodityId(stock.getId(), commodity.getId())
                 .orElseThrow(() -> new NotFoundException(
                         String.format("Commodity '%s' is not associated with the given stock (LPO: %s)",
-                                commodity.getName(), stock.getLPONumber())
+                                commodity.getName(), stock.getLpoNumber())
                 ));
 
 
         int availableQuantity = stockCommodity.getDeliveredQuantity() - stockCommodity.getRegisteredNumber();
 
         if (availableQuantity <= 0) {
-            throw new IllegalArgumentException("Insufficient quantity for commodity: " + commodity.getName());
+            throw new IllegalArgumentException(
+                    "Insufficient quantity for commodity: "
+                            + commodity.getName()
+                            + " in stock with LPO: "
+                            + stock.getLpoNumber()
+            );
         }
 
         stockCommodity.setRegisteredNumber(stockCommodity.getRegisteredNumber() + 1);

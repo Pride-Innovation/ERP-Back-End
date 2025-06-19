@@ -48,8 +48,8 @@ public class StockSearchDao {
     private Predicate getPredicate(StockSearchCriteria criteria, Root<Stock> root) {
         List<Predicate> predicates = new ArrayList<>();
 
-        if (Objects.nonNull(criteria.getLPONumber())) {
-            predicates.add(criteriaBuilder.like(root.get("LPONumber"), "%" + criteria.getLPONumber() + "%"));
+        if (Objects.nonNull(criteria.getLpoNumber())) {
+            predicates.add(criteriaBuilder.like(root.get("lpoNumber"), "%" + criteria.getLpoNumber() + "%"));
         }
 
         return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
