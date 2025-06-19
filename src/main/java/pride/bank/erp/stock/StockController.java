@@ -17,6 +17,8 @@ import org.springframework.web.bind.annotation.*;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
 
+import static pride.bank.erp.helper.Constants.ASCENDING_SORT_DIRECTION;
+
 
 @RestController
 @RequestMapping(Constants.GENERAL_ROUTE)
@@ -27,10 +29,18 @@ public class StockController {
     @GetMapping("/stocks")
     public ResponseEntity<Page<Stock>> fetchAllStocks(
             @RequestParam(required = false, defaultValue = "10") int pageSize,
-            @RequestParam(required = false, defaultValue = "0") int pageNumber
+            @RequestParam(required = false, defaultValue = ASCENDING_SORT_DIRECTION) String sortDirection,
+            @RequestParam(required = false, defaultValue = "0") int pageNumber,
+            @RequestParam(required = false, defaultValue = "id") String sortBy,
+            @RequestParam(required = false) String LPONumber
     ) {
-        Pageable pageable = PageRequest.of(pageNumber, pageSize);
-        Page<Stock> response = stockService.fetchAllStocks(pageable);
+        Page<Stock> response = stockService.fetchAllStocks(
+                pageSize,
+                sortDirection,
+                pageNumber,
+                sortBy,
+                LPONumber
+        );
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
 

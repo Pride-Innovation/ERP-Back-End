@@ -10,6 +10,7 @@ package pride.bank.erp.stock;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pride.bank.erp.branch.Branch;
@@ -29,7 +30,10 @@ import pride.bank.erp.supplier.SupplierService;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
+
+import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
 
 @Service
 @RequiredArgsConstructor
@@ -41,10 +45,29 @@ public class StockService {
     private final StockCommodityRepository stockCommodityRepository;
     private final BranchService branchService;
     private final StoreService storeService;
+    private final StockSearchDao stockSearchDao;
 
     @Transactional
-    public Page<Stock> fetchAllStocks(Pageable pageable) {
-        Page<Stock> stocks = stockRepository.findAll(pageable);
+    public Page<Stock> fetchAllStocks(
+            int pageSize,
+            String sortDirection,
+            int pageNumber,
+            String sortBy,
+            String LPONumber
+    ) {
+
+        StockPage stockPage = StockPage.builder()
+                .pageSize(pageSize)
+                .sortDirection(determineSortDirection(sortDirection))
+                .pageNumber(pageNumber)
+                .sortBy(sortBy)
+                .build();
+
+        StockSearchCriteria criteria = StockSearchCriteria.builder()
+                .LPONumber(LPONumber)
+                .build();
+
+        Page<Stock> stocks = stockSearchDao.findAllWithFilters(stockPage, criteria);
 
         List<Long> stockIds = stocks.stream()
                 .map(Stock::getId)
@@ -201,5 +224,9 @@ public class StockService {
         }
 
         return commoditiesWithDetails;
+    }
+
+    private Sort.Direction determineSortDirection(String direction) {
+        return Objects.equals(direction, DESCENDING_SORT_DIRECTION) ? Sort.Direction.DESC : Sort.Direction.ASC;
     }
 }
