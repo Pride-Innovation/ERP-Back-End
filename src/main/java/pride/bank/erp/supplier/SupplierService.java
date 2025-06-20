@@ -9,7 +9,7 @@ package pride.bank.erp.supplier;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import pride.bank.erp.commodity.Commodity;
 import pride.bank.erp.commodity.CommodityService;
@@ -17,15 +17,39 @@ import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
 import pride.bank.erp.helper.DeleteResponse;
 
+import java.util.Objects;
+
+import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
+
 @Service
 @RequiredArgsConstructor
 public class SupplierService {
     private final SupplierRepository supplierRepository;
     private final CommodityService commodityService;
+    private final SupplierSearchDao supplierSearchDao;
 
-
-    public Page<Supplier> fetchAllSuppliers(Pageable pageable) {
-        return supplierRepository.findAll(pageable);
+    public Page<Supplier> fetchAllSuppliers(
+            int pageSize,
+            String sortDirection,
+            int pageNumber,
+            String sortBy,
+            String name
+    ) {
+        try {
+            SupplierPage supplierPage = SupplierPage.builder()
+                    .pageSize(pageSize)
+                    .sortDirection(determineSortDirection(sortDirection))
+                    .pageNumber(pageNumber)
+                    .sortBy(sortBy)
+                    .build();
+            SupplierSearchCriteria supplierSearchCriteria = SupplierSearchCriteria
+                    .builder()
+                    .name(name)
+                    .build();
+            return supplierSearchDao.findAllWithFilters(supplierPage, supplierSearchCriteria);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     public Supplier createSupplier(SupplierDTO request)
@@ -69,5 +93,9 @@ public class SupplierService {
         } else {
             return new DeleteResponse(Constants.ENTITY_NOT_FOUND, false);
         }
+    }
+
+    private Sort.Direction determineSortDirection(String direction) {
+        return Objects.equals(direction, DESCENDING_SORT_DIRECTION) ? Sort.Direction.DESC : Sort.Direction.ASC;
     }
 }

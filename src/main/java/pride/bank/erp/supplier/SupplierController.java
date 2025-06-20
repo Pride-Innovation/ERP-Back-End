@@ -19,6 +19,8 @@ import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
 import pride.bank.erp.helper.DeleteResponse;
 
+import static pride.bank.erp.helper.Constants.ASCENDING_SORT_DIRECTION;
+
 @RestController
 @RequestMapping(Constants.GENERAL_ROUTE)
 @RequiredArgsConstructor
@@ -29,10 +31,18 @@ public class SupplierController {
     @GetMapping("/suppliers")
     public ResponseEntity<Page<Supplier>> fetchAllSuppliers(
             @RequestParam(required = false, defaultValue = "10") int pageSize,
-            @RequestParam(required = false, defaultValue = "0") int pageNumber
+            @RequestParam(required = false, defaultValue = ASCENDING_SORT_DIRECTION) String sortDirection,
+            @RequestParam(required = false, defaultValue = "0") int pageNumber,
+            @RequestParam(required = false, defaultValue = "id") String sortBy,
+            @RequestParam(required = false) String name
     ) {
-        Pageable pageable = PageRequest.of(pageNumber, pageSize);
-        Page<Supplier> suppliers = supplierService.fetchAllSuppliers(pageable);
+        Page<Supplier> suppliers = supplierService.fetchAllSuppliers(
+                pageSize,
+                sortDirection,
+                pageNumber,
+                sortBy,
+                name
+        );
         return new ResponseEntity<>(suppliers, HttpStatus.OK);
     }
 
