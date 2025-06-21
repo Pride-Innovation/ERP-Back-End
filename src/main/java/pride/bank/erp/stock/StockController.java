@@ -43,13 +43,11 @@ public class StockController {
     }
 
     @PostMapping("/stocks")
-    public ResponseEntity<Stock> createStock(@RequestBody StockDTO stockDTO)
-            throws NotFoundException {
+    public ResponseEntity<Stock> createStock(@RequestBody StockDTO stockDTO) {
         try {
             Stock response = stockService.createStock(
                     stockDTO.getStock(),
                     stockDTO.getStatus(),
-                    stockDTO.getSupplier(),
                     stockDTO.getStockCommoditiesRequest()
             );
             return new ResponseEntity<>(response, HttpStatus.CREATED);

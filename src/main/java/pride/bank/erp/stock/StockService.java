@@ -12,6 +12,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import pride.bank.erp.asset.Asset;
+import pride.bank.erp.asset.AssetRepository;
+import pride.bank.erp.assetType.AssetType;
 import pride.bank.erp.branch.Branch;
 import pride.bank.erp.branch.BranchService;
 import pride.bank.erp.commodity.Commodity;
@@ -45,6 +48,7 @@ public class StockService {
     private final BranchService branchService;
     private final StoreService storeService;
     private final StockSearchDao stockSearchDao;
+    private final AssetRepository assetRepository;
 
     @Transactional
     public Page<Stock> fetchAllStocks(
@@ -99,7 +103,6 @@ public class StockService {
     @Transactional
     public Stock createStock(
             Stock request,
-            Long statusID,
             Long supplierID,
             List<StockCommodityDTO> stockCommoditiesRequest
     )
@@ -133,8 +136,11 @@ public class StockService {
         Stock savedStock = stockRepository.save(stock);
         addCommoditiesToStock(savedStock, stockCommoditiesRequest);
 
+        createAssetsFromStock(savedStock);
+
         List<StockCommodity> stockCommodities = stockCommodityRepository.findByStockId(savedStock.getId());
         List<CommodityWithDetailsDao> commodities = commodityWithDetailsDao(stockCommodities);
+
         storeService.addCommoditiesToStore(commodities, 1L);
         savedStock.setCommodities(commodities);
         return savedStock;
@@ -230,4 +236,50 @@ public class StockService {
     private Sort.Direction determineSortDirection(String direction) {
         return Objects.equals(direction, DESCENDING_SORT_DIRECTION) ? Sort.Direction.DESC : Sort.Direction.ASC;
     }
+
+    @Transactional
+    public void createAssetsFromStock(Stock stock) throws NotFoundException {
+        List<StockCommodity> stockCommodities = stockCommodityRepository.findByStockId(stock.getId());
+
+        for (StockCommodity stockCommodity : stockCommodities) {
+            Commodity commodity = stockCommodity.getCommodity();
+            AssetType assetType = commodity.getAssetType();
+
+            // Only create assets for IT Equipment and Office Equipment
+            if (assetType == null) continue;
+
+            String typeName = assetType.getName();
+            if (!("IT Equipment".equalsIgnoreCase(typeName)
+                    || "Office Equipment".equalsIgnoreCase(typeName)
+                    || "Fleet".equalsIgnoreCase((typeName))
+            )) {
+                continue;
+            }
+
+            int quantityToCreate = stockCommodity.getDeliveredQuantity();
+
+            for (int i = 0; i < quantityToCreate; i++) {
+                Asset asset = Asset.builder()
+                        .assetName(commodity.getName())
+                        .commodity(commodity)
+                        .assetType(assetType)
+                        .supplier(stock.getSupplier())
+                        .branch(stock.getBranch())
+                        .stock(stock)
+                        .purchaseCost(String.valueOf(stockCommodity.getPurchasePrice()))
+                        .costOfTheAsset(String.valueOf(stockCommodity.getCostPrice()))
+                        .dateReceipt(stock.getCreateDate().toString()) // or use another meaningful date
+                        .assetStatus(statusService.findOneStatus(8L)) // Assuming 1L is "Active" or similar
+                        .build();
+
+                assetRepository.save(asset);
+
+                // Update the registered number
+                stockCommodity.setRegisteredNumber(stockCommodity.getRegisteredNumber() + 1);
+            }
+
+            stockCommodityRepository.save(stockCommodity);
+        }
+    }
+
 }
