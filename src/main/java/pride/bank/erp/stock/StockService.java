@@ -238,27 +238,30 @@ public class StockService {
     }
 
     @Transactional
-    public void createAssetsFromStock(Stock stock) throws NotFoundException {
+    private void createAssetsFromStock(Stock stock) throws NotFoundException {
         List<StockCommodity> stockCommodities = stockCommodityRepository.findByStockId(stock.getId());
 
         for (StockCommodity stockCommodity : stockCommodities) {
             Commodity commodity = stockCommodity.getCommodity();
             AssetType assetType = commodity.getAssetType();
 
-            // Only create assets for IT Equipment and Office Equipment
+            // Skip if there's no asset type assigned
             if (assetType == null) continue;
 
             String typeName = assetType.getName();
             if (!("IT Equipment".equalsIgnoreCase(typeName)
                     || "Office Equipment".equalsIgnoreCase(typeName)
-                    || "Fleet".equalsIgnoreCase((typeName))
-            )) {
+                    || "Fleet".equalsIgnoreCase(typeName))) {
+                continue; // Skip non-asset commodities like Stationery
+            }
+
+            int availableQuantity = stockCommodity.getDeliveredQuantity() - stockCommodity.getRegisteredNumber();
+            if (availableQuantity <= 0) {
+                System.out.println("No available quantity to register for commodity: " + commodity.getName());
                 continue;
             }
 
-            int quantityToCreate = stockCommodity.getDeliveredQuantity();
-
-            for (int i = 0; i < quantityToCreate; i++) {
+            for (int i = 0; i < availableQuantity; i++) {
                 Asset asset = Asset.builder()
                         .assetName(commodity.getName())
                         .commodity(commodity)
@@ -268,8 +271,8 @@ public class StockService {
                         .stock(stock)
                         .purchaseCost(String.valueOf(stockCommodity.getPurchasePrice()))
                         .costOfTheAsset(String.valueOf(stockCommodity.getCostPrice()))
-                        .dateReceipt(stock.getCreateDate().toString()) // or use another meaningful date
-                        .assetStatus(statusService.findOneStatus(8L)) // Assuming 1L is "Active" or similar
+                        .dateReceipt(stock.getCreateDate().toString()) // You can customize this as needed
+                        .assetStatus(statusService.findOneStatus(8L)) // Assuming 8L = "Active"
                         .build();
 
                 assetRepository.save(asset);
@@ -278,6 +281,7 @@ public class StockService {
                 stockCommodity.setRegisteredNumber(stockCommodity.getRegisteredNumber() + 1);
             }
 
+            // Save the updated stock commodity with new registered number
             stockCommodityRepository.save(stockCommodity);
         }
     }
