@@ -30,7 +30,10 @@ public class AssetController {
             @RequestParam(required = false, defaultValue = "0") int pageNumber,
             @RequestParam(required = false, defaultValue = "id") String sortBy,
             @RequestParam(required = false) String assetName,
-            @RequestParam Long assetTypeId
+            @RequestParam Long assetTypeId,
+            @RequestParam(required = false) Long assetStatusId,
+            @RequestParam(required = false) Long commodityId,
+            @RequestParam(required = false) String engravedNumber
     ) {
         Page<Asset> response = assetService.fetchAllAssets(
                 pageSize,
@@ -38,7 +41,10 @@ public class AssetController {
                 pageNumber,
                 sortBy,
                 assetName,
-                assetTypeId
+                assetTypeId,
+                assetStatusId,
+                commodityId,
+                engravedNumber
         );
         return new ResponseEntity<>(response, HttpStatus.OK);
     }

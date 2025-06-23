@@ -17,4 +17,7 @@ import lombok.*;
 public class AssetSearchCriteria {
     private String assetName;
     private Long assetTypeId;
+    private Long assetStatusId;
+    private Long commodityId;
+    private String engravedNumber;
 }

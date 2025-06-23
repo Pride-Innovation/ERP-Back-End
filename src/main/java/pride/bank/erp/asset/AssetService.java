@@ -54,7 +54,10 @@ public class AssetService {
             int pageNumber,
             String sortBy,
             String assetName,
-            Long assetTypeId
+            Long assetTypeId,
+            Long assetStatusId,
+            Long commodityId,
+            String engravedNumber
     ) {
 
         try {
@@ -68,6 +71,9 @@ public class AssetService {
                     .builder()
                     .assetName(assetName)
                     .assetTypeId(assetTypeId)
+                    .assetStatusId(assetStatusId)
+                    .engravedNumber(engravedNumber)
+                    .commodityId(commodityId)
                     .build();
             return assetSearchDao.findAllWithFilters(assetPage, assetSearchCriteria);
         } catch (Exception e) {

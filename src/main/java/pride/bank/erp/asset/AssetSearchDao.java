@@ -82,9 +82,25 @@ public class AssetSearchDao {
             predicates.add(criteriaBuilder.like(assetRoot.get("assetName"), "%" + assetSearchCriteria.getAssetName() + "%"));
         }
 
+        if (Objects.nonNull(assetSearchCriteria.getEngravedNumber())) {
+            predicates.add(criteriaBuilder.like(assetRoot.get("engravedNumber"), "%" + assetSearchCriteria.getEngravedNumber() + "%"));
+        }
+
         if (Objects.nonNull(assetSearchCriteria.getAssetTypeId())) {
             predicates.add(
                     criteriaBuilder.equal(assetRoot.get("assetType").get("id"), assetSearchCriteria.getAssetTypeId())
+            );
+        }
+
+        if (Objects.nonNull(assetSearchCriteria.getAssetStatusId())) {
+            predicates.add(
+                    criteriaBuilder.equal(assetRoot.get("assetStatus").get("id"), assetSearchCriteria.getAssetStatusId())
+            );
+        }
+
+        if (Objects.nonNull(assetSearchCriteria.getCommodityId())) {
+            predicates.add(
+                    criteriaBuilder.equal(assetRoot.get("commodity").get("id"), assetSearchCriteria.getCommodityId())
             );
         }
 
