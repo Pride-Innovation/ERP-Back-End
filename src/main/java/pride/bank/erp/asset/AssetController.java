@@ -55,4 +55,11 @@ public class AssetController {
         Asset asset = assetService.createAsset(assetDTO);
         return new ResponseEntity<>(asset, HttpStatus.CREATED);
     }
+
+    @GetMapping("/assets/{id}")
+    public ResponseEntity<Asset> getSingleAsset(@PathVariable Long id)
+            throws NotFoundException {
+        Asset asset = assetService.findOne(id);
+        return new ResponseEntity<>(asset, HttpStatus.OK);
+    }
 }
