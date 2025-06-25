@@ -168,4 +168,44 @@ public class AssetService {
                 () -> new NotFoundException(String.format("Asset with id %s is not found", id))
         );
     }
+
+    @Transactional
+    public Asset updateAsset(AssetDTO request, Long id) throws NotFoundException {
+        Branch branch = (request.getBranch() != null) ? branchService.findBranch(request.getBranch()) : null;
+        User assignedTo = (request.getAssignedTo() != null) ? userService.findUser(request.getAssignedTo()) : null;
+        Status status = (request.getAssetStatus() != null) ? statusService.findOneStatus(request.getAssetStatus()) : null;
+        AssetType assetType = (request.getAssetType() != null) ? assetTypeService.findOneAssetType(request.getAssetType()) : null;
+        Supplier supplier = (request.getSupplier() != null) ? supplierService.findSupplier(request.getSupplier()) : null;
+
+        Asset asset = findOne(id);
+
+        asset.setAssetDepreciationRate(request.getAssetDepreciationRate());
+        asset.setAssetStatus(status);
+        asset.setSupplier(supplier);
+        asset.setCostOfTheAsset(request.getCostOfTheAsset());
+        asset.setAssetName(request.getAssetName());
+        asset.setDateReceipt(request.getDateReceipt());
+        asset.setAssetType(assetType);
+        asset.setAssignedTo(assignedTo);
+        asset.setHardDiskSize(request.getHardDiskSize());
+        asset.setImage(request.getImage());
+        asset.setHostname(request.getHostname());
+        asset.setMake(request.getMake());
+        asset.setEngravedNumber(request.getEngravedNumber());
+        asset.setInterfaceType(request.getInterfaceType());
+        asset.setModel(request.getModel());
+        asset.setIpAddress(request.getIpAddress());
+        asset.setMacAddress(request.getMacAddress());
+        asset.setRam(request.getRam());
+        asset.setNetValueB(request.getNetValueB());
+        asset.setPurchaseCost(request.getPurchaseCost());
+        asset.setSerialNumber(request.getSerialNumber());
+        asset.setUnitOfMeasure(request.getUnitOfMeasure());
+        asset.setCpuSpeed(request.getCpuSpeed());
+        asset.setDetailNetBookValue(request.getDetailNetBookValue());
+        asset.setDescription(request.getDescription());
+        asset.setBranch(branch);
+
+        return assetRepository.save(asset);
+    }
 }

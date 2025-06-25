@@ -62,4 +62,14 @@ public class AssetController {
         Asset asset = assetService.findOne(id);
         return new ResponseEntity<>(asset, HttpStatus.OK);
     }
+
+    @PutMapping("/assets/{id}")
+    public ResponseEntity<Asset> updateAsset(
+            @PathVariable Long id,
+            @RequestBody AssetDTO assetDTO
+    ) throws NotFoundException {
+        Asset response = assetService.updateAsset(assetDTO, id);
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
+    }
+
 }
