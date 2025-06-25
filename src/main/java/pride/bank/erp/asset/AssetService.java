@@ -163,4 +163,9 @@ public class AssetService {
         stockCommodityRepository.save(stockCommodity);
     }
 
+    public Asset findOne(Long id) throws NotFoundException {
+        return assetRepository.findById(id).orElseThrow(
+                () -> new NotFoundException(String.format("Asset with id %s is not found", id))
+        );
+    }
 }

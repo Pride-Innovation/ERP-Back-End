@@ -4,6 +4,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import pride.bank.erp.asset.Asset;
+import pride.bank.erp.asset.AssetRepository;
+import pride.bank.erp.asset.AssetService;
 import pride.bank.erp.commodity.Commodity;
 import pride.bank.erp.commodity.CommodityService;
 import pride.bank.erp.exception.NotFoundException;
@@ -18,7 +21,6 @@ import pride.bank.erp.user.UserService;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -29,6 +31,8 @@ public class IssuanceService {
     private final CommodityService commodityService;
     private final IssuedCommodityRepository issuedCommodityRepository;
     private final StoreService storeService;
+    private final AssetService assetService;
+    private final AssetRepository assetRepository;
 
     @Transactional
     public Issuance issueCommodities(IssuanceDTO request)
@@ -36,16 +40,26 @@ public class IssuanceService {
         User requester = userService.findUser(request.getRequester());
         Status status = statusService.findOneStatus(5L);
 
-        Issuance issuance = Issuance
-                .builder()
-                .status(status)
-                .requester(requester)
-                .comment(request.getComment())
-                .build();
-        Issuance savedIssuance = issuanceRepository.save(issuance);
-        addIssuedCommodities(savedIssuance, request.getCommodities());
-        updateBranchStockLevel(request.getCommodities());
-        return savedIssuance;
+        /*
+         * TO DO
+         * Update an Asset assigned property to the requester.
+         */
+
+        System.out.println("We are here");
+
+        updateAssetAssignedToStatusAndStatus(request.getAssets(), requester);
+        return null;
+
+//        Issuance issuance = Issuance
+//                .builder()
+//                .status(status)
+//                .requester(requester)
+//                .comment(request.getComment())
+//                .build();
+//        Issuance savedIssuance = issuanceRepository.save(issuance);
+//        addIssuedCommodities(savedIssuance, request.getCommodities());
+//        updateBranchStockLevel(request.getCommodities());
+//        return savedIssuance;
     }
 
 
@@ -114,4 +128,41 @@ public class IssuanceService {
         }
         return result.get(0);
     }
+
+    @Transactional
+    private void updateAssetAssignedToStatusAndStatus(List<IssueAssetsDTO> assets, User user)
+            throws NotFoundException {
+
+        // Step 1: Validate that none of the assets are already assigned with status ID 4
+        for (IssueAssetsDTO asst : assets) {
+            Asset asset = assetService.findOne(asst.getId());
+
+            if (asset.getAssignedTo() != null && asset.getAssetStatus() != null && asset.getAssetStatus().getId() == 4) {
+                throw new IllegalStateException(String.format(
+                        "Asset with Engraved No '%s' is already assigned to %s %s.",
+                        asset.getEngravedNumber(),
+                        asset.getAssignedTo().getFirstName(),
+                        asset.getAssignedTo().getLastName()
+                ));
+            }
+        }
+
+        // Step 2: If all assets pass, fetch the assigned status once
+        Status assignedStatus = statusService.findOneStatus(4L);
+        if (assignedStatus == null) {
+            throw new NotFoundException("Status with ID 4 not found.");
+        }
+
+        // Step 3: Proceed to update each asset
+        for (IssueAssetsDTO asst : assets) {
+            Asset asset = assetService.findOne(asst.getId());
+            asset.setAssignedTo(user);
+            asset.setBranch(user.getBranch()); // Optional: Only if needed
+            asset.setAssetStatus(assignedStatus);
+
+            assetRepository.save(asset);
+        }
+    }
+
 }
+

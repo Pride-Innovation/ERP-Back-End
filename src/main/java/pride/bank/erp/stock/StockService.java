@@ -237,6 +237,20 @@ public class StockService {
         return Objects.equals(direction, DESCENDING_SORT_DIRECTION) ? Sort.Direction.DESC : Sort.Direction.ASC;
     }
 
+    /**
+     * Creates asset records from stock commodities associated with the given stock.
+     * <p>
+     * Logic:
+     * - For each stock commodity, if it has a valid asset type (e.g., IT Equipment, Office Equipment, Fleet),
+     * and available quantity to register, create asset records equal to the unregistered quantity.
+     * - Each new asset is built using details from the commodity and stock.
+     * - The registered number for the stock commodity is incremented accordingly.
+     * - Commodities without an asset type or of a non-asset category (e.g., Stationery) are skipped.
+     * - All created assets are saved, and the stock commodity is updated and saved as well.
+     * <p>
+     * Assumptions:
+     * - Status ID 8 represents "Active" or similar initial asset status.
+     */
     @Transactional
     private void createAssetsFromStock(Stock stock) throws NotFoundException {
         List<StockCommodity> stockCommodities = stockCommodityRepository.findByStockId(stock.getId());
@@ -245,14 +259,13 @@ public class StockService {
             Commodity commodity = stockCommodity.getCommodity();
             AssetType assetType = commodity.getAssetType();
 
-            // Skip if there's no asset type assigned
             if (assetType == null) continue;
 
             String typeName = assetType.getName();
             if (!("IT Equipment".equalsIgnoreCase(typeName)
                     || "Office Equipment".equalsIgnoreCase(typeName)
                     || "Fleet".equalsIgnoreCase(typeName))) {
-                continue; // Skip non-asset commodities like Stationery
+                continue;
             }
 
             int availableQuantity = stockCommodity.getDeliveredQuantity() - stockCommodity.getRegisteredNumber();
@@ -271,17 +284,15 @@ public class StockService {
                         .stock(stock)
                         .purchaseCost(String.valueOf(stockCommodity.getPurchasePrice()))
                         .costOfTheAsset(String.valueOf(stockCommodity.getCostPrice()))
-                        .dateReceipt(stock.getCreateDate().toString()) // You can customize this as needed
-                        .assetStatus(statusService.findOneStatus(8L)) // Assuming 8L = "Active"
+                        .dateReceipt(stock.getCreateDate().toString())
+                        .assetStatus(statusService.findOneStatus(8L))
                         .build();
 
                 assetRepository.save(asset);
 
-                // Update the registered number
                 stockCommodity.setRegisteredNumber(stockCommodity.getRegisteredNumber() + 1);
             }
 
-            // Save the updated stock commodity with new registered number
             stockCommodityRepository.save(stockCommodity);
         }
     }

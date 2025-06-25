@@ -197,4 +197,12 @@ public class ApplicationExceptionHandler {
         return errorDetail;
     }
 
+    @ExceptionHandler(IllegalStateException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public ProblemDetail handleIllegalStateExceptionException(IllegalStateException ex) {
+        ProblemDetail errorDetail = ProblemDetail
+                .forStatusAndDetail(HttpStatus.FORBIDDEN, ex.getMessage());
+        errorDetail.setProperty("message", ex.getMessage());
+        return errorDetail;
+    }
 }
