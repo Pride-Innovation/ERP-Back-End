@@ -42,6 +42,11 @@ public class IssuanceService {
 
         updateAssetAssignedToStatusAndStatus(request.getAssets(), requester);
 
+        /*
+            TO DO
+            Send Email to Requester to acknowledge Asset Reception!!
+         */
+
         Issuance issuance = Issuance
                 .builder()
                 .status(status)
