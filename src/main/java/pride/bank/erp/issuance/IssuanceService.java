@@ -40,26 +40,18 @@ public class IssuanceService {
         User requester = userService.findUser(request.getRequester());
         Status status = statusService.findOneStatus(5L);
 
-        /*
-         * TO DO
-         * Update an Asset assigned property to the requester.
-         */
-
-        System.out.println("We are here");
-
         updateAssetAssignedToStatusAndStatus(request.getAssets(), requester);
-        return null;
 
-//        Issuance issuance = Issuance
-//                .builder()
-//                .status(status)
-//                .requester(requester)
-//                .comment(request.getComment())
-//                .build();
-//        Issuance savedIssuance = issuanceRepository.save(issuance);
-//        addIssuedCommodities(savedIssuance, request.getCommodities());
-//        updateBranchStockLevel(request.getCommodities());
-//        return savedIssuance;
+        Issuance issuance = Issuance
+                .builder()
+                .status(status)
+                .requester(requester)
+                .comment(request.getComment())
+                .build();
+        Issuance savedIssuance = issuanceRepository.save(issuance);
+        addIssuedCommodities(savedIssuance, request.getCommodities());
+        updateBranchStockLevel(request.getCommodities());
+        return savedIssuance;
     }
 
 
@@ -133,7 +125,7 @@ public class IssuanceService {
     private void updateAssetAssignedToStatusAndStatus(List<IssueAssetsDTO> assets, User user)
             throws NotFoundException {
 
-        // Step 1: Validate that none of the assets are already assigned with status ID 4
+        // Step 1: Validate that none of the assets are already assigned
         for (IssueAssetsDTO asst : assets) {
             Asset asset = assetService.findOne(asst.getId());
 
@@ -157,7 +149,7 @@ public class IssuanceService {
         for (IssueAssetsDTO asst : assets) {
             Asset asset = assetService.findOne(asst.getId());
             asset.setAssignedTo(user);
-            asset.setBranch(user.getBranch()); // Optional: Only if needed
+//            asset.setBranch(user.getBranch()); // Optional: Only if needed
             asset.setAssetStatus(assignedStatus);
 
             assetRepository.save(asset);
