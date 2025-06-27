@@ -173,7 +173,8 @@ public class IssuanceService {
     private void updateRequestStatus(IssuanceDTO request)
             throws NotFoundException {
         Request requestDetails = requestService.findRequest(request.getRequestId());
-        requestDetails.setStatus(requestDetails.getStatus());
+        Status status = statusService.findOneStatus(5L); // Get The Issued Status and assign to Request
+        requestDetails.setStatus(status);
         requestRepository.save(requestDetails);
     }
 
