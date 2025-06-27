@@ -12,6 +12,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import pride.bank.erp.assetAssignmentHostory.AssetAssignmentHistory;
+import pride.bank.erp.assetAssignmentHostory.AssetAssignmentHistoryRepository;
 import pride.bank.erp.assetType.AssetType;
 import pride.bank.erp.assetType.AssetTypeService;
 import pride.bank.erp.branch.Branch;
@@ -30,6 +32,7 @@ import pride.bank.erp.supplier.SupplierService;
 import pride.bank.erp.user.User;
 import pride.bank.erp.user.UserService;
 
+import java.time.LocalDateTime;
 import java.util.Objects;
 
 import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
@@ -47,6 +50,7 @@ public class AssetService {
     private final CommodityService commodityService;
     private final StockRepository stockRepository;
     private final StockCommodityRepository stockCommodityRepository;
+    private final AssetAssignmentHistoryRepository assetAssignmentHistoryRepository;
 
     public Page<Asset> fetchAllAssets(
             int pageSize,
@@ -179,6 +183,26 @@ public class AssetService {
 
         Asset asset = findOne(id);
 
+        User oldAssignedTo = asset.getAssignedTo();
+        Status oldStatus = asset.getAssetStatus();
+
+        /*
+         * Check if the assigned user of the asset has changed.
+         * This involves comparing the existing assigned user ID with the new assigned user ID.
+         * The check is null-safe to handle cases where assigned users might be null.
+         * If the assigned user has changed, we call the method to track the asset reassignment history,
+         * passing the asset, the new assigned user, the old status (before reassignment),
+         * and the status after reassignment (which defaults to the new status if provided, otherwise the old status).
+         */
+
+        if (!Objects.equals(
+                oldAssignedTo != null ? oldAssignedTo.getId() : null,
+                assignedTo != null ? assignedTo.getId() : null
+        )) {
+            Status statusAfter = (status != null) ? status : oldStatus;
+            trackAssetAssignmentHistory(asset, assignedTo, oldStatus, statusAfter);
+        }
+
         asset.setAssetDepreciationRate(request.getAssetDepreciationRate());
         asset.setAssetStatus(status);
         asset.setSupplier(supplier);
@@ -207,5 +231,43 @@ public class AssetService {
         asset.setBranch(branch);
 
         return assetRepository.save(asset);
+    }
+
+    /**
+     * Tracks the reassignment history of an asset whenever its assigned user changes.
+     * <p>
+     * This method performs the following steps:
+     * - Finds the currently active assignment history record for the given asset (where endDate is null).
+     * - If such a record exists, it sets its endDate to the current time and updates its statusAfter field.
+     * - Creates a new assignment history record representing the new assignment with the current time as startDate,
+     * along with the status before and after the assignment.
+     *
+     * @param asset        the asset being reassigned
+     * @param newUser      the new user to whom the asset is assigned
+     * @param statusBefore the status of the asset before reassignment
+     * @param statusAfter  the status of the asset after reassignment
+     */
+    @Transactional
+    public void trackAssetAssignmentHistory(Asset asset, User newUser, Status statusBefore, Status statusAfter) {
+        AssetAssignmentHistory activeHistory = assetAssignmentHistoryRepository
+                .findActiveByAssetId(asset.getId());
+
+        LocalDateTime now = LocalDateTime.now();
+
+        if (activeHistory != null) {
+            activeHistory.setEndDate(now);
+            activeHistory.setStatusAfter(statusBefore);
+            assetAssignmentHistoryRepository.save(activeHistory);
+        }
+
+        AssetAssignmentHistory newHistory = AssetAssignmentHistory.builder()
+                .asset(asset)
+                .user(newUser)
+                .startDate(now)
+                .statusBefore(statusBefore)
+                .statusAfter(statusAfter)
+                .build();
+
+        assetAssignmentHistoryRepository.save(newHistory);
     }
 }
