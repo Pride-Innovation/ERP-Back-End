@@ -1,3 +1,10 @@
+/*
+13.9 Pride's Standard Copyright Notice:
+Copyright ©20XX. Management of Pride Bank Limited (PBL). All Rights Reserved. Permission to use, copy, modify,
+and distribute this software and its documentation for any purpose is prohibited unless authorized in writing by the
+Managing Director
+*/
+
 package pride.bank.erp.assetAssignmentHostory;
 
 import jakarta.persistence.*;
@@ -8,7 +15,6 @@ import lombok.NoArgsConstructor;
 import org.hibernate.envers.NotAudited;
 import pride.bank.erp.asset.Asset;
 import pride.bank.erp.status.Status;
-import pride.bank.erp.supplier.Supplier;
 import pride.bank.erp.user.User;
 
 import java.time.LocalDateTime;

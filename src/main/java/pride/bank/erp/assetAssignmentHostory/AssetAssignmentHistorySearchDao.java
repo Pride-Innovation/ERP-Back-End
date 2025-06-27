@@ -1,3 +1,10 @@
+/*
+13.9 Pride's Standard Copyright Notice:
+Copyright ©20XX. Management of Pride Bank Limited (PBL). All Rights Reserved. Permission to use, copy, modify,
+and distribute this software and its documentation for any purpose is prohibited unless authorized in writing by the
+Managing Director
+*/
+
 package pride.bank.erp.assetAssignmentHostory;
 
 import jakarta.persistence.EntityManager;
@@ -8,9 +15,6 @@ import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Repository;
-import pride.bank.erp.asset.Asset;
-import pride.bank.erp.asset.AssetPage;
-import pride.bank.erp.asset.AssetSearchCriteria;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -84,7 +88,6 @@ public class AssetAssignmentHistorySearchDao {
             );
         }
 
-
         return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
     }
 
@@ -111,26 +114,28 @@ public class AssetAssignmentHistorySearchDao {
     /**
      * Creates pagination settings based on AssetAssignmentHistoryPage properties.
      *
-     * @param assetPage contains pagination information such as page number and size.
+     * @param assetAssignmentHistoryPage contains pagination information such as page number and size.
      * @return a Pageable instance with pagination and optional sorting settings.
      */
-    private Pageable getPageable(AssetPage assetPage) {
-        Sort sort = Sort.by(sortDirection(assetPage), sortBy(assetPage));
-        return PageRequest.of(pageNumber(assetPage), pageSize(assetPage), sort);
+    private Pageable getPageable(AssetAssignmentHistoryPage assetAssignmentHistoryPage) {
+        Sort sort = Sort.by(sortDirection(assetAssignmentHistoryPage), sortBy(assetAssignmentHistoryPage));
+        return PageRequest.of(pageNumber(assetAssignmentHistoryPage), pageSize(assetAssignmentHistoryPage), sort);
     }
 
 
     /**
-     * Counts the total number of assets that match the search criteria.
+     * Counts the total number of AssetAssignmentHistory that match the search criteria.
      *
-     * @param assetSearchCriteria the criteria to filter assets.
-     * @return the total count of assets matching the criteria.
+     * @param assetAssignmentHistorySearchCriteria the criteria to filter AssetAssignmentHistory.
+     * @return the total count of AssetAssignmentHistory matching the criteria.
      */
-    private long getAssetAssignmentHistoryCountMethod(AssetSearchCriteria assetSearchCriteria) {
+    private long getAssetAssignmentHistoryCountMethod(
+            AssetAssignmentHistorySearchCriteria assetAssignmentHistorySearchCriteria
+    ) {
         CriteriaQuery<Long> countQuery = criteriaBuilder.createQuery(Long.class);
-        Root<Asset> countRoot = countQuery.from(Asset.class);
+        Root<AssetAssignmentHistory> countRoot = countQuery.from(AssetAssignmentHistory.class);
 
-        Predicate countPredicate = getPredicate(assetSearchCriteria, countRoot);
+        Predicate countPredicate = getPredicate(assetAssignmentHistorySearchCriteria, countRoot);
         countQuery.select(criteriaBuilder.count(countRoot)).where(countPredicate);
 
         return entityManager.createQuery(countQuery).getSingleResult();
@@ -139,29 +144,33 @@ public class AssetAssignmentHistorySearchDao {
     /**
      * Determines the sort direction.
      *
-     * @param assetPage the criteria to determine the sort direction.
+     * @param assetAssignmentHistoryPage the criteria to determine the sort direction.
      * @return the sort direction.
      */
-    private Sort.Direction sortDirection(AssetPage assetPage) {
-        return assetPage.getSortDirection() != null ? assetPage.getSortDirection() : Sort.Direction.ASC;
+    private Sort.Direction sortDirection(AssetAssignmentHistoryPage assetAssignmentHistoryPage) {
+        return assetAssignmentHistoryPage.getSortDirection() != null ?
+                assetAssignmentHistoryPage.getSortDirection() : Sort.Direction.ASC;
     }
 
 
     /**
      * Methods below determine the sorting options.
      *
-     * @param assetPage the criteria to determine the sorting criteria.
+     * @param assetAssignmentHistoryPage the criteria to determine the sorting criteria.
      * @return the field to sort, page size or page number of the record.
      */
-    private String sortBy(AssetPage assetPage) {
-        return assetPage.getSortBy() != null ? assetPage.getSortBy() : DEFAULT_SORT_FIELD;
+    private String sortBy(AssetAssignmentHistoryPage assetAssignmentHistoryPage) {
+        return assetAssignmentHistoryPage.getSortBy() != null ?
+                assetAssignmentHistoryPage.getSortBy() : DEFAULT_SORT_FIELD;
     }
 
-    private Integer pageSize(AssetPage assetPage) {
-        return assetPage.getPageSize() != null ? assetPage.getPageSize() : DEFAULT_PAGE_SIZE;
+    private Integer pageSize(AssetAssignmentHistoryPage assetAssignmentHistoryPage) {
+        return assetAssignmentHistoryPage.getPageSize() != null ?
+                assetAssignmentHistoryPage.getPageSize() : DEFAULT_PAGE_SIZE;
     }
 
-    private Integer pageNumber(AssetPage assetPage) {
-        return assetPage.getPageNumber() != null ? assetPage.getPageNumber() : DEFAULT_PAGE_NUMBER;
+    private Integer pageNumber(AssetAssignmentHistoryPage assetAssignmentHistoryPage) {
+        return assetAssignmentHistoryPage.getPageNumber() != null ?
+                assetAssignmentHistoryPage.getPageNumber() : DEFAULT_PAGE_NUMBER;
     }
 }

@@ -1,8 +1,14 @@
+/*
+13.9 Pride's Standard Copyright Notice:
+Copyright ©20XX. Management of Pride Bank Limited (PBL). All Rights Reserved. Permission to use, copy, modify,
+and distribute this software and its documentation for any purpose is prohibited unless authorized in writing by the
+Managing Director
+*/
+
 package pride.bank.erp.assetAssignmentHostory;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -32,7 +38,14 @@ public class AssetAssignmentHistoryController {
          *  TO DO
          *  Filter by asset id,
          */
-        Page<AssetAssignmentHistory> response = assetAssignmentHistoryService.findAllAssetAssignmentHistory(pageable);
+        Page<AssetAssignmentHistory> response = assetAssignmentHistoryService
+                .findAllAssetAssignmentHistory(
+                        pageSize,
+                        sortDirection,
+                        pageNumber,
+                        sortBy,
+                        assetId
+                );
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
 }
