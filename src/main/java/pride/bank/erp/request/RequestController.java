@@ -39,7 +39,8 @@ public class RequestController {
             @RequestParam(required = false) String name,
             @RequestParam(required = false) String priority,
             @RequestParam(required = false) String description,
-            @RequestParam(required = false) LocalDateTime timeOfSubmissionOfRequest
+            @RequestParam(required = false) LocalDateTime timeOfSubmissionOfRequest,
+            @RequestParam(required = false) Long statusId
 
     ) {
         Page<Request> requests = requestService.fetchAllRequests(
@@ -50,7 +51,8 @@ public class RequestController {
                 name,
                 priority,
                 description,
-                timeOfSubmissionOfRequest
+                timeOfSubmissionOfRequest,
+                statusId
         );
         return new ResponseEntity<>(requests, HttpStatus.OK);
     }

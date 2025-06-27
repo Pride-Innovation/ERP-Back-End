@@ -45,6 +45,8 @@ public class IssuanceService {
         /*
             TO DO
             Send Email to Requester to acknowledge Asset Reception!!
+            Change th status of the request to issue!
+            NB: Probably add a tab for issued Request in the Tab.
          */
 
         Issuance issuance = Issuance

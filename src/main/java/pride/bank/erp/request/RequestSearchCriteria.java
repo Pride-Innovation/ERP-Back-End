@@ -21,4 +21,5 @@ public class RequestSearchCriteria {
     private String priority;
     private String description;
     private LocalDateTime timeOfSubmissionOfRequest;
+    private Long statusId;
 }
