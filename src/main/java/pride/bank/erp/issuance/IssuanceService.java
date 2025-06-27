@@ -12,6 +12,9 @@ import pride.bank.erp.commodity.CommodityService;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.issuedCommodity.IssuedCommodity;
 import pride.bank.erp.issuedCommodity.IssuedCommodityRepository;
+import pride.bank.erp.request.Request;
+import pride.bank.erp.request.RequestRepository;
+import pride.bank.erp.request.RequestService;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
 import pride.bank.erp.stock.CommodityWithDetailsDao;
@@ -33,6 +36,8 @@ public class IssuanceService {
     private final StoreService storeService;
     private final AssetService assetService;
     private final AssetRepository assetRepository;
+    private final RequestService requestService;
+    private final RequestRepository requestRepository;
 
     @Transactional
     public Issuance issueCommodities(IssuanceDTO request)
@@ -58,6 +63,7 @@ public class IssuanceService {
         Issuance savedIssuance = issuanceRepository.save(issuance);
         addIssuedCommodities(savedIssuance, request.getCommodities());
         updateBranchStockLevel(request.getCommodities());
+        updateRequestStatus(request);
         return savedIssuance;
     }
 
@@ -161,6 +167,14 @@ public class IssuanceService {
 
             assetRepository.save(asset);
         }
+    }
+
+    @Transactional
+    private void updateRequestStatus(IssuanceDTO request)
+            throws NotFoundException {
+        Request requestDetails = requestService.findRequest(request.getRequestId());
+        requestDetails.setStatus(requestDetails.getStatus());
+        requestRepository.save(requestDetails);
     }
 
 }

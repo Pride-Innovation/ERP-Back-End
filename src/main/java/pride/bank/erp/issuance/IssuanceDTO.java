@@ -16,4 +16,5 @@ public class IssuanceDTO {
     private List<IssuanceCommodityDTO> commodities;
     private String comment;
     private List<IssueAssetsDTO> assets;
+    private Long requestId;
 }
