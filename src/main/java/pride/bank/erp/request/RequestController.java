@@ -22,7 +22,7 @@ import pride.bank.erp.requestCommodity.RequestCommodityDTO;
 import java.time.LocalDateTime;
 import java.util.List;
 
-import static pride.bank.erp.helper.Constants.ASCENDING_SORT_DIRECTION;
+import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
 
 @RestController
 @RequestMapping(Constants.GENERAL_ROUTE)
@@ -33,7 +33,7 @@ public class RequestController {
     @GetMapping("/requests")
     public ResponseEntity<Page<Request>> fetchAllRequests(
             @RequestParam(required = false, defaultValue = "10") int pageSize,
-            @RequestParam(required = false, defaultValue = ASCENDING_SORT_DIRECTION) String sortDirection,
+            @RequestParam(required = false, defaultValue = DESCENDING_SORT_DIRECTION) String sortDirection,
             @RequestParam(required = false, defaultValue = "0") int pageNumber,
             @RequestParam(required = false, defaultValue = "id") String sortBy,
             @RequestParam(required = false) String name,
