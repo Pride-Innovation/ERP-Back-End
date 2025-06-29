@@ -179,6 +179,34 @@ public class StockService {
         );
     }
 
+    @Transactional
+    public StockResponseDTO fetchSingleStock(Long stockId) throws NotFoundException {
+        Stock stock = findOneStock(stockId);
+        List<StockCommodity> stockCommodities = stockCommodityRepository.findByStockId(stockId);
+        List<CommodityWithDetailsDao> commodities = commodityWithDetailsDao(stockCommodities);
+        stock.setCommodities(commodities);
+
+        return StockResponseDTO
+                .builder()
+                .id(stock.getId())
+                .referenceNumber(stock.getReferenceNumber())
+                .name(stock.getName())
+                .totalCost(stock.getTotalCost())
+                .balanceCost(stock.getBalanceCost())
+                .grnNumber(stock.getGrnNumber())
+                .lpoNumber(stock.getLpoNumber())
+                .status(stock.getStatus())
+                .branch(stock.getBranch())
+                .supplier(stock.getSupplier())
+                .createDate(stock.getCreateDate())
+                .lastModified(stock.getLastModified())
+                .createdBy(stock.getCreatedBy())
+                .lastModifiedBy(stock.getLastModifiedBy())
+                .commodities(commodities)
+                .build();
+
+    }
+
 
     private Summation calculateSums(List<StockCommodityDTO> stockCommodities) {
         int orderedSum = 0;

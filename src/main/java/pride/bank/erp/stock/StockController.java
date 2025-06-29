@@ -72,7 +72,8 @@ public class StockController {
     }
 
     @GetMapping("/stocks/{stockID}")
-    public ResponseEntity<Stock> getOneStock(@PathVariable Long stockID) throws NotFoundException {
-        return new ResponseEntity<>(stockService.findOneStock(stockID), HttpStatus.OK);
+    public ResponseEntity<StockResponseDTO> getOneStock(@PathVariable Long stockID)
+            throws NotFoundException {
+        return new ResponseEntity<>(stockService.fetchSingleStock(stockID), HttpStatus.OK);
     }
 }
