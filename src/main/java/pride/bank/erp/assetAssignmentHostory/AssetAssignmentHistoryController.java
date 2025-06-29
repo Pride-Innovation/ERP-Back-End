@@ -34,10 +34,6 @@ public class AssetAssignmentHistoryController {
             @RequestParam(required = false) Long assetId
     ) {
 
-        /*
-         *  TO DO
-         *  Filter by asset id,
-         */
         Page<AssetAssignmentHistory> response = assetAssignmentHistoryService
                 .findAllAssetAssignmentHistory(
                         pageSize,
