@@ -14,6 +14,10 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.hibernate.envers.Audited;
 import org.hibernate.envers.NotAudited;
+import org.springframework.data.annotation.CreatedBy;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedBy;
+import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import pride.bank.erp.assetType.AssetType;
 import pride.bank.erp.branch.Branch;
@@ -22,6 +26,8 @@ import pride.bank.erp.status.Status;
 import pride.bank.erp.stock.Stock;
 import pride.bank.erp.supplier.Supplier;
 import pride.bank.erp.user.User;
+
+import java.time.LocalDateTime;
 
 @Entity
 @Data
@@ -90,4 +96,18 @@ public class Asset {
     @JoinColumn(name = "stock_id")
     @NotAudited
     private Stock stock;
+
+    @CreatedDate
+    @Column(updatable = false)
+    private LocalDateTime createDate;
+
+    @LastModifiedDate
+    private LocalDateTime lastModified;
+
+    @CreatedBy
+    @Column( updatable = false)
+    private Long createdBy;
+
+    @LastModifiedBy
+    private Long lastModifiedBy;
 }

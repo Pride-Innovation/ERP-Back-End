@@ -5,6 +5,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import pride.bank.erp.asset.AssetTypeSummaryView;
 import pride.bank.erp.branch.Branch;
 import pride.bank.erp.branch.BranchService;
 import pride.bank.erp.commodity.Commodity;
@@ -119,5 +120,9 @@ public class StoreService {
             store.setQuantity(currentQuantity - quantityToReduce);
             storeRepository.save(store);
         }
+    }
+
+    public AssetTypeSummaryView findCommoditiesInStockByAssetType() {
+        return storeRepository.findAssetTypeSummary("Stationery");
     }
 }

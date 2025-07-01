@@ -33,6 +33,7 @@ import pride.bank.erp.user.User;
 import pride.bank.erp.user.UserService;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Objects;
 
 import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
@@ -269,5 +270,10 @@ public class AssetService {
                 .build();
 
         assetAssignmentHistoryRepository.save(newHistory);
+    }
+
+    @Transactional
+    public List<AssetTypeSummaryView> listDashboardAssetReport() {
+        return assetRepository.getAssetTypeSummary();
     }
 }

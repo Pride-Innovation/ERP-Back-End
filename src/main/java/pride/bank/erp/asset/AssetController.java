@@ -15,6 +15,8 @@ import org.springframework.web.bind.annotation.*;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
 
+import java.util.List;
+
 import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
 
 @RestController
@@ -72,4 +74,8 @@ public class AssetController {
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 
+    @GetMapping("/dashboard-asset-report")
+    public ResponseEntity<List<AssetTypeSummaryView>> listDashboardAssetReport() {
+        return new ResponseEntity<>(assetService.listDashboardAssetReport(), HttpStatus.OK);
+    }
 }

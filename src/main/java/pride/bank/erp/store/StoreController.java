@@ -7,6 +7,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import pride.bank.erp.asset.AssetTypeSummaryView;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
 
@@ -39,5 +40,10 @@ public class StoreController {
                 pageable
         );
         return new ResponseEntity<>(response, HttpStatus.OK);
+    }
+
+    @GetMapping("/stationery-report")
+    public ResponseEntity<AssetTypeSummaryView> findCommoditiesInStockByAssetType() {
+        return new ResponseEntity<>(storeService.findCommoditiesInStockByAssetType(), HttpStatus.OK);
     }
 }
