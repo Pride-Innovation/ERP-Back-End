@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import pride.bank.erp.branch.Branch;
+import pride.bank.erp.grnReport.GrnReport;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.supplier.Supplier;
 
@@ -31,4 +32,5 @@ public class StockResponseDTO {
     private Long createdBy;
     private Long lastModifiedBy;
     private List<CommodityWithDetailsDao> commodities;
+    private List<GrnReport> grnReports;
 }

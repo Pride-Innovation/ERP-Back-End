@@ -7,6 +7,7 @@ Managing Director
 
 package pride.bank.erp.stock;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -20,9 +21,11 @@ import org.springframework.data.annotation.LastModifiedBy;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import pride.bank.erp.branch.Branch;
+import pride.bank.erp.grnReport.GrnReport;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.stockCommodity.StockCommodity;
 import pride.bank.erp.supplier.Supplier;
+import pride.bank.erp.title.Title;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -43,7 +46,6 @@ public class Stock {
     private String name;
     private int totalCost;
     private int balanceCost;
-    private String grnNumber;
     private String lpoNumber;
 
     @ManyToOne(fetch = FetchType.EAGER)
@@ -64,6 +66,10 @@ public class Stock {
     @JoinColumn(name = "supplier_id", nullable = false)
     @NotAudited
     private Supplier supplier;
+
+    @OneToMany(mappedBy = "stock", cascade = CascadeType.PERSIST)
+    @NotAudited
+    private List<GrnReport> grnReports;
 
     @CreatedDate
     @Column(nullable = false, updatable = false)
