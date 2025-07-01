@@ -29,4 +29,27 @@ public interface StockCommodityRepository extends JpaRepository<StockCommodity, 
     List<StockCommodity> findByStockIdIn(@Param("stockIds") List<Long> stockIds);
 
     Optional<StockCommodity> findByStockIdAndCommodityId(Long stockId, Long commodityId);
+
+    @Query(value = """
+                SELECT
+                    DATE_FORMAT(s.create_date, '%Y-%m') AS month,
+                    at.name AS assetType,
+                    SUM(sc.delivered_quantity) AS totalQuantity
+                FROM
+                    stock_commodity sc
+                JOIN
+                    stock s ON sc.stock_id = s.id
+                JOIN
+                    commodity c ON sc.commodity_id = c.id
+                JOIN
+                    asset_type at ON c.asset_type_id = at.id
+                WHERE
+                    s.create_date >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 5 MONTH), '%Y-%m-01')
+                GROUP BY
+                    DATE_FORMAT(s.create_date, '%Y-%m'), at.name
+                ORDER BY
+                    month ASC
+            """, nativeQuery = true)
+    List<MonthlyStockSummaryDTO> getMonthlyStockSummaryForLastSixMonths();
+
 }
