@@ -3,6 +3,8 @@ package pride.bank.erp.stockCommodity;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 @Service
@@ -23,10 +25,11 @@ public class StockCommodityService {
 
     /**
      * Returns a list of monthly stock summaries for the last 6 months,
-     * ensuring each asset type is present in every month with a value (defaulting to 0 if absent).
+     * including months with no data (with zeros for all asset types).
      */
     public List<Map<String, Object>> getStockSummaryLastSixMonths() {
         List<MonthlyStockSummaryDTO> raw = stockCommodityRepository.getMonthlyStockSummaryForLastSixMonths();
+
         Map<String, Map<String, Object>> grouped = new LinkedHashMap<>();
 
         for (MonthlyStockSummaryDTO entry : raw) {
@@ -35,17 +38,45 @@ public class StockCommodityService {
 
             grouped.putIfAbsent(month, new LinkedHashMap<>());
             Map<String, Object> monthlyData = grouped.get(month);
+
             monthlyData.put("month", month);
             monthlyData.put(assetTypeKey, entry.getTotalQuantity());
         }
 
-        for (Map<String, Object> monthlyData : grouped.values()) {
+        List<String> lastSixMonths = getLastSixMonths();
+
+        for (String month : lastSixMonths) {
+            grouped.putIfAbsent(month, new LinkedHashMap<>());
+            Map<String, Object> monthlyData = grouped.get(month);
+
+            monthlyData.put("month", month);
+
             for (String assetType : ASSET_TYPE_KEYS) {
                 monthlyData.putIfAbsent(assetType, 0);
             }
         }
 
-        return new ArrayList<>(grouped.values());
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (String month : lastSixMonths) {
+            result.add(grouped.get(month));
+        }
+
+        return result;
+    }
+
+    /**
+     * Generates a list of the last six months formatted as "yyyy-MM"
+     */
+    private List<String> getLastSixMonths() {
+        List<String> months = new ArrayList<>();
+        LocalDate now = LocalDate.now();
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM");
+
+        for (int i = 5; i >= 0; i--) {
+            months.add(now.minusMonths(i).format(formatter));
+        }
+
+        return months;
     }
 
     /**
