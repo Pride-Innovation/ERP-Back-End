@@ -128,6 +128,7 @@ public class StockService {
                 .name(request.getName())
                 .branch(headOffice)
                 .lpoNumber(request.getLpoNumber())
+                .grnNumber(request.getGrnNumber())
                 .status(status)
                 .supplier(supplier)
                 .build();
@@ -201,9 +202,9 @@ public class StockService {
                 .createdBy(stock.getCreatedBy())
                 .lastModifiedBy(stock.getLastModifiedBy())
                 .commodities(commodities)
+                .grnNumber(stock.getGrnNumber())
                 .grnReports(stock.getGrnReports())
                 .build();
-
     }
 
 

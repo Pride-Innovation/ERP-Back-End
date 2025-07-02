@@ -6,13 +6,23 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.envers.Audited;
+import org.springframework.data.annotation.CreatedBy;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedBy;
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import pride.bank.erp.stock.Stock;
+
+import java.time.LocalDateTime;
 
 @Entity
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
+@EntityListeners(AuditingEntityListener.class)
+@Audited
 public class GrnReport {
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
@@ -24,4 +34,18 @@ public class GrnReport {
     @JoinColumn(name = "stock_id", nullable = false)
     @JsonIgnore
     private Stock stock;
+
+    @CreatedDate
+    @Column(updatable = false)
+    private LocalDateTime createDate;
+
+    @LastModifiedDate
+    private LocalDateTime lastModified;
+
+    @CreatedBy
+    @Column(updatable = false)
+    private Long createdBy;
+
+    @LastModifiedBy
+    private Long lastModifiedBy;
 }

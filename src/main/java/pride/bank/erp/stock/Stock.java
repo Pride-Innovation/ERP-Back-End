@@ -7,7 +7,6 @@ Managing Director
 
 package pride.bank.erp.stock;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -25,7 +24,6 @@ import pride.bank.erp.grnReport.GrnReport;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.stockCommodity.StockCommodity;
 import pride.bank.erp.supplier.Supplier;
-import pride.bank.erp.title.Title;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -47,6 +45,7 @@ public class Stock {
     private int totalCost;
     private int balanceCost;
     private String lpoNumber;
+    private String grnNumber;
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "status_id")
