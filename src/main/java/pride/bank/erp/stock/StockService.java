@@ -20,6 +20,10 @@ import pride.bank.erp.branch.BranchService;
 import pride.bank.erp.commodity.Commodity;
 import pride.bank.erp.commodity.CommodityService;
 import pride.bank.erp.exception.NotFoundException;
+import pride.bank.erp.grnCommodity.GrnCommodity;
+import pride.bank.erp.grnCommodity.GrnCommodityRepository;
+import pride.bank.erp.grnReport.GrnReport;
+import pride.bank.erp.grnReport.GrnReportRepository;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
 import pride.bank.erp.stockCommodity.StockCommodity;
@@ -49,6 +53,8 @@ public class StockService {
     private final StoreService storeService;
     private final StockSearchDao stockSearchDao;
     private final AssetRepository assetRepository;
+    private final GrnReportRepository grnReportRepository;
+    private final GrnCommodityRepository grnCommodityRepository;
 
     @Transactional
     public Page<Stock> fetchAllStocks(
@@ -136,6 +142,25 @@ public class StockService {
         Stock savedStock = stockRepository.save(stock);
         addCommoditiesToStock(savedStock, stockCommoditiesRequest);
 
+        // Create GRN report for initial delivery
+        GrnReport grn = GrnReport.builder()
+                .name(savedStock.getGrnNumber()) // or generate a new GRN number here
+                .documentPath(null)
+                .stock(savedStock)
+                .build();
+        GrnReport savedGrnReport = grnReportRepository.save(grn);
+
+        for (StockCommodityDTO dto : stockCommoditiesRequest) {
+            GrnCommodity grnCommodity = GrnCommodity.builder()
+                    .grnReport(savedGrnReport)
+                    .commodity(commodityService.findCommodity(dto.getCommodityId()))
+                    .deliveredQuantity(dto.getDeliveredQuantity())
+                    .costPrice(dto.getCostPrice())
+                    .purchasePrice(dto.getPurchasePrice())
+                    .build();
+            grnCommodityRepository.save(grnCommodity);
+        }
+
         createAssetsFromStock(savedStock);
 
         List<StockCommodity> stockCommodities = stockCommodityRepository.findByStockId(savedStock.getId());
@@ -145,6 +170,117 @@ public class StockService {
         savedStock.setCommodities(commodities);
         return savedStock;
     }
+
+
+    /**
+     * Handles the partial or complete delivery of additional commodities for an existing stock entry.
+     *
+     * <p>This method updates the delivered quantity of each commodity, adjusts the store inventory with only
+     * the newly delivered amounts, and recalculates the stock's status (partial or complete).
+     *
+     * <p>Additionally, this method:
+     * <ul>
+     *   <li>Updates the cost and purchase price if they have changed</li>
+     *   <li>Generates a new GRN report associated with the stock and the current delivery</li>
+     *   <li>Creates assets from newly delivered commodities if eligible</li>
+     * </ul>
+     *
+     * @param stockId              the ID of the stock receiving the additional delivery
+     * @param additionalDeliveries a list of commodity DTOs representing new deliveries
+     * @param grnNumber            a unique identifier for the Goods Received Note (GRN) for this delivery
+     * @return the updated stock object with current commodity and delivery information
+     * @throws NotFoundException if the stock or commodities are not found
+     */
+
+    @Transactional
+    public Stock completeDelivery(
+            Long stockId,
+            List<StockCommodityDTO> additionalDeliveries,
+            String grnNumber
+    ) throws NotFoundException {
+        Stock stock = findOneStock(stockId);
+        List<StockCommodity> existingCommodities = stockCommodityRepository.findByStockId(stockId);
+        List<CommodityWithDetailsDao> newlyDelivered = new ArrayList<>();
+
+        for (StockCommodityDTO delivery : additionalDeliveries) {
+            StockCommodity existing = existingCommodities.stream()
+                    .filter(sc -> sc.getCommodity().getId().equals(delivery.getCommodityId()))
+                    .findFirst()
+                    .orElseThrow(() -> new NotFoundException("Commodity not found in stock"));
+
+            int previousDelivered = existing.getDeliveredQuantity();
+            int newDelivered = previousDelivered + delivery.getDeliveredQuantity();
+            existing.setDeliveredQuantity(newDelivered);
+
+            if (delivery.getCostPrice() != null) {
+                existing.setCostPrice(delivery.getCostPrice());
+            }
+            if (delivery.getPurchasePrice() != null) {
+                existing.setPurchasePrice(delivery.getPurchasePrice());
+            }
+
+            stockCommodityRepository.save(existing);
+
+            CommodityWithDetailsDao dao = CommodityWithDetailsDao.builder()
+                    .commodity(existing.getCommodity())
+                    .deliveredQuantity(delivery.getDeliveredQuantity())
+                    .build();
+            newlyDelivered.add(dao);
+        }
+
+        Summation updatedSummation = calculateSumsFromStock(stockId);
+        if (updatedSummation.getDeliveredCommoditiesSummation() == updatedSummation.getOrderedCommoditiesSummation()) {
+            stock.setStatus(statusService.findOneStatus(4L));
+        } else {
+            stock.setStatus(statusService.findOneStatus(1L));
+        }
+        stockRepository.save(stock);
+
+        storeService.addCommoditiesToStore(newlyDelivered, stock.getBranch().getId());
+
+        GrnReport grn = GrnReport.builder()
+                .name(grnNumber)
+                .documentPath(null)
+                .stock(stock)
+                .build();
+        GrnReport savedGrnReport = grnReportRepository.save(grn);
+
+        for (StockCommodityDTO delivery : additionalDeliveries) {
+            Commodity commodity = commodityService.findCommodity(delivery.getCommodityId());
+
+            GrnCommodity grnCommodity = GrnCommodity.builder()
+                    .grnReport(savedGrnReport)
+                    .commodity(commodity)
+                    .deliveredQuantity(delivery.getDeliveredQuantity())
+                    .costPrice(delivery.getCostPrice())
+                    .purchasePrice(delivery.getPurchasePrice())
+                    .build();
+            grnCommodityRepository.save(grnCommodity);
+        }
+
+        createAssetsFromStock(stock);
+
+        List<StockCommodity> updatedStockCommodities = stockCommodityRepository.findByStockId(stockId);
+        List<CommodityWithDetailsDao> updatedDetails = commodityWithDetailsDao(updatedStockCommodities);
+        stock.setCommodities(updatedDetails);
+
+        return stock;
+    }
+
+
+    /**
+     * Update Stock
+     *
+     * @param stockID                 this takes the stock Identification
+     * @param request                 this is the request body
+     * @param statusID                this is the status
+     * @param supplierID              this takes the supplier.
+     * @param stockCommoditiesRequest this takes the commodities
+     * @return Stock
+     * @throws NotFoundException This method is to update a stock.
+     *                           Its major purpose to ensure that the system users correct mistakes during
+     *                           stocking
+     */
 
     public Stock updateStock(
             Long stockID,
@@ -323,6 +459,20 @@ public class StockService {
 
             stockCommodityRepository.save(stockCommodity);
         }
+    }
+
+    private Summation calculateSumsFromStock(Long stockId) {
+        List<StockCommodity> stockCommodities = stockCommodityRepository.findByStockId(stockId);
+
+        int orderedSum = 0;
+        int deliveredSum = 0;
+
+        for (StockCommodity sc : stockCommodities) {
+            orderedSum += sc.getOrderedQuantity();
+            deliveredSum += sc.getDeliveredQuantity();
+        }
+
+        return new Summation(orderedSum, deliveredSum);
     }
 
 }

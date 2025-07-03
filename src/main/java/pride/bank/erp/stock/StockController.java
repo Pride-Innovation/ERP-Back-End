@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.*;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
 
-import static pride.bank.erp.helper.Constants.ASCENDING_SORT_DIRECTION;
+import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
 
 
 @RestController
@@ -27,7 +27,7 @@ public class StockController {
     @GetMapping("/stocks")
     public ResponseEntity<Page<Stock>> fetchAllStocks(
             @RequestParam(required = false, defaultValue = "10") int pageSize,
-            @RequestParam(required = false, defaultValue = ASCENDING_SORT_DIRECTION) String sortDirection,
+            @RequestParam(required = false, defaultValue = DESCENDING_SORT_DIRECTION) String sortDirection,
             @RequestParam(required = false, defaultValue = "0") int pageNumber,
             @RequestParam(required = false, defaultValue = "id") String sortBy,
             @RequestParam(required = false) String lpoNumber
@@ -75,5 +75,19 @@ public class StockController {
     public ResponseEntity<StockResponseDTO> getOneStock(@PathVariable Long stockID)
             throws NotFoundException {
         return new ResponseEntity<>(stockService.fetchSingleStock(stockID), HttpStatus.OK);
+    }
+
+    @PostMapping("/stocks/{stockID}/complete-delivery")
+    public ResponseEntity<Stock> completeDelivery(
+            @RequestBody completeDeliveryDTO request,
+            @PathVariable Long stockID
+    )
+            throws NotFoundException {
+        Stock response = stockService.completeDelivery(
+                stockID,
+                request.getAdditionalDeliveries(),
+                request.grnNumber
+        );
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 }

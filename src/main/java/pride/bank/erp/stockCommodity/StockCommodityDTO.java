@@ -17,7 +17,7 @@ import lombok.NoArgsConstructor;
 public class StockCommodityDTO {
     private int orderedQuantity;
     private int deliveredQuantity;
-    private int purchasePrice;
-    private int costPrice;
+    private Integer purchasePrice;
+    private Integer costPrice;
     private Long commodityId;
 }
