@@ -28,6 +28,12 @@ public class GrnCommodity {
     private Commodity commodity;
 
     private int deliveredQuantity;
+    private int orderedQuantity;
     private Integer costPrice;
     private Integer purchasePrice;
+
+    private int totalDeliveredQuantity;
+    private int totalOrderedQuantity;
+    private Integer totalCostPrice;
+    private Integer totalPurchasePrice;
 }
