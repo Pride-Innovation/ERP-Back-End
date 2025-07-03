@@ -19,11 +19,11 @@ public class GrnCommodity {
     @GeneratedValue(strategy = GenerationType.AUTO)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "grn_report_id", nullable = false)
     private GrnReport grnReport;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "commodity_id", nullable = false)
     private Commodity commodity;
 
