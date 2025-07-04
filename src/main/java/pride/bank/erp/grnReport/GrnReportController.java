@@ -17,14 +17,13 @@ public class GrnReportController {
 
     private final GrnReportService grnReportService;
 
-    @PostMapping("/upload-grn/{stockId}")
+    @PostMapping("/upload-grn/{grnReportId}")
     public ResponseEntity<GrnReport> uploadGoodReceivedNote(
             @RequestParam(value = "file", required = false) MultipartFile file,
-            @RequestParam("name") String name,
-            @PathVariable("stockId") Long stockId
+            @PathVariable Long grnReportId
     ) throws NotFoundException, IOException {
         return new ResponseEntity<>(
-                grnReportService.uploadGoodReceivedNote(file, stockId, name),
+                grnReportService.uploadGoodReceivedNote(file, grnReportId),
                 HttpStatus.CREATED
         );
     }
