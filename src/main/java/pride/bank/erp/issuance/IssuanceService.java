@@ -234,5 +234,12 @@ public class IssuanceService {
         assetAssignmentHistoryRepository.save(newHistory);
     }
 
+    public Issuance findOne(Long id)
+            throws NotFoundException {
+        return issuanceRepository.findById(id).orElseThrow(
+                () -> new NotFoundException(String.format("Issuance with Id %s is not found", id))
+        );
+    }
+
 }
 
