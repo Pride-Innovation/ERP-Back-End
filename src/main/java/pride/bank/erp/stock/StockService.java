@@ -151,12 +151,24 @@ public class StockService {
         GrnReport savedGrnReport = grnReportRepository.save(grn);
 
         for (StockCommodityDTO dto : stockCommoditiesRequest) {
+            Commodity commodity = commodityService.findCommodity(dto.getCommodityId());
+
+            int deliveredQty = dto.getDeliveredQuantity();
+            int orderedQty = dto.getOrderedQuantity();
+            Integer costPrice = dto.getCostPrice();
+            Integer purchasePrice = dto.getPurchasePrice();
+
             GrnCommodity grnCommodity = GrnCommodity.builder()
                     .grnReport(savedGrnReport)
-                    .commodity(commodityService.findCommodity(dto.getCommodityId()))
+                    .commodity(commodity)
                     .deliveredQuantity(dto.getDeliveredQuantity())
+                    .orderedQuantity(orderedQty)
                     .costPrice(dto.getCostPrice())
                     .purchasePrice(dto.getPurchasePrice())
+                    .totalDeliveredQuantity(deliveredQty)
+                    .totalOrderedQuantity(orderedQty)
+                    .totalCostPrice(costPrice)
+                    .totalPurchasePrice(purchasePrice)
                     .build();
             grnCommodityRepository.save(grnCommodity);
         }
@@ -248,12 +260,41 @@ public class StockService {
         for (StockCommodityDTO delivery : additionalDeliveries) {
             Commodity commodity = commodityService.findCommodity(delivery.getCommodityId());
 
+            StockCommodity stockCommodity = existingCommodities.stream()
+                    .filter(sc -> sc.getCommodity().getId().equals(delivery.getCommodityId()))
+                    .findFirst()
+                    .orElseThrow(() -> new NotFoundException("Commodity not found in stock"));
+
+            int deliveredQty = delivery.getDeliveredQuantity();
+            int orderedQty = delivery.getOrderedQuantity();
+            Integer costPrice = delivery.getCostPrice();
+            Integer purchasePrice = delivery.getPurchasePrice();
+
+            /*
+             * We need to subtract the delivered Qty because the
+             * StockCommodity is already updated with new stock at this time
+             */
+            int prevTotalDelivered = stockCommodity.getDeliveredQuantity() - deliveredQty;
+            int prevTotalPrice = stockCommodity.getCostPrice();
+            int prevTotalPurchasePrice = stockCommodity.getPurchasePrice();
+
+            System.out.printf("Previous total delivered: %s", prevTotalDelivered);
+
+            int totalDelivered = prevTotalDelivered + deliveredQty;
+            Integer totalCostPrice = prevTotalPrice + costPrice;
+            Integer totalPurchasePrice = prevTotalPurchasePrice + purchasePrice;
+
             GrnCommodity grnCommodity = GrnCommodity.builder()
                     .grnReport(savedGrnReport)
                     .commodity(commodity)
-                    .deliveredQuantity(delivery.getDeliveredQuantity())
-                    .costPrice(delivery.getCostPrice())
-                    .purchasePrice(delivery.getPurchasePrice())
+                    .deliveredQuantity(deliveredQty)
+                    .orderedQuantity(orderedQty)
+                    .costPrice(costPrice)
+                    .purchasePrice(purchasePrice)
+                    .totalPurchasePrice(totalPurchasePrice)
+                    .totalCostPrice(totalCostPrice)
+                    .totalOrderedQuantity(orderedQty)
+                    .totalDeliveredQuantity(totalDelivered)
                     .build();
             grnCommodityRepository.save(grnCommodity);
         }
