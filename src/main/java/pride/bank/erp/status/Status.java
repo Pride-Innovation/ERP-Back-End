@@ -27,5 +27,6 @@ public class Status {
     private Long id;
     private String name;
     private String description;
-    private String status;
+    private String status; // request name joined and in camel case.
+    private String code; // request name joined and all in small case
 }

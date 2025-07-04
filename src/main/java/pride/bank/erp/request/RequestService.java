@@ -64,7 +64,7 @@ public class RequestService {
     ) throws IOException, NotFoundException {
 
         String filePath = fileUpload.uploadFileToLocalDirectory(file);
-        Status status = statusService.findOneStatus(1L);
+        Status status = statusService.findOneStatus(1L); // Asset Request Created Identification
         User requester = currentUserService.getCurrentUser();
 
         Request request = Request.builder()
@@ -103,7 +103,7 @@ public class RequestService {
             List<RequestCommodityDTO> updatedRequestCommodities
     ) throws IOException, NotFoundException {
         Request existingRequest = findRequest(requestId);
-        Status status = statusService.findOneStatus(1L);
+        Status status = statusService.findOneStatus(1L); // Asset Request Created Identification
 
         if (file != null && !file.isEmpty()) {
             if (existingRequest.getSignaturePath() != null) {
