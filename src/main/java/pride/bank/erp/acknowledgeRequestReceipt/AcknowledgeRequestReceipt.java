@@ -2,6 +2,7 @@ package pride.bank.erp.acknowledgeRequestReceipt;
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.hibernate.envers.Audited;
@@ -17,8 +18,9 @@ import java.time.LocalDateTime;
 
 @Entity
 @Data
-@NoArgsConstructor
 @AllArgsConstructor
+@NoArgsConstructor
+@Builder
 @EntityListeners(AuditingEntityListener.class)
 @Audited
 public class AcknowledgeRequestReceipt {
