@@ -12,6 +12,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Getter
 @Setter
@@ -21,5 +22,5 @@ public class RequestSearchCriteria {
     private String priority;
     private String description;
     private LocalDateTime timeOfSubmissionOfRequest;
-    private Long statusId;
+    private List<Long> statusIds;
 }

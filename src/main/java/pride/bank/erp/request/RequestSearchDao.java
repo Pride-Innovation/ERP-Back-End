@@ -93,10 +93,8 @@ public class RequestSearchDao {
             predicates.add(criteriaBuilder.like(requestRoot.get("timeOfSubmissionOfRequest"), "%" + requestSearchCriteria.getTimeOfSubmissionOfRequest() + "%"));
         }
 
-        if (Objects.nonNull(requestSearchCriteria.getStatusId())) {
-            predicates.add(
-                    criteriaBuilder.equal(requestRoot.get("status").get("id"), requestSearchCriteria.getStatusId())
-            );
+        if (Objects.nonNull(requestSearchCriteria.getStatusIds()) && !requestSearchCriteria.getStatusIds().isEmpty()) {
+            predicates.add(requestRoot.get("status").get("id").in(requestSearchCriteria.getStatusIds()));
         }
 
 
