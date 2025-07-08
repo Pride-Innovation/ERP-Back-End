@@ -12,4 +12,6 @@ import lombok.NoArgsConstructor;
 public class IssuanceApprovalRecordDTO {
     private Long issuanceId;
     private String comment;
+    private Long requestId;
+    private Long statusId;
 }

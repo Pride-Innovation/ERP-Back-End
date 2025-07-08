@@ -7,6 +7,9 @@ import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.issuance.Issuance;
 import pride.bank.erp.issuance.IssuanceRepository;
 import pride.bank.erp.issuance.IssuanceService;
+import pride.bank.erp.request.Request;
+import pride.bank.erp.request.RequestRepository;
+import pride.bank.erp.request.RequestService;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
 
@@ -17,28 +20,34 @@ public class IssuanceApprovalRecordService {
     private final IssuanceService issuanceService;
     private final StatusService statusService;
     private final IssuanceRepository issuanceRepository;
-
+    private final RequestService requestService;
+    private final RequestRepository requestRepository;
 
     /**
      * Creates an approval record for an issuance and updates the issuance status to "Approved".
      *
-     * @param request DTO containing the issuance ID and optional approval comment
+     * @param issuanceApprovalRecordDTO DTO containing the issuance ID and optional approval comment
      * @return the saved IssuanceApprovalRecord
      * @throws NotFoundException if the referenced issuance or status is not found
      */
     @Transactional
-    public IssuanceApprovalRecord createIssuanceApprovalRecord(IssuanceApprovalRecordDTO request)
+    public IssuanceApprovalRecord createIssuanceApprovalRecord(IssuanceApprovalRecordDTO issuanceApprovalRecordDTO)
             throws NotFoundException {
 
-        Issuance issuance = issuanceService.findOne(request.getIssuanceId());
-        Status approvedStatus = statusService.findOneStatus(4L); // 4L = Issuance Approved
+        Issuance issuance = issuanceService.findOne(issuanceApprovalRecordDTO.getIssuanceId());
+        Status approvedIssuanceStatus = statusService.findOneStatus(issuanceApprovalRecordDTO.getStatusId()); // 4L = Issuance Approved
+        Request request = requestService.findRequest(issuanceApprovalRecordDTO.getRequestId());
 
-        issuance.setStatus(approvedStatus);
+        issuance.setStatus(approvedIssuanceStatus);
+        request.setStatus(approvedIssuanceStatus);
+
         issuanceRepository.save(issuance); // Persist updated issuance status
+        requestRepository.save(request); // Persist updated request status
 
         IssuanceApprovalRecord record = IssuanceApprovalRecord.builder()
                 .issuance(issuance)
-                .comment(request.getComment())
+                .request(request)
+                .comment(issuanceApprovalRecordDTO.getComment())
                 .build();
 
         return issuanceApprovalRecordRepository.save(record);

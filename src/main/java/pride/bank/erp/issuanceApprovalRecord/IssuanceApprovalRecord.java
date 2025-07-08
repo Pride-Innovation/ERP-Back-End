@@ -13,6 +13,7 @@ import org.springframework.data.annotation.LastModifiedBy;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import pride.bank.erp.issuance.Issuance;
+import pride.bank.erp.request.Request;
 
 import java.time.LocalDateTime;
 
@@ -33,6 +34,11 @@ public class IssuanceApprovalRecord {
     @JoinColumn(name = "issuance_id")
     @NotAudited
     private Issuance issuance;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "request_id")
+    @NotAudited
+    private Request request;
 
     @CreatedDate
     private LocalDateTime createDate;
