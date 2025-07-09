@@ -490,7 +490,7 @@ public class StockService {
                         .purchaseCost(String.valueOf(stockCommodity.getPurchasePrice()))
                         .costOfTheAsset(String.valueOf(stockCommodity.getCostPrice()))
                         .dateReceipt(stock.getCreateDate().toString())
-                        .assetStatus(statusService.findOneStatus(8L))
+                        .assetStatus(statusService.findOneStatus(9L)) // Require Update After Stocking Status ID
                         .build();
 
                 assetRepository.save(asset);
