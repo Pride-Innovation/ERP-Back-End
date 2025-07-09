@@ -11,6 +11,7 @@ import pride.bank.erp.assetAssignmentHostory.AssetAssignmentHistory;
 import pride.bank.erp.assetAssignmentHostory.AssetAssignmentHistoryRepository;
 import pride.bank.erp.commodity.Commodity;
 import pride.bank.erp.commodity.CommodityService;
+import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.issuedCommodity.IssuedCommodity;
 import pride.bank.erp.issuedCommodity.IssuedCommodityRepository;
@@ -42,6 +43,7 @@ public class IssuanceService {
     private final RequestService requestService;
     private final RequestRepository requestRepository;
     private final AssetAssignmentHistoryRepository assetAssignmentHistoryRepository;
+    private final CurrentUserService currentUserService;
 
     @Transactional
     public Issuance issueCommodities(IssuanceDTO request)
@@ -66,6 +68,7 @@ public class IssuanceService {
                 .requester(requester)
                 .comment(request.getComment())
                 .request(requestDetails)
+                .issuer(currentUserService.getCurrentUser())
                 .build();
         Issuance savedIssuance = issuanceRepository.save(issuance);
         addIssuedCommodities(savedIssuance, request.getCommodities());

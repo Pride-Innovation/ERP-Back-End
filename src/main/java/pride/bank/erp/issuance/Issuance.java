@@ -52,6 +52,11 @@ public class Issuance {
     @NotAudited
     private Request request;
 
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "issuer_id")
+    @NotAudited
+    private User issuer;
+
     @CreatedDate
     @Column(nullable = false, updatable = false)
     private LocalDateTime createDate;
