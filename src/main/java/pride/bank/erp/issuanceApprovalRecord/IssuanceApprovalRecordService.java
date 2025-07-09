@@ -3,6 +3,7 @@ package pride.bank.erp.issuanceApprovalRecord;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.issuance.Issuance;
 import pride.bank.erp.issuance.IssuanceRepository;
@@ -22,6 +23,7 @@ public class IssuanceApprovalRecordService {
     private final IssuanceRepository issuanceRepository;
     private final RequestService requestService;
     private final RequestRepository requestRepository;
+    private final CurrentUserService currentUserService;
 
     /**
      * Creates an approval record for an issuance and updates the issuance status to "Approved".
@@ -46,11 +48,22 @@ public class IssuanceApprovalRecordService {
         IssuanceApprovalRecord record = IssuanceApprovalRecord.builder()
                 .issuance(issuance)
                 .request(request)
+                .user(currentUserService.getCurrentUser())
                 .comment(issuanceApprovalRecordDTO.getComment())
                 .build();
 
         issuanceApprovalRecordRepository.save(record);
         return requestRepository.save(request); // Persist updated request status
 
+    }
+
+    public IssuanceApprovalRecord findIssuanceApprovalRecordByRequestId(Long requestId)
+            throws NotFoundException {
+        return issuanceApprovalRecordRepository.findByRequestId(requestId).orElseThrow(
+                () -> new NotFoundException(String.format(
+                        "Issuance Approval with request Id %s is not found",
+                        requestId
+                ))
+        );
     }
 }

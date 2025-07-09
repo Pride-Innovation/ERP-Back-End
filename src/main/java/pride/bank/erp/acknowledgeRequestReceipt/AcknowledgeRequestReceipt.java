@@ -13,6 +13,7 @@ import org.springframework.data.annotation.LastModifiedBy;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import pride.bank.erp.request.Request;
+import pride.bank.erp.user.User;
 
 import java.time.LocalDateTime;
 
@@ -33,6 +34,11 @@ public class AcknowledgeRequestReceipt {
     @JoinColumn(name = "request_id")
     @NotAudited
     private Request request;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "user_id")
+    @NotAudited
+    private User user;
 
     @CreatedDate
     private LocalDateTime createDate;

@@ -79,7 +79,6 @@ public class RequestService {
 
         Request savedRequest = requestRepository.save(request);
         User supervisor = findSupervisorToApproveRequest();
-        System.out.println(supervisor.getEmail());
 
         savedRequest.setCurrentApprover(supervisor);
         savedRequest = requestRepository.save(savedRequest);

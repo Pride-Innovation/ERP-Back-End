@@ -3,10 +3,7 @@ package pride.bank.erp.acknowledgeRequestReceipt;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
 
@@ -24,4 +21,15 @@ public class AcknowledgeRequestReceiptController {
                 .createAcknowledgeRequestReceipt(acknowledgeRequestReceiptDTO);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
+
+    @GetMapping("/acknowledge-request/{requestId}")
+    public ResponseEntity<AcknowledgeRequestReceipt> findAcknowledgeRequestReceiptByRequestId(
+            @PathVariable Long requestId
+    ) throws NotFoundException {
+        return new ResponseEntity<>(
+                acknowledgeRequestReceiptService.findAcknowledgeRequestReceiptByRequestId(requestId),
+                HttpStatus.OK
+        );
+    }
+
 }
