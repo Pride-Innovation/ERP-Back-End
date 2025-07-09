@@ -26,4 +26,11 @@ public class IssuanceController {
         IssuedCommodity response = issuanceService.getLastIssuedCommodity(commodityId);
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
+
+    @GetMapping("/issuance/{requestId}")
+    public ResponseEntity<Issuance> findByRequestId(@PathVariable Long requestId)
+            throws NotFoundException {
+        Issuance response = issuanceService.findByRequestId(requestId);
+        return new ResponseEntity<>(response, HttpStatus.OK);
+    }
 }

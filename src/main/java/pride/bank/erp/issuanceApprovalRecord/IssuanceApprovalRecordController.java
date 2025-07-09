@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
+import pride.bank.erp.request.Request;
 
 @RestController
 @RequestMapping(Constants.GENERAL_ROUTE)
@@ -17,10 +18,10 @@ public class IssuanceApprovalRecordController {
     private final IssuanceApprovalRecordService issuanceApprovalRecordService;
 
     @PostMapping("/approve-issuance")
-    public ResponseEntity<IssuanceApprovalRecord> createIssuanceApprovalRecord(
+    public ResponseEntity<Request> createIssuanceApprovalRecord(
             @RequestBody IssuanceApprovalRecordDTO request
     ) throws NotFoundException {
-        IssuanceApprovalRecord response = issuanceApprovalRecordService
+        Request response = issuanceApprovalRecordService
                 .createIssuanceApprovalRecord(request);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }

@@ -13,6 +13,7 @@ import org.springframework.data.annotation.LastModifiedBy;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import pride.bank.erp.issuedCommodity.IssuedCommodity;
+import pride.bank.erp.request.Request;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.user.User;
 
@@ -45,6 +46,11 @@ public class Issuance {
     @JoinColumn(name = "status_id")
     @NotAudited
     private Status status;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "request_id")
+    @NotAudited
+    private Request request;
 
     @CreatedDate
     @Column(nullable = false, updatable = false)

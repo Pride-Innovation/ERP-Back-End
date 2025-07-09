@@ -48,6 +48,8 @@ public class IssuanceService {
             throws NotFoundException {
         User requester = userService.findUser(request.getRequester());
         Status status = statusService.findOneStatus(5L);
+        Request requestDetails = requestService.findRequest(request.getRequestId());
+
 
         updateAssetAssignedToStatusAndStatus(request.getAssets(), requester);
 
@@ -63,6 +65,7 @@ public class IssuanceService {
                 .status(status)
                 .requester(requester)
                 .comment(request.getComment())
+                .request(requestDetails)
                 .build();
         Issuance savedIssuance = issuanceRepository.save(issuance);
         addIssuedCommodities(savedIssuance, request.getCommodities());
@@ -232,6 +235,7 @@ public class IssuanceService {
                 .build();
 
         assetAssignmentHistoryRepository.save(newHistory);
+        assetAssignmentHistoryRepository.save(newHistory);
     }
 
     public Issuance findOne(Long id)
@@ -239,6 +243,11 @@ public class IssuanceService {
         return issuanceRepository.findById(id).orElseThrow(
                 () -> new NotFoundException(String.format("Issuance with Id %s is not found", id))
         );
+    }
+
+    public Issuance findByRequestId(Long requestId) throws NotFoundException {
+        return issuanceRepository.findByRequestId(requestId)
+                .orElseThrow(() -> new NotFoundException("Issuance not found for request ID: " + requestId));
     }
 
 }

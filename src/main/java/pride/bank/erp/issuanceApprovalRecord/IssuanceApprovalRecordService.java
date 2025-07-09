@@ -31,7 +31,7 @@ public class IssuanceApprovalRecordService {
      * @throws NotFoundException if the referenced issuance or status is not found
      */
     @Transactional
-    public IssuanceApprovalRecord createIssuanceApprovalRecord(IssuanceApprovalRecordDTO issuanceApprovalRecordDTO)
+    public Request createIssuanceApprovalRecord(IssuanceApprovalRecordDTO issuanceApprovalRecordDTO)
             throws NotFoundException {
 
         Issuance issuance = issuanceService.findOne(issuanceApprovalRecordDTO.getIssuanceId());
@@ -42,7 +42,6 @@ public class IssuanceApprovalRecordService {
         request.setStatus(approvedIssuanceStatus);
 
         issuanceRepository.save(issuance); // Persist updated issuance status
-        requestRepository.save(request); // Persist updated request status
 
         IssuanceApprovalRecord record = IssuanceApprovalRecord.builder()
                 .issuance(issuance)
@@ -50,6 +49,8 @@ public class IssuanceApprovalRecordService {
                 .comment(issuanceApprovalRecordDTO.getComment())
                 .build();
 
-        return issuanceApprovalRecordRepository.save(record);
+        issuanceApprovalRecordRepository.save(record);
+        return requestRepository.save(request); // Persist updated request status
+
     }
 }
