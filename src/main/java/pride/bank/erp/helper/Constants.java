@@ -58,6 +58,8 @@ public class Constants {
     public static final String AUDIT_ROUTE = GENERAL_ROUTE + "/audit/**";
     public static final String REQUEST_ROUTE = GENERAL_ROUTE + "/requests/**";
     public static final String STATUS_ROUTE = GENERAL_ROUTE + "/statuses/**";
+    public static final String INVENTORY_ROUTE = GENERAL_ROUTE + "/stocks/**";
+    public static final String ASSET_ROUTE = GENERAL_ROUTE + "/assets/**";
     public static final String READ_REQUEST = "READ_REQUEST";
     public static final String CREATE_REQUEST = "CREATE_REQUEST";
     public static final String DELETE_REQUEST = "DELETE_REQUEST";
@@ -70,4 +72,34 @@ public class Constants {
     public static final String Eastern = "Eastern";
     public static final String Northern = "Northern";
     public static final String Western = "Western";
+
+    public static final String READ_TRANSPORT = "READ_TRANSPORT";
+    public static final String CREATE_TRANSPORT = "CREATE_TRANSPORT";
+    public static final String DELETE_TRANSPORT = "DELETE_TRANSPORT";
+    public static final String UPDATE_TRANSPORT = "UPDATE_TRANSPORT";
+
+    public static final String READ_INVENTORY = "READ_INVENTORY";
+    public static final String CREATE_INVENTORY = "CREATE_INVENTORY";
+    public static final String DELETE_INVENTORY = "DELETE_INVENTORY";
+    public static final String UPDATE_INVENTORY = "UPDATE_INVENTORY";
+
+    public static final String READ_SETTING = "READ_SETTING";
+    public static final String CREATE_SETTING = "CREATE_SETTING";
+    public static final String DELETE_SETTING = "DELETE_SETTING";
+    public static final String UPDATE_SETTING = "UPDATE_SETTING";
+
+    public static final String READ_AUDIT = "READ_AUDIT";
+    public static final String CREATE_AUDIT = "CREATE_AUDIT";
+    public static final String DELETE_AUDIT = "DELETE_AUDIT";
+    public static final String UPDATE_AUDIT = "UPDATE_AUDIT";
+
+    public static final String READ_STORE = "READ_STORE";
+    public static final String CREATE_STORE = "CREATE_STORE";
+    public static final String DELETE_STORE = "DELETE_STORE";
+    public static final String UPDATE_STORE = "UPDATE_STORE";
+
+    public static final String READ_ASSET = "READ_ASSET";
+    public static final String CREATE_ASSET = "CREATE_ASSET";
+    public static final String DELETE_ASSET = "DELETE_ASSET";
+    public static final String UPDATE_ASSET = "UPDATE_ASSET";
 }

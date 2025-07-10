@@ -119,6 +119,9 @@ public class UserService {
         User user = findUser(userId);
         Title title = titleService.findTitle(request.getTitle());
 
+        Optional<Branch> branch = branchRepository.findById(request.getBranch());
+        assert branch.isPresent();
+
         Department department = null;
 
         if (user.getDepartment() != null) {
@@ -137,6 +140,7 @@ public class UserService {
         user.setAccountNonLocked(request.isAccountNonLocked());
         user.setEmail(request.getEmail());
         user.setBlocked(request.isBlocked());
+        user.setBranch(branch.get());
 
         return userRepository.save(user);
     }

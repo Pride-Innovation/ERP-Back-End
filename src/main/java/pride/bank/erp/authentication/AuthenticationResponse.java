@@ -25,4 +25,5 @@ public class AuthenticationResponse {
     private String lastName;
     private String email;
     private Title title;
+    private String gender;
 }

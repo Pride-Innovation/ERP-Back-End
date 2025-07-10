@@ -45,6 +45,11 @@ public class SecurityConfiguration {
     @Value("${front-end.environment}")
     private String environment;
 
+    /**
+     * Configures the application's security filter chain using Spring Security.
+     * This includes route-based authorization, JWT authentication, exception handling,
+     * and session management policies.
+     */
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
@@ -60,24 +65,41 @@ public class SecurityConfiguration {
                                         AUDIT_ROUTE // Audit route for test purpose
                                 )
                                 .permitAll()
+                                // User Routes
                                 .requestMatchers(HttpMethod.POST, USER_ROUTE).hasAuthority(CREATE_USER)
                                 .requestMatchers(HttpMethod.GET, USER_ROUTE).hasAuthority(READ_USER)
                                 .requestMatchers(HttpMethod.DELETE, USER_ROUTE).hasAuthority(DELETE_USER)
                                 .requestMatchers(HttpMethod.PUT, USER_ROUTE).hasAuthority(UPDATE_USER)
+                                .requestMatchers(HttpMethod.POST, REGISTER_USER_ROUTE).hasAuthority(CREATE_USER)
+                                // Role Routes
                                 .requestMatchers(HttpMethod.POST, ROLE_ROUTE).hasAuthority(CREATE_ROLE)
                                 .requestMatchers(HttpMethod.GET, ROLE_ROUTE).hasAuthority(READ_ROLE)
                                 .requestMatchers(HttpMethod.DELETE, ROLE_ROUTE).hasAuthority(DELETE_ROLE)
                                 .requestMatchers(HttpMethod.PUT, ROLE_ROUTE).hasAuthority(UPDATE_ROLE)
+                                // Permission Routes
                                 .requestMatchers(HttpMethod.POST, PERMISSION_ROUTE).hasAuthority(CREATE_PERMISSION)
                                 .requestMatchers(HttpMethod.GET, PERMISSION_ROUTE).hasAuthority(READ_PERMISSION)
                                 .requestMatchers(HttpMethod.DELETE, PERMISSION_ROUTE).hasAuthority(DELETE_PERMISSION)
                                 .requestMatchers(HttpMethod.PUT, PERMISSION_ROUTE).hasAuthority(UPDATE_PERMISSION)
-                                .requestMatchers(HttpMethod.POST, REGISTER_USER_ROUTE).hasAuthority(CREATE_USER)
+                                // Request Routes
                                 .requestMatchers(HttpMethod.GET, REQUEST_ROUTE).hasAuthority(READ_REQUEST)
                                 .requestMatchers(HttpMethod.POST, REQUEST_ROUTE).hasAuthority(CREATE_REQUEST)
+                                .requestMatchers(HttpMethod.PUT, REQUEST_ROUTE).hasAuthority(UPDATE_REQUEST)
+                                .requestMatchers(HttpMethod.DELETE, REQUEST_ROUTE).hasAuthority(DELETE_REQUEST)
+                                // Status Routes
                                 .requestMatchers(HttpMethod.POST, STATUS_ROUTE).hasAuthority(CREATE_STATUS)
                                 .requestMatchers(HttpMethod.DELETE, STATUS_ROUTE).hasAuthority(DELETE_STATUS)
                                 .requestMatchers(HttpMethod.PUT, STATUS_ROUTE).hasAuthority(UPDATE_STATUS)
+                                // Inventory / Stock Routes
+                                .requestMatchers(HttpMethod.POST, INVENTORY_ROUTE).hasAuthority(CREATE_INVENTORY)
+                                .requestMatchers(HttpMethod.DELETE, INVENTORY_ROUTE).hasAuthority(DELETE_INVENTORY)
+                                .requestMatchers(HttpMethod.PUT, INVENTORY_ROUTE).hasAuthority(UPDATE_INVENTORY)
+                                .requestMatchers(HttpMethod.GET, INVENTORY_ROUTE).hasAuthority(READ_INVENTORY)
+                                // Inventory / Stock Routes
+                                .requestMatchers(HttpMethod.POST, ASSET_ROUTE).hasAuthority(CREATE_ASSET)
+                                .requestMatchers(HttpMethod.DELETE, ASSET_ROUTE).hasAuthority(DELETE_ASSET)
+                                .requestMatchers(HttpMethod.PUT, ASSET_ROUTE).hasAuthority(UPDATE_ASSET)
+                                .requestMatchers(HttpMethod.GET, ASSET_ROUTE).hasAuthority(READ_ASSET)
 
                                 .anyRequest()
                                 .authenticated()

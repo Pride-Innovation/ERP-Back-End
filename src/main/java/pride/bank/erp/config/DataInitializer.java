@@ -117,7 +117,37 @@ public class DataInitializer {
                 ensurePermission(UPDATE_REQUEST),
                 ensurePermission(CREATE_STATUS),
                 ensurePermission(DELETE_STATUS),
-                ensurePermission(UPDATE_STATUS)
+                ensurePermission(UPDATE_STATUS),
+                // Transport Permissions
+                ensurePermission(READ_TRANSPORT),
+                ensurePermission(CREATE_TRANSPORT),
+                ensurePermission(DELETE_TRANSPORT),
+                ensurePermission(UPDATE_TRANSPORT),
+                // Inventory
+                ensurePermission(READ_INVENTORY),
+                ensurePermission(CREATE_INVENTORY),
+                ensurePermission(DELETE_INVENTORY),
+                ensurePermission(UPDATE_INVENTORY),
+                // Settings
+                ensurePermission(READ_SETTING),
+                ensurePermission(CREATE_SETTING),
+                ensurePermission(DELETE_SETTING),
+                ensurePermission(UPDATE_SETTING),
+                // Audit Trails
+                ensurePermission(READ_AUDIT),
+                ensurePermission(CREATE_AUDIT),
+                ensurePermission(DELETE_AUDIT),
+                ensurePermission(UPDATE_AUDIT),
+                // Store
+                ensurePermission(READ_STORE),
+                ensurePermission(CREATE_STORE),
+                ensurePermission(DELETE_STORE),
+                ensurePermission(UPDATE_STORE),
+                // Asset
+                ensurePermission(READ_ASSET),
+                ensurePermission(CREATE_ASSET),
+                ensurePermission(DELETE_ASSET),
+                ensurePermission(UPDATE_ASSET)
         );
     }
 

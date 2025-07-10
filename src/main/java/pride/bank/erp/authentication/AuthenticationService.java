@@ -109,6 +109,7 @@ public class AuthenticationService {
                 .lastName(user.getLastName())
                 .email(user.getEmail())
                 .title(title)
+                .gender(user.getGender())
                 .build();
     }
 
@@ -164,6 +165,7 @@ public class AuthenticationService {
                         .firstName(user.getFirstName())
                         .lastName(user.getLastName())
                         .email((user.getEmail()))
+                        .gender(user.getGender())
                         .build();
                 new ObjectMapper().writeValue(response.getOutputStream(), authenticationResponse);
             }
