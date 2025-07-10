@@ -256,8 +256,7 @@ public class IssuanceService {
     }
 
     public Issuance findByRequestId(Long requestId) throws NotFoundException {
-        return issuanceRepository.findByRequestId(requestId)
-                .orElseThrow(() -> new NotFoundException("Issuance not found for request ID: " + requestId));
+        return issuanceRepository.findByRequestId(requestId).orElse(null);
     }
 
 }
