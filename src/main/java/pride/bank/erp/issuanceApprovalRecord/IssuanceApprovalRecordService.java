@@ -1,3 +1,10 @@
+/*
+13.9 Pride's Standard Copyright Notice:
+Copyright ©20XX. Management of Pride Bank Limited (PBL). All Rights Reserved. Permission to use, copy, modify,
+and distribute this software and its documentation for any purpose is prohibited unless authorized in writing by the
+Managing Director
+*/
+
 package pride.bank.erp.issuanceApprovalRecord;
 
 import lombok.RequiredArgsConstructor;
@@ -57,13 +64,7 @@ public class IssuanceApprovalRecordService {
 
     }
 
-    public IssuanceApprovalRecord findIssuanceApprovalRecordByRequestId(Long requestId)
-            throws NotFoundException {
-        return issuanceApprovalRecordRepository.findByRequestId(requestId).orElseThrow(
-                () -> new NotFoundException(String.format(
-                        "Issuance Approval with request Id %s is not found",
-                        requestId
-                ))
-        );
+    public IssuanceApprovalRecord findIssuanceApprovalRecordByRequestId(Long requestId) {
+        return issuanceApprovalRecordRepository.findByRequestId(requestId).orElse(null);
     }
 }

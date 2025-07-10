@@ -1,3 +1,10 @@
+/*
+13.9 Pride's Standard Copyright Notice:
+Copyright ©20XX. Management of Pride Bank Limited (PBL). All Rights Reserved. Permission to use, copy, modify,
+and distribute this software and its documentation for any purpose is prohibited unless authorized in writing by the
+Managing Director
+*/
+
 package pride.bank.erp.acknowledgeIssuanceReceipt;
 
 import lombok.RequiredArgsConstructor;
@@ -39,13 +46,7 @@ public class AcknowledgeIssuanceReceiptService {
         return requestRepository.save(request);
     }
 
-    public AcknowledgeIssuanceReceipt findAcknowledgeIssuanceReceiptByRequestId(Long requestId)
-            throws NotFoundException {
-        return acknowledgeIssuanceReceiptRepository.findByRequestId(requestId).orElseThrow(
-                () -> new NotFoundException(String.format(
-                        "Issuance Acknowledgement with request Id %s is not found",
-                        requestId
-                ))
-        );
+    public AcknowledgeIssuanceReceipt findAcknowledgeIssuanceReceiptByRequestId(Long requestId) {
+        return acknowledgeIssuanceReceiptRepository.findByRequestId(requestId).orElse(null);
     }
 }
