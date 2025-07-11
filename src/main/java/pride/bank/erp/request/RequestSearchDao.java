@@ -97,6 +97,10 @@ public class RequestSearchDao {
             predicates.add(requestRoot.get("status").get("id").in(requestSearchCriteria.getStatusIds()));
         }
 
+        if (Objects.nonNull(requestSearchCriteria.getRequesterIds()) && !requestSearchCriteria.getRequesterIds().isEmpty()) {
+            predicates.add(requestRoot.get("requester").get("id").in(requestSearchCriteria.getRequesterIds()));
+        }
+
 
         return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
     }

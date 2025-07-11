@@ -8,11 +8,18 @@ Managing Director
 package pride.bank.erp.title;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
 public interface TitleRepository extends JpaRepository<Title, Long> {
     Optional<Title> findByName(String name);
+
+    @Query("SELECT t.id FROM Title t WHERE t.reportsTo.id = :titleId")
+    List<Long> findSubordinateTitleIds(@Param("titleId") Long titleId);
+
 }

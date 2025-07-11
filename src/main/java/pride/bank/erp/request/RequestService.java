@@ -26,18 +26,17 @@ import pride.bank.erp.requestCommodity.RequestCommodityDTO;
 import pride.bank.erp.requestCommodity.RequestCommodityRepository;
 import pride.bank.erp.requestReport.RequestReport;
 import pride.bank.erp.requestReport.RequestReportDAO;
+import pride.bank.erp.role.Role;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
+import pride.bank.erp.title.TitleRepository;
 import pride.bank.erp.user.User;
 import pride.bank.erp.user.UserRepository;
 
 import java.io.File;
 import java.io.IOException;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 
 import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
 
@@ -55,6 +54,7 @@ public class RequestService {
     private final UserRepository userRepository;
     private final Email emailService;
     private final CurrentUserService currentUserService;
+    private final TitleRepository titleRepository;
 
     @Transactional
     public Request createRequest(
@@ -169,6 +169,7 @@ public class RequestService {
                     .priority(priority)
                     .description(description)
                     .statusIds(statusIds)
+                    .requesterIds(requestersList())
                     .timeOfSubmissionOfRequest(timeOfSubmissionOfRequest)
                     .build();
             return requestSearchDao.findAllWithFilters(requestPage, requestSearchCriteria);
@@ -298,6 +299,43 @@ public class RequestService {
             return String.format("Request approval notification not sent to %s", supervisor.getEmail());
         }
         return String.format("Request approval notification has been sent to %s", supervisor.getEmail());
+    }
+
+    private String determineUserRole() {
+        Role role = currentUserService.getCurrentUser().getTitle().getRole();
+        return switch (role.getName()) {
+            case "Officer" -> "OFFICER";
+            case "Manager" -> "MANAGER";
+            case "Admin_Officer" -> "ADMIN_OFFICER";
+            case "Admin_Manager" -> "ADMIN_MANAGER";
+            default -> "";
+        };
+    }
+
+    /**
+     * Returns a list of user IDs that includes the current user (manager)
+     * and all users whose titles report (directly or indirectly) to the manager's title.
+     */
+    @Transactional
+    private List<Long> getManagerAndSubordinateUserIds() {
+        User currentUser = currentUserService.getCurrentUser();
+        Long managerTitleId = currentUser.getTitle().getId();
+        List<Long> subordinateTitleIds = titleRepository.findSubordinateTitleIds(managerTitleId);
+        List<Long> userIds = userRepository.findUserIdsByTitleIds(subordinateTitleIds);
+
+        if (!userIds.contains(currentUser.getId())) {
+            userIds.add(currentUser.getId());
+        }
+
+        return userIds;
+    }
+
+    private List<Long> requestersList() {
+        return switch (determineUserRole()) {
+            case "OFFICER" -> List.of(currentUserService.getCurrentUser().getId());
+            case "MANAGER" -> getManagerAndSubordinateUserIds();
+            default -> Collections.emptyList();
+        };
     }
 
 }
