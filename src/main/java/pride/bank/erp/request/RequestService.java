@@ -330,6 +330,20 @@ public class RequestService {
         return userIds;
     }
 
+    /*
+     TO DO.
+     To view all the requests, the requester lists has to be empty.
+     Admin Manager should by default leave an empty array.
+     In scenarios where a request is just created and rejected we will display
+     a user (admin or normal officer) requests and his managers.
+     */
+
+    @Transactional
+    private List<Long> getAdminManagerSubordinateUserIds(){
+        // TO DO
+        return Collections.emptyList();
+    }
+
     private List<Long> requestersList() {
         return switch (determineUserRole()) {
             case "OFFICER" -> List.of(currentUserService.getCurrentUser().getId());
