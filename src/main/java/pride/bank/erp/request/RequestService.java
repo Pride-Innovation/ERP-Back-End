@@ -153,7 +153,8 @@ public class RequestService {
             String priority,
             String description,
             LocalDateTime timeOfSubmissionOfRequest,
-            List<Long> statusIds
+            List<Long> statusIds,
+            String status
     ) {
         try {
             RequestPage requestPage = RequestPage.builder()
@@ -169,7 +170,7 @@ public class RequestService {
                     .priority(priority)
                     .description(description)
                     .statusIds(statusIds)
-                    .requesterIds(requestersList())
+                    .requesterIds(requestersList(status))
                     .timeOfSubmissionOfRequest(timeOfSubmissionOfRequest)
                     .build();
             return requestSearchDao.findAllWithFilters(requestPage, requestSearchCriteria);
@@ -330,24 +331,47 @@ public class RequestService {
         return userIds;
     }
 
-    /*
-     TO DO.
-     To view all the requests, the requester lists has to be empty.
-     Admin Manager should by default leave an empty array.
-     In scenarios where a request is just created and rejected we will display
-     a user (admin or normal officer) requests and his managers.
+    /**
+     * Determines the list of requester user IDs based on the current user's role and the provided request status.
+     *
+     * <ul>
+     *   <li><b>OFFICER</b>: Sees only their own requests.</li>
+     *   <li><b>MANAGER</b>: Sees their own requests and those of their subordinates.</li>
+     *   <li><b>ADMIN_OFFICER</b>: Sees all requests when status is PENDING or ISSUED; otherwise, only their own requests.</li>
+     *   <li><b>ADMIN_MANAGER</b>: Sees all requests when status is PENDING or ISSUED; otherwise, their own and their subordinates' requests.</li>
+     * </ul>
+     * <p>
+     * Returning an empty list implies no filtering (i.e., fetch all requests).
+     *
+     * @param status The status of the request (e.g., CREATED, PENDING, ISSUED, REJECTED).
+     * @return A list of user IDs that should be considered requesters based on role and status.
      */
-
-    @Transactional
-    private List<Long> getAdminManagerSubordinateUserIds(){
-        // TO DO
-        return Collections.emptyList();
-    }
-
-    private List<Long> requestersList() {
+    private List<Long> requestersList(String status) {
         return switch (determineUserRole()) {
             case "OFFICER" -> List.of(currentUserService.getCurrentUser().getId());
+
             case "MANAGER" -> getManagerAndSubordinateUserIds();
+
+            case "ADMIN_OFFICER" -> {
+                if ("PENDING".equalsIgnoreCase(status) || "ISSUED".equalsIgnoreCase(status)) {
+                    yield Collections.emptyList();
+                } else if ("CREATED".equalsIgnoreCase(status) || "REJECTED".equalsIgnoreCase(status)) {
+                    yield List.of(currentUserService.getCurrentUser().getId());
+                } else {
+                    yield List.of(currentUserService.getCurrentUser().getId());
+                }
+            }
+
+            case "ADMIN_MANAGER" -> {
+                if ("PENDING".equalsIgnoreCase(status) || "ISSUED".equalsIgnoreCase(status)) {
+                    yield Collections.emptyList();
+                } else if ("CREATED".equalsIgnoreCase(status) || "REJECTED".equalsIgnoreCase(status)) {
+                    yield getManagerAndSubordinateUserIds();
+                } else {
+                    yield getManagerAndSubordinateUserIds();
+                }
+            }
+
             default -> Collections.emptyList();
         };
     }
