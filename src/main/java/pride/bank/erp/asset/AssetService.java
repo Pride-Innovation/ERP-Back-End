@@ -62,7 +62,8 @@ public class AssetService {
             Long assetTypeId,
             Long assetStatusId,
             Long commodityId,
-            String engravedNumber
+            String engravedNumber,
+            Long assignedToId
     ) {
 
         try {
@@ -78,6 +79,7 @@ public class AssetService {
                     .assetTypeId(assetTypeId)
                     .assetStatusId(assetStatusId)
                     .engravedNumber(engravedNumber)
+                    .assignedToId(assignedToId)
                     .commodityId(commodityId)
                     .build();
             return assetSearchDao.findAllWithFilters(assetPage, assetSearchCriteria);

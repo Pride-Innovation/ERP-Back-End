@@ -104,6 +104,12 @@ public class AssetSearchDao {
             );
         }
 
+        if (Objects.nonNull(assetSearchCriteria.getAssignedToId())) {
+            predicates.add(
+                    criteriaBuilder.equal(assetRoot.get("assignedTo").get("id"), assetSearchCriteria.getAssignedToId())
+            );
+        }
+
         return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
     }
 

@@ -20,4 +20,5 @@ public class AssetSearchCriteria {
     private Long assetStatusId;
     private Long commodityId;
     private String engravedNumber;
+    private Long assignedToId;
 }
