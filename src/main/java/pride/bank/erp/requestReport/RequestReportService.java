@@ -59,7 +59,11 @@ public class RequestReportService {
         return response;
     }
 
-    @Transactional
+    /**
+     * Updates the request status and handles notifications.
+     * If the request is rejected, only the requester is notified.
+     * If the request is approved, both the requester and the admin are notified.
+     */
     private String handleStatusUpdate(
             Request request,
             Status status,
@@ -67,9 +71,10 @@ public class RequestReportService {
     ) {
         request.setStatus(status);
         requestRepository.save(request);
-        String statusName = status.getName();
 
-        if ("rejected".equalsIgnoreCase(statusName)) {
+        String statusName = status.getStatus();
+
+        if ("requestRejected".equalsIgnoreCase(statusName)) {
             setRequestPosition(request, request.getRequester());
             return notifyIndividual(
                     request.getRequester().getEmail(),
@@ -77,24 +82,34 @@ public class RequestReportService {
                     request,
                     request.getRequester().getFirstName()
             );
-        } else if ("approved".equalsIgnoreCase(statusName)) {
-            String notification = "Requests has already been approved. Pending your action";
-            Optional<User> admin = userRepository.findByEmail(adminEmailAddress);
+        }
 
+        if ("requestApproved".equalsIgnoreCase(statusName)) {
+            Optional<User> admin = userRepository.findByEmail(adminEmailAddress);
             if (admin.isEmpty()) {
                 throw new IllegalStateException("Admin user not found for email: " + adminEmailAddress);
             }
 
             setRequestPosition(request, admin.get());
+
+            notifyIndividual(
+                    request.getRequester().getEmail(),
+                    "Request has been Approved by your Manager",
+                    request,
+                    request.getRequester().getFirstName()
+            );
+
             return notifyIndividual(
                     adminEmailAddress,
-                    notification,
+                    comment,
                     request,
                     "Admin"
             );
         }
+
         return null;
     }
+
 
     private String notifyIndividual(
             String email,
