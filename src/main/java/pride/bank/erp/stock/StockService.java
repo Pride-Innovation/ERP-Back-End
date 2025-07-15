@@ -34,10 +34,7 @@ import pride.bank.erp.store.StoreService;
 import pride.bank.erp.supplier.Supplier;
 import pride.bank.erp.supplier.SupplierService;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
@@ -465,6 +462,11 @@ public class StockService {
         boolean itEquipmentCreated = false;
         boolean officeEquipmentCreated = false;
 
+        StringBuilder itCommodities = new StringBuilder();
+        StringBuilder officeCommodities = new StringBuilder();
+        Map<String, Integer> itMap = new HashMap<>();
+        Map<String, Integer> officeMap = new HashMap<>();
+
         for (StockCommodity stockCommodity : stockCommodities) {
             Commodity commodity = stockCommodity.getCommodity();
             AssetType assetType = commodity.getAssetType();
@@ -505,19 +507,28 @@ public class StockService {
 
             stockCommodityRepository.save(stockCommodity);
 
+            String commodityName = commodity.getName();
+
             if ("IT Equipment".equalsIgnoreCase(typeName)) {
+                itMap.put(commodityName, itMap.getOrDefault(commodityName, 0) + availableQuantity);
                 itEquipmentCreated = true;
             } else if ("Office Equipment".equalsIgnoreCase(typeName)) {
+                officeMap.put(commodityName, officeMap.getOrDefault(commodityName, 0) + availableQuantity);
                 officeEquipmentCreated = true;
             }
         }
 
         // Notify IT Team to update the assets created
+
+        itMap.forEach((name, qty) -> itCommodities.append("- ").append(qty).append(" ").append(name).append("<br/>"));
+        officeMap.forEach((name, qty) -> officeCommodities.append("- ").append(qty).append(" ").append(name).append("<br/>"));
+
         if (itEquipmentCreated) {
             notifyIndividual(
                     "dkatamba@pridebank.co.ug", // IT Team Email Address
                     stock,
-                    "IT Officer" // The office to update the Request
+                    "IT Officer", // The office to update the Request
+                    String.format("Please update the system with the following IT equipment:<br/><br/>%s", itCommodities)
             );
         }
 
@@ -526,7 +537,8 @@ public class StockService {
             notifyIndividual(
                     "innovation@pridebank.co.ug", // Admin Team Email Address
                     stock,
-                    "Admin Officer" // The office to update the Request
+                    "Admin Officer", // The office to update the Request
+                    String.format("Please update the system with the following Office equipment:<br/><br/>%s", officeCommodities)
             );
         }
     }
@@ -549,7 +561,8 @@ public class StockService {
     private void notifyIndividual(
             String email,
             Stock stock,
-            String updaterName
+            String updaterName,
+            String commoditySummary
     ) {
         emailService.sendEmailVerification(
                 email,
@@ -557,7 +570,7 @@ public class StockService {
                 null,
                 updaterName,
                 "View Stock",
-                "Please update these items which have been stocked",
+                commoditySummary,
                 "stocks",
                 null,
                 stock
