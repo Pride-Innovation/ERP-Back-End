@@ -8,6 +8,7 @@ Managing Director
 package pride.bank.erp.stock;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -41,6 +42,7 @@ import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class StockService {
     private final StockRepository stockRepository;
     private final StatusService statusService;
@@ -110,76 +112,103 @@ public class StockService {
             Stock request,
             Long supplierID,
             List<StockCommodityDTO> stockCommoditiesRequest
-    )
-            throws NotFoundException {
-        Status status = null;
-        Supplier supplier = supplierService.findSupplier(supplierID);
-        Summation summation = calculateSums(stockCommoditiesRequest);
-        Branch headOffice = branchService.findBranch(1L);
+    ) throws NotFoundException {
+        try {
+            // Validate supplier
+            Supplier supplier = supplierService.findSupplier(supplierID);
+            if (supplier == null) {
+                throw new NotFoundException("Supplier with ID " + supplierID + " not found.");
+            }
 
-        if (summation.getDeliveredCommoditiesSummation() == summation.getOrderedCommoditiesSummation()) {
-            status = statusService.findOneStatus(11L); // Stock Completed Status ID.
-        }
+            // Validate branch
+            Branch headOffice = branchService.findBranch(1L);
+            if (headOffice == null) {
+                throw new NotFoundException("Head office branch not found.");
+            }
 
-        if (summation.getDeliveredCommoditiesSummation() < summation.getOrderedCommoditiesSummation()) {
-            status = statusService.findOneStatus(10L); // Stock Pending Status ID.
-        }
+            // Validate commodities
+            if (stockCommoditiesRequest == null || stockCommoditiesRequest.isEmpty()) {
+                throw new IllegalArgumentException("Commodities list must not be null or empty.");
+            }
 
-        Stock stock = Stock
-                .builder()
-                .referenceNumber(request.getReferenceNumber())
-                .totalCost(request.getTotalCost())
-                .balanceCost(request.getBalanceCost())
-                .name(request.getName())
-                .branch(headOffice)
-                .lpoNumber(request.getLpoNumber())
-                .grnNumber(request.getGrnNumber())
-                .status(status)
-                .supplier(supplier)
-                .build();
+            // Calculate total
+            Summation summation = calculateSums(stockCommoditiesRequest);
 
-        Stock savedStock = stockRepository.save(stock);
-        addCommoditiesToStock(savedStock, stockCommoditiesRequest);
+            Status status;
+            if (summation.getDeliveredCommoditiesSummation() == summation.getOrderedCommoditiesSummation()) {
+                status = statusService.findOneStatus(11L); // Completed
+            } else {
+                status = statusService.findOneStatus(10L); // Pending
+            }
 
-        // Create GRN report for initial delivery
-        GrnReport grn = GrnReport.builder()
-                .name(savedStock.getGrnNumber()) // or generate a new GRN number here
-                .documentPath(null)
-                .stock(savedStock)
-                .build();
-        GrnReport savedGrnReport = grnReportRepository.save(grn);
-
-        for (StockCommodityDTO dto : stockCommoditiesRequest) {
-            Commodity commodity = commodityService.findCommodity(dto.getCommodityId());
-
-            int deliveredQty = dto.getDeliveredQuantity();
-            int orderedQty = dto.getOrderedQuantity();
-            Integer costPrice = dto.getCostPrice();
-            Integer purchasePrice = dto.getPurchasePrice();
-
-            GrnCommodity grnCommodity = GrnCommodity.builder()
-                    .grnReport(savedGrnReport)
-                    .commodity(commodity)
-                    .deliveredQuantity(dto.getDeliveredQuantity())
-                    .orderedQuantity(orderedQty)
-                    .costPrice(dto.getCostPrice())
-                    .purchasePrice(dto.getPurchasePrice())
-                    .totalDeliveredQuantity(deliveredQty)
-                    .totalOrderedQuantity(orderedQty)
-                    .totalCostPrice(costPrice)
-                    .totalPurchasePrice(purchasePrice)
+            Stock stock = Stock
+                    .builder()
+                    .referenceNumber(request.getReferenceNumber())
+                    .totalCost(request.getTotalCost())
+                    .balanceCost(request.getBalanceCost())
+                    .name(request.getName())
+                    .branch(headOffice)
+                    .lpoNumber(request.getLpoNumber())
+                    .grnNumber(request.getGrnNumber())
+                    .status(status)
+                    .supplier(supplier)
                     .build();
-            grnCommodityRepository.save(grnCommodity);
+
+            Stock savedStock = stockRepository.save(stock);
+            addCommoditiesToStock(savedStock, stockCommoditiesRequest);
+
+            // Save GRN report
+            GrnReport grn = GrnReport.builder()
+                    .name(savedStock.getGrnNumber())
+                    .documentPath(null)
+                    .stock(savedStock)
+                    .build();
+            GrnReport savedGrnReport = grnReportRepository.save(grn);
+
+            // Save each GRN commodity
+            for (StockCommodityDTO dto : stockCommoditiesRequest) {
+                Commodity commodity = commodityService.findCommodity(dto.getCommodityId());
+                if (commodity == null) {
+                    throw new NotFoundException("Commodity with ID " + dto.getCommodityId() + " not found.");
+                }
+
+                GrnCommodity grnCommodity = GrnCommodity.builder()
+                        .grnReport(savedGrnReport)
+                        .commodity(commodity)
+                        .deliveredQuantity(dto.getDeliveredQuantity())
+                        .orderedQuantity(dto.getOrderedQuantity())
+                        .costPrice(dto.getCostPrice())
+                        .purchasePrice(dto.getPurchasePrice())
+                        .totalDeliveredQuantity(dto.getDeliveredQuantity())
+                        .totalOrderedQuantity(dto.getOrderedQuantity())
+                        .totalCostPrice(dto.getCostPrice())
+                        .totalPurchasePrice(dto.getPurchasePrice())
+                        .build();
+
+                grnCommodityRepository.save(grnCommodity);
+            }
+
+            createAssetsFromStock(savedStock);
+
+            List<StockCommodity> stockCommodities = stockCommodityRepository.findByStockId(savedStock.getId());
+            List<CommodityWithDetailsDao> commodities = commodityWithDetailsDao(stockCommodities);
+
+            storeService.addCommoditiesToStore(commodities, 1L);
+            savedStock.setCommodities(commodities);
+
+            return savedStock;
+
+        } catch (NotFoundException ex) {
+            // Allow this to bubble up (if you want to handle it in the controller)
+            throw ex;
+        } catch (IllegalArgumentException ex) {
+            // Validation error
+            throw new RuntimeException("Invalid input: " + ex.getMessage(), ex);
+        } catch (Exception ex) {
+            // Catch-all
+            log.error(ex.getMessage());
+            throw new RuntimeException("Error creating stock: " + ex.getMessage(), ex);
         }
-
-        createAssetsFromStock(savedStock);
-
-        List<StockCommodity> stockCommodities = stockCommodityRepository.findByStockId(savedStock.getId());
-        List<CommodityWithDetailsDao> commodities = commodityWithDetailsDao(stockCommodities);
-
-        storeService.addCommoditiesToStore(commodities, 1L);
-        savedStock.setCommodities(commodities);
-        return savedStock;
     }
 
 

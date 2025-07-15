@@ -43,18 +43,22 @@ public class StockController {
     }
 
     @PostMapping("/stocks")
-    public ResponseEntity<Stock> createStock(@RequestBody StockDTO stockDTO) {
+    public ResponseEntity<?> createStock(@RequestBody StockDTO stockDTO) {
         try {
             Stock response = stockService.createStock(
                     stockDTO.getStock(),
-                    stockDTO.getStatus(),
+                    stockDTO.getSupplier(),
                     stockDTO.getStockCommoditiesRequest()
             );
             return new ResponseEntity<>(response, HttpStatus.CREATED);
+        } catch (NotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
         } catch (Exception e) {
-            return null;
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Unexpected error: " + e.getMessage());
         }
-
     }
 
     @PutMapping("/stocks/{stockID}")
