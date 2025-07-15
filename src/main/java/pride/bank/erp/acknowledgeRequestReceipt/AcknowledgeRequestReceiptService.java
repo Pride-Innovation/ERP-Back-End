@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.exception.NotFoundException;
+import pride.bank.erp.notification.Email;
 import pride.bank.erp.request.Request;
 import pride.bank.erp.request.RequestRepository;
 import pride.bank.erp.request.RequestService;
@@ -26,6 +27,7 @@ public class AcknowledgeRequestReceiptService {
     private final StatusService statusService;
     private final RequestRepository requestRepository;
     private final CurrentUserService currentUserService;
+    private final Email emailService;
 
     @Transactional
     public AcknowledgeRequestReceipt createAcknowledgeRequestReceipt(
@@ -45,10 +47,39 @@ public class AcknowledgeRequestReceiptService {
                 .comment(acknowledgeRequestReceiptDTO.getComment())
                 .build();
 
-        return acknowledgeRequestReceiptRepository.save(acknowledgeRequestReceipt);
+        AcknowledgeRequestReceipt response = acknowledgeRequestReceiptRepository.save(acknowledgeRequestReceipt);
+
+        // Notify the Requester
+        notifyIndividual(
+                request.getRequester().getEmail(),
+                acknowledgeRequestReceipt.getComment(),
+                request,
+                request.getRequester().getFirstName()
+        );
+
+        return response;
     }
 
     public AcknowledgeRequestReceipt findAcknowledgeRequestReceiptByRequestId(Long requestId) {
         return acknowledgeRequestReceiptRepository.findByRequestId(requestId).orElse(null);
+    }
+
+
+    private void notifyIndividual(
+            String email,
+            String comment,
+            Request request,
+            String requesterName
+    ) {
+        emailService.sendEmailVerification(
+                email,
+                String.format("Stores Request ID: %s", request.getId()),
+                null,
+                requesterName,
+                "View Request",
+                comment,
+                "requests",
+                request
+        );
     }
 }
