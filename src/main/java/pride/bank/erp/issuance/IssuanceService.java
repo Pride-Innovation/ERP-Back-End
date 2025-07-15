@@ -22,6 +22,7 @@ import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.issuedCommodity.IssuedCommodity;
 import pride.bank.erp.issuedCommodity.IssuedCommodityRepository;
+import pride.bank.erp.notification.Email;
 import pride.bank.erp.request.Request;
 import pride.bank.erp.request.RequestRepository;
 import pride.bank.erp.request.RequestService;
@@ -51,6 +52,7 @@ public class IssuanceService {
     private final RequestRepository requestRepository;
     private final AssetAssignmentHistoryRepository assetAssignmentHistoryRepository;
     private final CurrentUserService currentUserService;
+    private final Email emailService;
 
     @Transactional
     public Issuance issueCommodities(IssuanceDTO request)
@@ -86,6 +88,13 @@ public class IssuanceService {
          * Update Asset Assignment History
          * Add Active to working or damaged.
          */
+
+        notifyIndividual(
+                "sodong@pridebank.co.ug", // Assuming this is the manager's email address
+                request.getComment() != null ? request.getComment() : "Please approve this issued request",
+                requestDetails,
+                "Manager"
+        );
 
         return savedIssuance;
     }
@@ -257,6 +266,25 @@ public class IssuanceService {
 
     public Issuance findByRequestId(Long requestId) throws NotFoundException {
         return issuanceRepository.findByRequestId(requestId).orElse(null);
+    }
+
+
+    private void notifyIndividual(
+            String email,
+            String comment,
+            Request request,
+            String requesterName
+    ) {
+        emailService.sendEmailVerification(
+                email,
+                String.format("Stores Request ID: %s", request.getId()),
+                null,
+                requesterName,
+                "View Request",
+                comment,
+                "requests",
+                request
+        );
     }
 
 }

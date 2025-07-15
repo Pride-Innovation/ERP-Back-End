@@ -15,6 +15,7 @@ import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.issuance.Issuance;
 import pride.bank.erp.issuance.IssuanceRepository;
 import pride.bank.erp.issuance.IssuanceService;
+import pride.bank.erp.notification.Email;
 import pride.bank.erp.request.Request;
 import pride.bank.erp.request.RequestRepository;
 import pride.bank.erp.request.RequestService;
@@ -31,6 +32,7 @@ public class IssuanceApprovalRecordService {
     private final RequestService requestService;
     private final RequestRepository requestRepository;
     private final CurrentUserService currentUserService;
+    private final Email emailService;
 
     /**
      * Creates an approval record for an issuance and updates the issuance status to "Approved".
@@ -60,11 +62,39 @@ public class IssuanceApprovalRecordService {
                 .build();
 
         issuanceApprovalRecordRepository.save(record);
-        return requestRepository.save(request); // Persist updated request status
+        Request response = requestRepository.save(request); // Persist updated request status
 
+        // Notify Officer For Issuance Approval
+        notifyIndividual(
+                request.getRequester().getEmail(),
+                issuanceApprovalRecordDTO.getComment(),
+                request,
+                request.getRequester().getFirstName()
+        );
+
+        return response;
     }
 
     public IssuanceApprovalRecord findIssuanceApprovalRecordByRequestId(Long requestId) {
         return issuanceApprovalRecordRepository.findByRequestId(requestId).orElse(null);
+    }
+
+
+    private void notifyIndividual(
+            String email,
+            String comment,
+            Request request,
+            String requesterName
+    ) {
+        emailService.sendEmailVerification(
+                email,
+                String.format("Stores Request ID: %s", request.getId()),
+                null,
+                requesterName,
+                "View Request",
+                comment,
+                "requests",
+                request
+        );
     }
 }
