@@ -73,6 +73,7 @@ public class AuthenticationService {
                 "Verify Account",
                 generatedPassword,
                 "authentication",
+                null,
                 null
         );
         return response;

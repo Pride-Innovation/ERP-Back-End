@@ -79,7 +79,8 @@ public class AcknowledgeRequestReceiptService {
                 "View Request",
                 comment,
                 "requests",
-                request
+                request,
+                null
         );
     }
 }

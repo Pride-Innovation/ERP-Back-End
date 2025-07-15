@@ -46,6 +46,7 @@ public class PasswordResetService {
                 "Reset Password",
                 null,
                 "authentication",
+                null,
                 null
         );
 

@@ -18,6 +18,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import pride.bank.erp.request.CommodityWithQuantityDTO;
 import pride.bank.erp.request.Request;
+import pride.bank.erp.stock.Stock;
 
 import java.time.Instant;
 import java.time.ZoneId;
@@ -62,7 +63,8 @@ public class Email {
             String buttonText,
             String password,
             String type,
-            Request request
+            Request request,
+            Stock stock
     ) {
         try {
 
@@ -76,6 +78,8 @@ public class Email {
                 htmlContent = getAuthenticationEmailContent(token, expirationTime, headerText, buttonText, password);
             } else if ("requests".equalsIgnoreCase(type)) {
                 htmlContent = getRequestEmailContent(request, headerText, buttonText, password);
+            } else if ("stocks".equalsIgnoreCase(type)) {
+                htmlContent = getStockEmailContent(stock, headerText, buttonText, password);
             } else {
                 logger.error("Invalid email type: {}", type);
                 return false;
@@ -165,7 +169,7 @@ public class Email {
         return String.format(
                 "<div style='font-family: Arial, sans-serif; line-height: 1.5; color: #333;'>"
                         + "<p><strong>Dear %s</strong></p>"
-                        +"%s"
+                        + "%s"
                         + "<table style='width: 60%%; border-collapse: collapse; font-size: 14px;'>"
                         + "<thead>"
                         + "<tr style='background-color: #05544B; color: #FFFFFF;'>"
@@ -231,6 +235,45 @@ public class Email {
         return request.getCommodities().stream()
                 .mapToInt(CommodityWithQuantityDTO::getQuantity)
                 .sum();
+    }
+
+    private String getStockEmailContent(
+            Stock stock,
+            String headerText,
+            String buttonText,
+            String password
+    ) {
+        String viewStockLink = String.format("%s/stocks/%s", verificationUrl, stock.getId());
+        String dateReceived = DateTimeFormatter.ofPattern("yyyy-MM-dd")
+                .withZone(ZoneId.systemDefault())
+                .format(stock.getCreateDate());
+
+        return String.format(
+                "<div style='font-family: Arial, sans-serif; color: #333; line-height: 1.6;'>"
+                        + "<h2 style='color: #05544B;'>%s</h2>"
+                        + "<p><strong>Date Received:</strong> %s</p>"
+                        + "<p><strong>LPO Number:</strong> %s</p>"
+                        + "<p><strong>Supplier:</strong> %s</p>"
+                        + "<p><strong>Branch:</strong> %s</p>"
+
+                        + "<p style='margin-top: 20px;'>%s</p>"
+
+                        + "<a href='%s' style='display: inline-block; padding: 10px 20px; color: white; "
+                        + "background-color: #05544B; text-decoration: none; border-radius: 5px;'>%s</a>"
+
+                        + "<p style='color: #999; font-size: 13px; margin-top: 30px;'>"
+                        + "DO NOT REPLY TO THIS EMAIL. THIS IS AN AUTOMATED NOTIFICATION FROM THE ASSET MANAGEMENT SYSTEM."
+                        + "</p>"
+                        + "</div>",
+                headerText,
+                dateReceived,
+                stock.getLpoNumber(),
+                stock.getSupplier().getName(),
+                stock.getBranch().getName(),
+                password != null ? password : "Please update the system with the newly received equipment.",
+                viewStockLink,
+                buttonText
+        );
     }
 
 }

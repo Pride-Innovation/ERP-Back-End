@@ -125,7 +125,8 @@ public class RequestReportService {
                 "View Request",
                 comment,
                 "requests",
-                request
+                request,
+                null
         );
 
         if (!emailStatus) {

@@ -293,7 +293,8 @@ public class RequestService {
                 "View Request",
                 null,
                 "requests",
-                request
+                request,
+                null
         );
 
         if (!emailStatus) {

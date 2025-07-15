@@ -24,6 +24,7 @@ import pride.bank.erp.grnCommodity.GrnCommodity;
 import pride.bank.erp.grnCommodity.GrnCommodityRepository;
 import pride.bank.erp.grnReport.GrnReport;
 import pride.bank.erp.grnReport.GrnReportRepository;
+import pride.bank.erp.notification.Email;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
 import pride.bank.erp.stockCommodity.StockCommodity;
@@ -55,6 +56,7 @@ public class StockService {
     private final AssetRepository assetRepository;
     private final GrnReportRepository grnReportRepository;
     private final GrnCommodityRepository grnCommodityRepository;
+    private final Email emailService;
 
     @Transactional
     public Page<Stock> fetchAllStocks(
@@ -460,6 +462,9 @@ public class StockService {
     private void createAssetsFromStock(Stock stock) throws NotFoundException {
         List<StockCommodity> stockCommodities = stockCommodityRepository.findByStockId(stock.getId());
 
+        boolean itEquipmentCreated = false;
+        boolean officeEquipmentCreated = false;
+
         for (StockCommodity stockCommodity : stockCommodities) {
             Commodity commodity = stockCommodity.getCommodity();
             AssetType assetType = commodity.getAssetType();
@@ -499,6 +504,30 @@ public class StockService {
             }
 
             stockCommodityRepository.save(stockCommodity);
+
+            if ("IT Equipment".equalsIgnoreCase(typeName)) {
+                itEquipmentCreated = true;
+            } else if ("Office Equipment".equalsIgnoreCase(typeName)) {
+                officeEquipmentCreated = true;
+            }
+        }
+
+        // Notify IT Team to update the assets created
+        if (itEquipmentCreated) {
+            notifyIndividual(
+                    "dkatamba@pridebank.co.ug", // IT Team Email Address
+                    stock,
+                    "IT Officer" // The office to update the Request
+            );
+        }
+
+        // Notify the Administration team to update the assets created
+        if (officeEquipmentCreated) {
+            notifyIndividual(
+                    "innovation@pridebank.co.ug", // Admin Team Email Address
+                    stock,
+                    "Admin Officer" // The office to update the Request
+            );
         }
     }
 
@@ -514,6 +543,25 @@ public class StockService {
         }
 
         return new Summation(orderedSum, deliveredSum);
+    }
+
+
+    private void notifyIndividual(
+            String email,
+            Stock stock,
+            String updaterName
+    ) {
+        emailService.sendEmailVerification(
+                email,
+                String.format("Stock LPO ID: %s", stock.getLpoNumber()),
+                null,
+                updaterName,
+                "View Stock",
+                "Please update these items which have been stocked",
+                "stocks",
+                null,
+                stock
+        );
     }
 
 }

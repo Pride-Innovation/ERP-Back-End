@@ -90,10 +90,8 @@ public class IssuanceService {
          */
 
         notifyIndividual(
-                "sodong@pridebank.co.ug", // Assuming this is the manager's email address
                 request.getComment() != null ? request.getComment() : "Please approve this issued request",
-                requestDetails,
-                "Manager"
+                requestDetails
         );
 
         return savedIssuance;
@@ -270,20 +268,19 @@ public class IssuanceService {
 
 
     private void notifyIndividual(
-            String email,
             String comment,
-            Request request,
-            String requesterName
+            Request request
     ) {
         emailService.sendEmailVerification(
-                email,
+                "sodong@pridebank.co.ug", // This must be Admin Manager Email
                 String.format("Stores Request ID: %s", request.getId()),
                 null,
-                requesterName,
+                "Manager",
                 "View Request",
                 comment,
                 "requests",
-                request
+                request,
+                null
         );
     }
 

@@ -91,6 +91,7 @@ public class UserService {
                         "Verify Account",
                         generatedPassword,
                         "authentication",
+                        null,
                         null
                 );
 
