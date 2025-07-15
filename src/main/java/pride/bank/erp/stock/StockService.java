@@ -119,11 +119,11 @@ public class StockService {
         Branch headOffice = branchService.findBranch(1L);
 
         if (summation.getDeliveredCommoditiesSummation() == summation.getOrderedCommoditiesSummation()) {
-            status = statusService.findOneStatus(4L);
+            status = statusService.findOneStatus(11L); // Stock Completed Status ID.
         }
 
         if (summation.getDeliveredCommoditiesSummation() < summation.getOrderedCommoditiesSummation()) {
-            status = statusService.findOneStatus(1L);
+            status = statusService.findOneStatus(10L); // Stock Pending Status ID.
         }
 
         Stock stock = Stock
@@ -242,9 +242,9 @@ public class StockService {
 
         Summation updatedSummation = calculateSumsFromStock(stockId);
         if (updatedSummation.getDeliveredCommoditiesSummation() == updatedSummation.getOrderedCommoditiesSummation()) {
-            stock.setStatus(statusService.findOneStatus(4L));
+            stock.setStatus(statusService.findOneStatus(11L)); // Stock Completed Status
         } else {
-            stock.setStatus(statusService.findOneStatus(1L));
+            stock.setStatus(statusService.findOneStatus(10L)); // Stock Pending Status
         }
         stockRepository.save(stock);
 
