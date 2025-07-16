@@ -8,6 +8,7 @@ Managing Director
 package pride.bank.erp.request;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -43,6 +44,7 @@ import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class RequestService {
 
     private final RequestRepository requestRepository;
@@ -63,9 +65,41 @@ public class RequestService {
             List<RequestCommodityDTO> requestCommoditiesRequest
     ) throws IOException, NotFoundException {
 
-        String filePath = fileUpload.uploadFileToLocalDirectory(file);
-        Status status = statusService.findOneStatus(1L); // Asset Request Created Identification
+        if (body == null) {
+            throw new IllegalArgumentException("Request body cannot be null.");
+        }
+
+        if (body.getName() == null || body.getName().trim().isEmpty()) {
+            throw new IllegalArgumentException("Request name is required.");
+        }
+
+        if (requestCommoditiesRequest == null || requestCommoditiesRequest.isEmpty()) {
+            throw new IllegalArgumentException("At least one commodity is required.");
+        }
+
+        String filePath = null;
+        if (file != null && !file.isEmpty()) {
+            try {
+                filePath = fileUpload.uploadFileToLocalDirectory(file);
+            } catch (IOException ex) {
+                throw new IOException("Failed to upload file: " + ex.getMessage(), ex);
+            }
+        }
+
+        Status status;
+        try {
+            status = statusService.findOneStatus(1L);
+            if (status == null) {
+                throw new NotFoundException("Status with ID 1 not found.");
+            }
+        } catch (Exception ex) {
+            throw new NotFoundException("Error retrieving status: " + ex.getMessage());
+        }
+
         User requester = currentUserService.getCurrentUser();
+        if (requester == null) {
+            throw new IllegalStateException("Current user could not be identified.");
+        }
 
         Request request = Request.builder()
                 .name(body.getName())
@@ -77,22 +111,43 @@ public class RequestService {
                 .description(body.getDescription())
                 .build();
 
-        Request savedRequest = requestRepository.save(request);
-        User supervisor = findSupervisorToApproveRequest();
+        Request savedRequest;
+        try {
+            savedRequest = requestRepository.save(request);
+        } catch (Exception ex) {
+            throw new RuntimeException("Failed to save request: " + ex.getMessage(), ex);
+        }
 
-        savedRequest.setCurrentApprover(supervisor);
-        savedRequest = requestRepository.save(savedRequest);
+        User supervisor = null;
+        try {
+            supervisor = findSupervisorToApproveRequest();
+            savedRequest.setCurrentApprover(supervisor);
+            savedRequest = requestRepository.save(savedRequest);
+        } catch (Exception ex) {
+            throw new IllegalStateException("Error assigning supervisor: " + ex.getMessage(), ex);
+        }
 
-        addCommoditiesToRequest(savedRequest, requestCommoditiesRequest);
+        try {
+            addCommoditiesToRequest(savedRequest, requestCommoditiesRequest);
+        } catch (Exception ex) {
+            throw new RuntimeException("Error adding commodities to request: " + ex.getMessage(), ex);
+        }
+
         List<RequestCommodity> requestCommodities = requestCommodityRepository.findByRequestId(savedRequest.getId());
         List<CommodityWithQuantityDTO> commodities = commodityWithQuantityDTO(requestCommodities);
-
         savedRequest.setCommodities(commodities);
-        String emailStatus = notifySupervisor(supervisor, savedRequest);
-        savedRequest.setEmailMessage(emailStatus);
+
+        try {
+            String emailStatus = notifySupervisor(supervisor, savedRequest);
+            savedRequest.setEmailMessage(emailStatus);
+        } catch (Exception ex) {
+            savedRequest.setEmailMessage("Failed to notify supervisor.");
+            log.error("Failed to notify supervisor.");
+        }
 
         return savedRequest;
     }
+
 
     @Transactional
     public Request updateRequest(

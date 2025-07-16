@@ -16,9 +16,12 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import pride.bank.erp.exception.BadRequestException;
+import pride.bank.erp.exception.ResourceNotFoundException;
 import pride.bank.erp.helper.Constants;
 import pride.bank.erp.requestCommodity.RequestCommodityDTO;
 
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -73,7 +76,8 @@ public class RequestController {
             commodityList = objectMapper.readValue(requestCommodities,
                     objectMapper.getTypeFactory().constructCollectionType(List.class, RequestCommodityDTO.class));
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Error deserializing requestCommodities: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("Error deserializing requestCommodities: " + e.getMessage());
         }
 
         Request request = Request.builder()
@@ -83,14 +87,15 @@ public class RequestController {
                 .build();
 
         try {
-            Request savedRequest = requestService.createRequest(
-                    request,
-                    file,
-                    commodityList
-            );
+            Request savedRequest = requestService.createRequest(request, file, commodityList);
             return ResponseEntity.status(HttpStatus.CREATED).body(savedRequest);
-        } catch (IllegalArgumentException e) {
+        } catch (BadRequestException | IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+        } catch (ResourceNotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
+
+        } catch (IOException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("File processing failed.");
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Request creation failed due to an unexpected error.");
@@ -113,7 +118,8 @@ public class RequestController {
             commodityList = objectMapper.readValue(requestCommodities,
                     objectMapper.getTypeFactory().constructCollectionType(List.class, RequestCommodityDTO.class));
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Error deserializing requestCommodities: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("Error deserializing requestCommodities: " + e.getMessage());
         }
 
         Request request = Request.builder()
