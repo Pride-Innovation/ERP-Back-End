@@ -8,6 +8,7 @@ Managing Director
 package pride.bank.erp.stock;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -21,6 +22,7 @@ import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
 @RestController
 @RequestMapping(Constants.GENERAL_ROUTE)
 @RequiredArgsConstructor
+@Slf4j
 public class StockController {
     private final StockService stockService;
 
@@ -44,18 +46,23 @@ public class StockController {
 
     @PostMapping("/stocks")
     public ResponseEntity<?> createStock(@RequestBody StockDTO stockDTO) {
+        log.info("Received stock creation request: {}", stockDTO);
         try {
             Stock response = stockService.createStock(
                     stockDTO.getStock(),
                     stockDTO.getSupplier(),
                     stockDTO.getStockCommoditiesRequest()
             );
+            log.info("Stock created successfully with ID: {}", response.getId());
             return new ResponseEntity<>(response, HttpStatus.CREATED);
         } catch (NotFoundException e) {
+            log.error("Failed to create stock", e);
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
         } catch (IllegalArgumentException e) {
+            log.error("Failed to create stock", e);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
         } catch (Exception e) {
+            log.error("Failed to create stock", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Unexpected error: " + e.getMessage());
         }

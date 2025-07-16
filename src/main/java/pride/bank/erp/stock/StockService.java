@@ -554,7 +554,7 @@ public class StockService {
 
         if (itEquipmentCreated) {
             notifyIndividual(
-                    "dkatamba@pridebank.co.ug", // IT Team Email Address
+                    "sodong@pridebank.co.ug", // IT Team Email Address
                     stock,
                     "IT Officer", // The office to update the Request
                     String.format("Please update the system with the following IT equipment:<br/><br/>%s", itCommodities)
@@ -564,7 +564,7 @@ public class StockService {
         // Notify the Administration team to update the assets created
         if (officeEquipmentCreated) {
             notifyIndividual(
-                    "innovation@pridebank.co.ug", // Admin Team Email Address
+                    "sodong@pridebank.co.ug", // Admin Team Email Address
                     stock,
                     "Admin Officer", // The office to update the Request
                     String.format("Please update the system with the following Office equipment:<br/><br/>%s", officeCommodities)
