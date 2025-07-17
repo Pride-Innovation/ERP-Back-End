@@ -31,6 +31,7 @@ import pride.bank.erp.status.StatusService;
 import pride.bank.erp.stock.CommodityWithDetailsDao;
 import pride.bank.erp.store.StoreService;
 import pride.bank.erp.user.User;
+import pride.bank.erp.user.UserRepository;
 import pride.bank.erp.user.UserService;
 
 import java.time.LocalDateTime;
@@ -53,6 +54,7 @@ public class IssuanceService {
     private final AssetAssignmentHistoryRepository assetAssignmentHistoryRepository;
     private final CurrentUserService currentUserService;
     private final Email emailService;
+    private final UserRepository userRepository;
 
     @Transactional
     public Issuance issueCommodities(IssuanceDTO request)
@@ -270,9 +272,9 @@ public class IssuanceService {
     private void notifyIndividual(
             String comment,
             Request request
-    ) {
+    ) throws NotFoundException {
         emailService.sendEmailVerification(
-                "sodong@pridebank.co.ug", // This must be Admin Manager Email
+                getAdminManager().getEmail(), // This must be Admin Manager Email
                 String.format("Stores Request ID: %s", request.getId()),
                 null,
                 "Manager",
@@ -282,6 +284,19 @@ public class IssuanceService {
                 request,
                 null
         );
+    }
+
+    private User getAdminManager() throws NotFoundException {
+
+        User currentUser = currentUserService.getCurrentUser();
+
+        Long supervisorTitleId = currentUser.getTitle().getReportsTo().getId();
+        List<User> supervisors = userRepository.findByTitleId(supervisorTitleId);
+
+        if (supervisors.isEmpty()) {
+            throw new NotFoundException("No supervisor found for title ID: " + supervisorTitleId);
+        }
+        return supervisors.get(0);
     }
 
 }

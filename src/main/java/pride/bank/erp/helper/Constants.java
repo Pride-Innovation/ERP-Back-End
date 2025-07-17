@@ -65,7 +65,7 @@ public class Constants {
     public static final String REQUEST_APPROVAL = GENERAL_ROUTE + "/approvals";
     public static final String REQUEST_ISSUANCE = GENERAL_ROUTE + "/issuance/**";
     public static final String REQUEST_ACKNOWLEDGEMENT = GENERAL_ROUTE + "/acknowledge-request";
-    public static final String ISSUANCE_APPROVAL = GENERAL_ROUTE + "/acknowledge-issuance";
+    public static final String ISSUANCE_APPROVAL = GENERAL_ROUTE + "/approve-issuance";
 
     public static final String READ_REQUEST = "READ_REQUEST";
     public static final String CREATE_REQUEST = "CREATE_REQUEST";

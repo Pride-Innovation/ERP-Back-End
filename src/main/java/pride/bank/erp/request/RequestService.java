@@ -363,8 +363,8 @@ public class RequestService {
         return switch (role.getName()) {
             case "Officer" -> "OFFICER";
             case "Manager" -> "MANAGER";
-            case "Admin_Officer" -> "ADMIN_OFFICER";
-            case "Admin_Manager" -> "ADMIN_MANAGER";
+            case "Admin Officer" -> "ADMIN_OFFICER";
+            case "Admin Manager" -> "ADMIN_MANAGER";
             default -> "";
         };
     }
