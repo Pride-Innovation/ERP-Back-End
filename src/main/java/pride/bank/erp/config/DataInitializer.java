@@ -147,7 +147,13 @@ public class DataInitializer {
                 ensurePermission(READ_ASSET),
                 ensurePermission(CREATE_ASSET),
                 ensurePermission(DELETE_ASSET),
-                ensurePermission(UPDATE_ASSET)
+                ensurePermission(UPDATE_ASSET),
+                // Request Approvals and Acknowledgement
+                ensurePermission(APPROVE_REQUEST),
+                ensurePermission(REJECT_REQUEST),
+                ensurePermission(ISSUE_ITEMS),
+                ensurePermission(ACKNOWLEDGE_REQUEST),
+                ensurePermission(APPROVE_ISSUANCE)
         );
     }
 
