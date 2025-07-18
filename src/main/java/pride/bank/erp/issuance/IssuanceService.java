@@ -274,7 +274,8 @@ public class IssuanceService {
             Request request
     ) throws NotFoundException {
         emailService.sendEmailVerification(
-                getAdminManager().getEmail(), // This must be Admin Manager Email
+//                getAdminManager().getEmail(), // This must be Admin Manager Email
+                "dkatamba@pridebank.co.ug",
                 String.format("Stores Request ID: %s", request.getId()),
                 null,
                 "Manager",

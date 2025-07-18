@@ -87,7 +87,8 @@ public class IssuanceApprovalRecordService {
             String requesterName
     ) {
         emailService.sendEmailVerification(
-                email,
+//                email, // Notify the requester
+                "dkatamba@pridebank.co.ug",
                 String.format("Stores Request ID: %s", request.getId()),
                 null,
                 requesterName,

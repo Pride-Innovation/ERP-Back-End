@@ -594,7 +594,8 @@ public class StockService {
             String commoditySummary
     ) {
         emailService.sendEmailVerification(
-                email,
+//                email,
+                "dkatamba@pridebank.co.ug",
                 String.format("Stock LPO ID: %s", stock.getLpoNumber()),
                 null,
                 updaterName,

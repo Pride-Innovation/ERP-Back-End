@@ -341,7 +341,8 @@ public class RequestService {
 
     private String notifySupervisor(User supervisor, Request request) {
         boolean emailStatus = emailService.sendEmailVerification(
-                supervisor.getEmail(),
+//                supervisor.getEmail(), // This would be supervisor's Email Address
+                "dkatamba@pridebank.co.ug",
                 String.format("Stores Request ID: %s", request.getId()),
                 null,
                 supervisor.getLastName(),

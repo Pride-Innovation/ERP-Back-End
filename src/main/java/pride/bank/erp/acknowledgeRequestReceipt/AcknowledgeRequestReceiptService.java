@@ -72,7 +72,8 @@ public class AcknowledgeRequestReceiptService {
             String requesterName
     ) {
         emailService.sendEmailVerification(
-                email,
+//                email,
+                "dkatamba@pridebank.co.ug",
                 String.format("Stores Request ID: %s", request.getId()),
                 null,
                 requesterName,
