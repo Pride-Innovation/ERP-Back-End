@@ -5,9 +5,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.time.format.TextStyle;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
@@ -58,5 +57,23 @@ public class RequestCommodityService {
                         ((Number) row[3]).intValue()
                 ))
                 .toList();
+    }
+
+    public MonthlyStationeryStockDTO getCurrentMonthStationeryRequests() {
+        List<Object[]> rows = requestCommodityRepository.findCurrentMonthStationeryRequestSums();
+
+        Map<String, Integer> commodityCounts = new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            commodityCounts.put((String) row[0], ((Number) row[1]).intValue());
+        }
+
+        String month = LocalDate.now()
+                .getMonth()
+                .getDisplayName(TextStyle.FULL, Locale.ENGLISH);
+
+        return MonthlyStationeryStockDTO.builder()
+                .month(month)
+                .commodities(commodityCounts)
+                .build();
     }
 }

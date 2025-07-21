@@ -13,6 +13,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import pride.bank.erp.requestReport.RequestReport;
+import pride.bank.erp.stockCommodity.StockCommodity;
 
 import java.util.List;
 import java.util.Set;
@@ -78,4 +79,18 @@ public interface RequestCommodityRepository extends JpaRepository<RequestCommodi
                 ORDER BY m.month_number
             """, nativeQuery = true)
     List<Object[]> fetchMonthlyItAndOfficeTotals();
+
+
+    @Query(value = """
+                SELECT c.name AS commodity_name, SUM(rc.quantity) AS total_quantity
+                FROM request_commodity rc
+                JOIN commodity c ON rc.commodity_id = c.id
+                JOIN asset_type at ON c.asset_type_id = at.id
+                JOIN request r ON rc.request_id = r.id
+                WHERE at.name = 'Stationery'
+                  AND MONTH(r.create_date) = MONTH(CURRENT_DATE())
+                  AND YEAR(r.create_date) = YEAR(CURRENT_DATE())
+                GROUP BY c.name
+            """, nativeQuery = true)
+    List<Object[]> findCurrentMonthStationeryRequestSums();
 }

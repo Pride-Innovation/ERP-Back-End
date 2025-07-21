@@ -31,4 +31,9 @@ public class RequestCommodityController {
     public ResponseEntity<List<MonthlyAssetTotals>> getMonthlyItAndOfficeStats() {
         return ResponseEntity.ok(requestCommodityService.getMonthlyItAndOfficeStats());
     }
+
+    @GetMapping("/stationery/monthly")
+    public ResponseEntity<MonthlyStationeryStockDTO> getStationeryRequestsForCurrentMonth() {
+        return ResponseEntity.ok(requestCommodityService.getCurrentMonthStationeryRequests());
+    }
 }
