@@ -49,4 +49,33 @@ public interface RequestCommodityRepository extends JpaRepository<RequestCommodi
                 ORDER BY MONTH(r.create_date)
             """, nativeQuery = true)
     List<Object[]> getMonthlyCommodityQuantitiesLastYear();
+
+    @Query(value = """
+                SELECT
+                  m.month_number,
+                  m.month_name,
+                  COALESCE(SUM(CASE WHEN at.name = 'IT Equipment' THEN rc.quantity END), 0) AS itEquipment,
+                  COALESCE(SUM(CASE WHEN at.name = 'Office Equipment' THEN rc.quantity END), 0) AS officeEquipment
+                FROM (
+                  SELECT 1 AS month_number, 'January' AS month_name UNION
+                  SELECT 2, 'February' UNION
+                  SELECT 3, 'March' UNION
+                  SELECT 4, 'April' UNION
+                  SELECT 5, 'May' UNION
+                  SELECT 6, 'June' UNION
+                  SELECT 7, 'July' UNION
+                  SELECT 8, 'August' UNION
+                  SELECT 9, 'September' UNION
+                  SELECT 10, 'October' UNION
+                  SELECT 11, 'November' UNION
+                  SELECT 12, 'December'
+                ) m
+                LEFT JOIN request r ON MONTH(r.create_date) = m.month_number AND YEAR(r.create_date) = YEAR(CURDATE())
+                LEFT JOIN request_commodity rc ON rc.request_id = r.id
+                LEFT JOIN commodity c ON rc.commodity_id = c.id
+                LEFT JOIN asset_type at ON c.asset_type_id = at.id
+                GROUP BY m.month_number, m.month_name
+                ORDER BY m.month_number
+            """, nativeQuery = true)
+    List<Object[]> fetchMonthlyItAndOfficeTotals();
 }

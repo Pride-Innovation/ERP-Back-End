@@ -49,4 +49,14 @@ public class RequestCommodityService {
                 ))
                 .toList();
     }
+
+    public List<MonthlyAssetTotals> getMonthlyItAndOfficeStats() {
+        return requestCommodityRepository.fetchMonthlyItAndOfficeTotals().stream()
+                .map(row -> new MonthlyAssetTotals(
+                        (String) row[1],
+                        ((Number) row[2]).intValue(),
+                        ((Number) row[3]).intValue()
+                ))
+                .toList();
+    }
 }

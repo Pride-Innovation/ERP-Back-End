@@ -26,4 +26,9 @@ public class RequestCommodityController {
     public ResponseEntity<List<MonthlyCommoditySummary>> getMonthlyCommodityStatsLastYear() {
         return ResponseEntity.ok(requestCommodityService.getMonthlyCommodityStatsLastYear());
     }
+
+    @GetMapping("/monthly-itAndOffice-stats")
+    public ResponseEntity<List<MonthlyAssetTotals>> getMonthlyItAndOfficeStats() {
+        return ResponseEntity.ok(requestCommodityService.getMonthlyItAndOfficeStats());
+    }
 }
