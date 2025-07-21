@@ -28,4 +28,12 @@ public interface RequestCommodityRepository extends JpaRepository<RequestCommodi
 
     @Query("SELECT rr FROM RequestReport rr WHERE rr.request.id = :requestId")
     Set<RequestReport> findReportByRequestId(@Param("requestId") Long requestId);
+
+    @Query("""
+                SELECT SUM(rc.quantity)
+                FROM RequestCommodity rc
+                WHERE MONTH(rc.request.createDate) = :month
+                  AND YEAR(rc.request.createDate) = :year
+            """)
+    Integer getTotalQuantityByMonthAndYear(@Param("month") int month, @Param("year") int year);
 }
