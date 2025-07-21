@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import pride.bank.erp.helper.Constants;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -19,5 +20,10 @@ public class RequestCommodityController {
     @GetMapping("/request-rating-stats")
     public ResponseEntity<Map<String, Integer>> getMonthlyCommodityStats() {
         return ResponseEntity.ok(requestCommodityService.getMonthlyCommodityStats());
+    }
+
+    @GetMapping("/request-stats-one-year")
+    public ResponseEntity<List<MonthlyCommoditySummary>> getMonthlyCommodityStatsLastYear() {
+        return ResponseEntity.ok(requestCommodityService.getMonthlyCommodityStatsLastYear());
     }
 }

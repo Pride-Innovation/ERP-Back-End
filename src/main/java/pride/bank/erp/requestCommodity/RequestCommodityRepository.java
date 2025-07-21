@@ -36,4 +36,17 @@ public interface RequestCommodityRepository extends JpaRepository<RequestCommodi
                   AND YEAR(rc.request.createDate) = :year
             """)
     Integer getTotalQuantityByMonthAndYear(@Param("month") int month, @Param("year") int year);
+
+    @Query(value = """
+                SELECT
+                    MONTH(r.create_date) AS month_number,
+                    MONTHNAME(r.create_date) AS month_name,
+                    SUM(rc.quantity) AS total_quantity
+                FROM request_commodity rc
+                JOIN request r ON rc.request_id = r.id
+                WHERE r.create_date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+                GROUP BY MONTH(r.create_date), MONTHNAME(r.create_date)
+                ORDER BY MONTH(r.create_date)
+            """, nativeQuery = true)
+    List<Object[]> getMonthlyCommodityQuantitiesLastYear();
 }

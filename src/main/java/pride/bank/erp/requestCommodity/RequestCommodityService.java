@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Service
@@ -36,5 +37,16 @@ public class RequestCommodityService {
         result.put("previousMonth", previousMonthTotal != null ? previousMonthTotal : 0);
 
         return result;
+    }
+
+    public List<MonthlyCommoditySummary> getMonthlyCommodityStatsLastYear() {
+        List<Object[]> results = requestCommodityRepository.getMonthlyCommodityQuantitiesLastYear();
+
+        return results.stream()
+                .map(row -> new MonthlyCommoditySummary(
+                        (String) row[1],
+                        ((Number) row[2]).intValue()
+                ))
+                .toList();
     }
 }
