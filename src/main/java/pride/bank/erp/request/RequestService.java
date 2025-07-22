@@ -433,4 +433,21 @@ public class RequestService {
         };
     }
 
+
+    public List<AssetRequestSummaryDTO> getCurrentYearRequestSummary() {
+        Long receiptAcknowledged = 7L; // This must be the ID of  Receipt Acknowledged Status
+        Long requestRejected = 2L; // This must be the ID of Request Rejected Status
+
+        try {
+            return requestRepository.fetchAssetRequestSummaries(receiptAcknowledged, requestRejected).stream()
+                    .map(r -> new AssetRequestSummaryDTO(
+                            (String) r[0],
+                            ((Number) r[1]).longValue(),
+                            ((Number) r[2]).longValue()))
+                    .toList();
+        } catch (Exception ex) {
+            log.error("Error fetching asset request summaries: {}", ex.getMessage());
+            return List.of();
+        }
+    }
 }

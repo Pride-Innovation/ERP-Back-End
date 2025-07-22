@@ -157,4 +157,9 @@ public class RequestController {
             return new ResponseEntity<>(e.getMessage(), HttpStatus.BAD_REQUEST);
         }
     }
+
+    @GetMapping("/current-year-summary")
+    public ResponseEntity<List<AssetRequestSummaryDTO>> getCurrentYearRequestSummary() {
+        return ResponseEntity.ok(requestService.getCurrentYearRequestSummary());
+    }
 }
