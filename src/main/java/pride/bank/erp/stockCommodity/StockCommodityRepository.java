@@ -66,5 +66,72 @@ public interface StockCommodityRepository extends JpaRepository<StockCommodity, 
             """, nativeQuery = true)
     List<Object[]> findCurrentMonthStationeryStockSums();
 
+    @Query(value = """
+                (
+                  SELECT c.name AS commodity_name, SUM(sc.delivered_quantity) AS total_quantity
+                  FROM stock_commodity sc
+                  JOIN commodity c ON sc.commodity_id = c.id
+                  JOIN asset_type at ON c.asset_type_id = at.id
+                  JOIN stock s ON sc.stock_id = s.id
+                  WHERE at.name = 'IT Equipment'
+                    AND MONTH(s.create_date) = MONTH(CURRENT_DATE())
+                    AND YEAR(s.create_date) = YEAR(CURRENT_DATE())
+                  GROUP BY c.name
+                  HAVING SUM(sc.delivered_quantity) > 0
+                  ORDER BY total_quantity DESC
+                  LIMIT 1
+                )
+                UNION ALL
+                (
+                  SELECT c.name AS commodity_name, SUM(sc.delivered_quantity) AS total_quantity
+                  FROM stock_commodity sc
+                  JOIN commodity c ON sc.commodity_id = c.id
+                  JOIN asset_type at ON c.asset_type_id = at.id
+                  JOIN stock s ON sc.stock_id = s.id
+                  WHERE at.name = 'IT Equipment'
+                    AND MONTH(s.create_date) = MONTH(CURRENT_DATE())
+                    AND YEAR(s.create_date) = YEAR(CURRENT_DATE())
+                  GROUP BY c.name
+                  HAVING SUM(sc.delivered_quantity) > 0
+                  ORDER BY total_quantity ASC
+                  LIMIT 1
+                )
+            """, nativeQuery = true)
+    List<Object[]> findTopAndLeastITStockedCommodities();
+
+
+    @Query(value = """
+                SELECT * FROM (
+                    SELECT c.name AS commodity_name, SUM(sc.delivered_quantity) AS total_quantity
+                    FROM stock_commodity sc
+                    JOIN commodity c ON sc.commodity_id = c.id
+                    JOIN asset_type at ON c.asset_type_id = at.id
+                    JOIN stock s ON sc.stock_id = s.id
+                    WHERE at.name = 'Office Equipment'
+                      AND MONTH(s.create_date) = MONTH(CURRENT_DATE())
+                      AND YEAR(s.create_date) = YEAR(CURRENT_DATE())
+                    GROUP BY c.name
+                    HAVING SUM(sc.delivered_quantity) > 0
+                    ORDER BY total_quantity DESC
+                    LIMIT 1
+                ) AS most_stocked
+                UNION ALL
+                SELECT * FROM (
+                    SELECT c.name AS commodity_name, SUM(sc.delivered_quantity) AS total_quantity
+                    FROM stock_commodity sc
+                    JOIN commodity c ON sc.commodity_id = c.id
+                    JOIN asset_type at ON c.asset_type_id = at.id
+                    JOIN stock s ON sc.stock_id = s.id
+                    WHERE at.name = 'Office Equipment'
+                      AND MONTH(s.create_date) = MONTH(CURRENT_DATE())
+                      AND YEAR(s.create_date) = YEAR(CURRENT_DATE())
+                    GROUP BY c.name
+                    HAVING SUM(sc.delivered_quantity) > 0
+                    ORDER BY total_quantity ASC
+                    LIMIT 1
+                ) AS least_stocked
+            """, nativeQuery = true)
+    List<Object[]> findTopAndLeastOfficeStockedCommodities();
+
 
 }

@@ -112,4 +112,33 @@ public class StockCommodityService {
                 .commodities(commodityCounts)
                 .build();
     }
+
+
+    public List<StockSummaryDTO> getItAndOfficeMonthlyStockSummary() {
+        List<StockSummaryDTO> summaryList = new ArrayList<>();
+
+        List<Object[]> itData = stockCommodityRepository.findTopAndLeastITStockedCommodities();
+        if (itData.size() == 2) {
+            summaryList.add(new StockSummaryDTO(
+                    "IT Equipment",
+                    (String) itData.get(0)[0],
+                    ((Number) itData.get(0)[1]).longValue(),
+                    (String) itData.get(1)[0],
+                    ((Number) itData.get(1)[1]).longValue()
+            ));
+        }
+
+        List<Object[]> officeData = stockCommodityRepository.findTopAndLeastOfficeStockedCommodities();
+        if (officeData.size() == 2) {
+            summaryList.add(new StockSummaryDTO(
+                    "Office Equipment",
+                    (String) officeData.get(0)[0],
+                    ((Number) officeData.get(0)[1]).longValue(),
+                    (String) officeData.get(1)[0],
+                    ((Number) officeData.get(1)[1]).longValue()
+            ));
+        }
+
+        return summaryList;
+    }
 }
