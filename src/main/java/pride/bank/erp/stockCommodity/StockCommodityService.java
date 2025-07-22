@@ -2,6 +2,7 @@ package pride.bank.erp.stockCommodity;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import pride.bank.erp.requestCommodity.MonthlyStationeryStockDTO;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -88,5 +89,27 @@ public class StockCommodityService {
         if (name == null) return "unknown";
         String normalized = name.trim().toLowerCase();
         return ASSET_TYPE_NAME_MAP.getOrDefault(normalized, "unknown");
+    }
+
+
+    /**
+     * @return Current Month Stationery Stock Report
+     */
+    public MonthlyStationeryStockDTO getCurrentMonthStationeryStocks() {
+        List<Object[]> rows = stockCommodityRepository.findCurrentMonthStationeryStockSums();
+
+        Map<String, Integer> commodityCounts = new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            commodityCounts.put((String) row[0], ((Number) row[1]).intValue());
+        }
+
+        String month = LocalDate.now()
+                .getMonth()
+                .getDisplayName(TextStyle.FULL, Locale.ENGLISH);
+
+        return MonthlyStationeryStockDTO.builder()
+                .month(month)
+                .commodities(commodityCounts)
+                .build();
     }
 }

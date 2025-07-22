@@ -32,7 +32,7 @@ public class RequestCommodityController {
         return ResponseEntity.ok(requestCommodityService.getMonthlyItAndOfficeStats());
     }
 
-    @GetMapping("/stationery/monthly")
+    @GetMapping("/stationery/monthly-request")
     public ResponseEntity<MonthlyStationeryStockDTO> getStationeryRequestsForCurrentMonth() {
         return ResponseEntity.ok(requestCommodityService.getCurrentMonthStationeryRequests());
     }

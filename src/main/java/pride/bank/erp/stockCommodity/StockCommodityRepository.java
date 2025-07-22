@@ -52,4 +52,19 @@ public interface StockCommodityRepository extends JpaRepository<StockCommodity, 
             """, nativeQuery = true)
     List<MonthlyStockSummaryDTO> getMonthlyStockSummaryForLastSixMonths();
 
+
+    @Query(value = """
+                SELECT c.name AS commodity_name, SUM(sc.ordered_quantity) AS total_quantity
+                FROM stock_commodity sc
+                JOIN commodity c ON sc.commodity_id = c.id
+                JOIN asset_type at ON c.asset_type_id = at.id
+                JOIN stock s ON sc.stock_id = s.id
+                WHERE at.name = 'Stationery'
+                  AND MONTH(s.create_date) = MONTH(CURRENT_DATE())
+                  AND YEAR(s.create_date) = YEAR(CURRENT_DATE())
+                GROUP BY c.name
+            """, nativeQuery = true)
+    List<Object[]> findCurrentMonthStationeryStockSums();
+
+
 }
