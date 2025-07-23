@@ -10,6 +10,8 @@ package pride.bank.erp.request;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -448,6 +450,60 @@ public class RequestService {
         } catch (Exception ex) {
             log.error("Error fetching asset request summaries: {}", ex.getMessage());
             return List.of();
+        }
+    }
+
+    @Transactional
+    public Page<Request> findLatestPendingRequestsWithDetails(
+            int pageSize,
+            String sortDirection,
+            int pageNumber,
+            String sortBy,
+            String name,
+            String priority,
+            String description,
+            LocalDateTime timeOfSubmissionOfRequest,
+            List<Long> statusIds,
+            String status) {
+        try {
+            RequestPage requestPage = RequestPage.builder()
+                    .pageSize(pageSize)
+                    .sortDirection(determineSortDirection(sortDirection))
+                    .sortBy(sortBy)
+                    .pageNumber(pageNumber)
+                    .build();
+
+            RequestSearchCriteria requestSearchCriteria = RequestSearchCriteria
+                    .builder()
+                    .name(name)
+                    .priority(priority)
+                    .description(description)
+                    .statusIds(statusIds)
+                    .requesterIds(requestersList(status))
+                    .timeOfSubmissionOfRequest(timeOfSubmissionOfRequest)
+                    .build();
+
+            Page<Request> requestPageResult = requestSearchDao.findAllWithFilters(requestPage, requestSearchCriteria);
+
+            requestPageResult.getContent().forEach(request -> {
+                List<RequestCommodity> requestCommodities = requestCommodityRepository.findByRequestId(request.getId());
+
+                if (requestCommodities != null && !requestCommodities.isEmpty()) {
+                    List<CommodityWithQuantityDTO> commodityDTOs = requestCommodities.stream()
+                            .map(rc -> CommodityWithQuantityDTO.builder()
+                                    .commodity(rc.getCommodity())
+                                    .quantity(rc.getQuantity())
+                                    .build())
+                            .toList();
+                    request.setCommodities(commodityDTOs);
+                } else {
+                    request.setCommodities(List.of()); // or null, if preferred
+                }
+            });
+
+            return requestPageResult;
+        } catch (Exception e) {
+            return null;
         }
     }
 }

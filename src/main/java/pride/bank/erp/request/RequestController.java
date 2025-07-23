@@ -162,4 +162,32 @@ public class RequestController {
     public ResponseEntity<List<AssetRequestSummaryDTO>> getCurrentYearRequestSummary() {
         return ResponseEntity.ok(requestService.getCurrentYearRequestSummary());
     }
+
+
+    @GetMapping("/latest-pending-request")
+    public ResponseEntity<Page<Request>> findLatestPendingRequestsWithDetails(
+            @RequestParam(required = false, defaultValue = "3") int pageSize,
+            @RequestParam(required = false, defaultValue = DESCENDING_SORT_DIRECTION) String sortDirection,
+            @RequestParam(required = false, defaultValue = "0") int pageNumber,
+            @RequestParam(required = false, defaultValue = "id") String sortBy,
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) String priority,
+            @RequestParam(required = false) String description,
+            @RequestParam(required = false) LocalDateTime timeOfSubmissionOfRequest,
+            @RequestParam(required = false, defaultValue = "3") List<Long> statusIds, // Status Ids for an Approved Request.
+            @RequestParam(required = false) String status
+    ) {
+        return new ResponseEntity<>(requestService.findLatestPendingRequestsWithDetails(
+                pageSize,
+                sortDirection,
+                pageNumber,
+                sortBy,
+                name,
+                priority,
+                description,
+                timeOfSubmissionOfRequest,
+                statusIds,
+                status
+        ), HttpStatus.OK);
+    }
 }

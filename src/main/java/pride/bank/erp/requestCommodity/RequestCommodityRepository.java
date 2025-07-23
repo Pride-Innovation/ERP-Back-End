@@ -13,7 +13,6 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import pride.bank.erp.requestReport.RequestReport;
-import pride.bank.erp.stockCommodity.StockCommodity;
 
 import java.util.List;
 import java.util.Set;
