@@ -21,6 +21,7 @@ import pride.bank.erp.config.JwtService;
 import pride.bank.erp.department.Department;
 import pride.bank.erp.department.DepartmentRepository;
 import pride.bank.erp.exception.NotFoundException;
+import pride.bank.erp.helper.ExtractNumberFromEmailAddress;
 import pride.bank.erp.helper.PasswordGenerator;
 import pride.bank.erp.notification.Email;
 import pride.bank.erp.title.Title;
@@ -82,9 +83,11 @@ public class UserService {
                 .build();
 
         String token = jwtService.generateToken(newUser);
+        ExtractNumberFromEmailAddress cleanedEmail = new ExtractNumberFromEmailAddress(newUser.getEmail());
+
         boolean emailSent = emailService
                 .sendEmailVerification(
-                        newUser.getEmail(),
+                        cleanedEmail.getCleanedEmail(),
                         "Account verification",
                         token,
                         "Verify Your Account",

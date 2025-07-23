@@ -19,6 +19,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import pride.bank.erp.config.JwtService;
 import pride.bank.erp.exception.NotFoundException;
+import pride.bank.erp.helper.ExtractNumberFromEmailAddress;
 import pride.bank.erp.helper.PasswordGenerator;
 import pride.bank.erp.notification.Email;
 import pride.bank.erp.title.Title;
@@ -65,8 +66,10 @@ public class AuthenticationService {
                 .build();
         User savedUser = userRepository.save(user);
         AuthenticationResponse response = generateToken(savedUser, title);
+        ExtractNumberFromEmailAddress cleanedEmail = new ExtractNumberFromEmailAddress(user.getEmail());
+
         email.sendEmailVerification(
-                user.getEmail(),
+                cleanedEmail.getCleanedEmail(),
                 "Account Verification",
                 response.getAccessToken(),
                 "Verify Your Account",

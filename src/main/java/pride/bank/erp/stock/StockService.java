@@ -9,6 +9,7 @@ package pride.bank.erp.stock;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -25,6 +26,7 @@ import pride.bank.erp.grnCommodity.GrnCommodity;
 import pride.bank.erp.grnCommodity.GrnCommodityRepository;
 import pride.bank.erp.grnReport.GrnReport;
 import pride.bank.erp.grnReport.GrnReportRepository;
+import pride.bank.erp.helper.ExtractNumberFromEmailAddress;
 import pride.bank.erp.notification.Email;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
@@ -56,6 +58,12 @@ public class StockService {
     private final GrnReportRepository grnReportRepository;
     private final GrnCommodityRepository grnCommodityRepository;
     private final Email emailService;
+
+    @Value("${it-team.email.address}")
+    private String itTeamEmailAddress;
+
+    @Value("${admin-team.email.address}")
+    private String adminTeamEmailAddress;
 
     @Transactional
     public Page<Stock> fetchAllStocks(
@@ -114,24 +122,20 @@ public class StockService {
             List<StockCommodityDTO> stockCommoditiesRequest
     ) throws NotFoundException {
         try {
-            // Validate supplier
             Supplier supplier = supplierService.findSupplier(supplierID);
             if (supplier == null) {
                 throw new NotFoundException("Supplier with ID " + supplierID + " not found.");
             }
 
-            // Validate branch
             Branch headOffice = branchService.findBranch(1L);
             if (headOffice == null) {
                 throw new NotFoundException("Head office branch not found.");
             }
 
-            // Validate commodities
             if (stockCommoditiesRequest == null || stockCommoditiesRequest.isEmpty()) {
                 throw new IllegalArgumentException("Commodities list must not be null or empty.");
             }
 
-            // Calculate total
             Summation summation = calculateSums(stockCommoditiesRequest);
 
             Status status;
@@ -157,7 +161,6 @@ public class StockService {
             Stock savedStock = stockRepository.save(stock);
             addCommoditiesToStock(savedStock, stockCommoditiesRequest);
 
-            // Save GRN report
             GrnReport grn = GrnReport.builder()
                     .name(savedStock.getGrnNumber())
                     .documentPath(null)
@@ -165,7 +168,6 @@ public class StockService {
                     .build();
             GrnReport savedGrnReport = grnReportRepository.save(grn);
 
-            // Save each GRN commodity
             for (StockCommodityDTO dto : stockCommoditiesRequest) {
                 Commodity commodity = commodityService.findCommodity(dto.getCommodityId());
                 if (commodity == null) {
@@ -199,13 +201,10 @@ public class StockService {
             return savedStock;
 
         } catch (NotFoundException ex) {
-            // Allow this to bubble up (if you want to handle it in the controller)
             throw ex;
         } catch (IllegalArgumentException ex) {
-            // Validation error
             throw new RuntimeException("Invalid input: " + ex.getMessage(), ex);
         } catch (Exception ex) {
-            // Catch-all
             log.error(ex.getMessage());
             throw new RuntimeException("Error creating stock: " + ex.getMessage(), ex);
         }
@@ -547,26 +546,24 @@ public class StockService {
             }
         }
 
-        // Notify IT Team to update the assets created
 
         itMap.forEach((name, qty) -> itCommodities.append("- ").append(qty).append(" ").append(name).append("<br/>"));
         officeMap.forEach((name, qty) -> officeCommodities.append("- ").append(qty).append(" ").append(name).append("<br/>"));
 
         if (itEquipmentCreated) {
             notifyIndividual(
-                    "sodong@pridebank.co.ug", // IT Team Email Address
+                    itTeamEmailAddress,
                     stock,
-                    "IT Officer", // The office to update the Request
+                    "IT Officer",
                     String.format("Please update the system with the following IT equipment:<br/><br/>%s", itCommodities)
             );
         }
 
-        // Notify the Administration team to update the assets created
         if (officeEquipmentCreated) {
             notifyIndividual(
-                    "sodong@pridebank.co.ug", // Admin Team Email Address
+                    adminTeamEmailAddress,
                     stock,
-                    "Admin Officer", // The office to update the Request
+                    "Admin Officer",
                     String.format("Please update the system with the following Office equipment:<br/><br/>%s", officeCommodities)
             );
         }
@@ -593,9 +590,9 @@ public class StockService {
             String updaterName,
             String commoditySummary
     ) {
+        ExtractNumberFromEmailAddress cleanedEmail = new ExtractNumberFromEmailAddress(email);
         emailService.sendEmailVerification(
-//                email,
-                "dkatamba@pridebank.co.ug",
+                cleanedEmail.getCleanedEmail(),
                 String.format("Stock LPO ID: %s", stock.getLpoNumber()),
                 null,
                 updaterName,

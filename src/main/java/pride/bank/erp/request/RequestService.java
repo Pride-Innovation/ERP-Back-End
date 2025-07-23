@@ -9,6 +9,7 @@ package pride.bank.erp.request;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -22,6 +23,7 @@ import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
 import pride.bank.erp.helper.DeleteResponse;
+import pride.bank.erp.helper.ExtractNumberFromEmailAddress;
 import pride.bank.erp.helper.FileUpload;
 import pride.bank.erp.notification.Email;
 import pride.bank.erp.requestCommodity.RequestCommodity;
@@ -342,9 +344,10 @@ public class RequestService {
     }
 
     private String notifySupervisor(User supervisor, Request request) {
+        ExtractNumberFromEmailAddress cleanedEmail = new ExtractNumberFromEmailAddress(supervisor.getEmail());
+
         boolean emailStatus = emailService.sendEmailVerification(
-//                supervisor.getEmail(), // This would be supervisor's Email Address
-                "dkatamba@pridebank.co.ug",
+                cleanedEmail.getCleanedEmail(), // This would be supervisor's Email Address
                 String.format("Stores Request ID: %s", request.getId()),
                 null,
                 supervisor.getLastName(),

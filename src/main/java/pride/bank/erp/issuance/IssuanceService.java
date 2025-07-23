@@ -8,6 +8,7 @@ Managing Director
 package pride.bank.erp.issuance;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,6 +21,7 @@ import pride.bank.erp.commodity.Commodity;
 import pride.bank.erp.commodity.CommodityService;
 import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.exception.NotFoundException;
+import pride.bank.erp.helper.ExtractNumberFromEmailAddress;
 import pride.bank.erp.issuedCommodity.IssuedCommodity;
 import pride.bank.erp.issuedCommodity.IssuedCommodityRepository;
 import pride.bank.erp.notification.Email;
@@ -273,9 +275,10 @@ public class IssuanceService {
             String comment,
             Request request
     ) throws NotFoundException {
+        ExtractNumberFromEmailAddress cleanedEmail = new ExtractNumberFromEmailAddress(getAdminManager().getEmail());
+
         emailService.sendEmailVerification(
-//                getAdminManager().getEmail(), // This must be Admin Manager Email
-                "dkatamba@pridebank.co.ug",
+                cleanedEmail.getCleanedEmail(), // This must be Admin Manager Email
                 String.format("Stores Request ID: %s", request.getId()),
                 null,
                 "Manager",
