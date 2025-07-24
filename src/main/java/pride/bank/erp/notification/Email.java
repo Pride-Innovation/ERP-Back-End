@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.FileSystemResource;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Async;
@@ -20,6 +21,7 @@ import pride.bank.erp.request.CommodityWithQuantityDTO;
 import pride.bank.erp.request.Request;
 import pride.bank.erp.stock.Stock;
 
+import java.io.File;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -86,11 +88,15 @@ public class Email {
             }
 
             MimeMessage mimeMessage = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, "utf-8");
+            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "utf-8");
             helper.setTo(email);
             helper.setSubject(subject);
             helper.setFrom(fromEmail);
             helper.setText(htmlContent, true);
+
+            String pathToAttachment = "src/main/resources/static/images/logo.png";
+            FileSystemResource image = new FileSystemResource(new File(pathToAttachment));
+            helper.addInline("logoImage", image);
 
             mailSender.send(mimeMessage);
             logger.info("Email sent to {}", email);
@@ -128,14 +134,36 @@ public class Email {
                 : "";
 
         return String.format(
-                "<div style='font-family: Arial, sans-serif; line-height: 1.5; color: #333;'>"
-                        + "<h2 style='color: #4CAF50;'>%s</h2>"
-                        + "<p>Click the button below to <span style='text-transform: lowercase;'>%s</span>:</p>"
-                        + "<a href='%s' style='display: inline-block; padding: 10px 20px; color: white; background-color: #05544B; text-decoration: none; border-radius: 5px;'>%s</a>"
-                        + "<p style='margin-top: 20px;'>This token is valid until: <strong>%s</strong></p>"
+                "<html><body>" +
+                        "<div style='font-family: \"Segoe UI\", sans-serif; color: #333; background-color: #DFF2FE; padding: 30px;'>"
+                        + "<div style='max-width: 700px; margin: auto; background-color: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.08);'>"
+                        + "<div style='padding: 30px;'>"
+                        + "<div style='text-align:center;'>"
+                        + "<img src='cid:logoImage' alt='Pride Bank Logo' style='max-width: 250px; height: auto;' />"
+                        + "</div>"
+                        + "<h4 style='color: #05544B;'>%s</h4>"
+                        + "<p style='margin-top: 10px;'>Click the button below to <span style='text-transform: lowercase;'>%s</span>:</p>"
+                        + "<a href='%s' style='display: inline-block; padding: 12px 24px; margin-top: 15px; background-color: #05544B; color: #fff; text-decoration: none; border-radius: 5px;'>%s</a>"
+                        + "<p style='margin-top: 25px;'>This token is valid until: <strong>%s</strong></p>"
                         + "%s"
-                        + "<p style='font-size: 14px; color: #777;'>If you did not request this email, please ignore it.</p>"
-                        + "</div>",
+                        + "<p style='font-size: 13px; color: #777; margin-top: 30px;'>If you did not request this email, please ignore it.</p>"
+                        + "</div>"
+                        + "<div style='background-color: #f1f1f1; text-align: center; padding: 10px; font-size: 12px; color: #999;'>"
+                        + "</div>"
+                        + "<div style='background-color: #f1f1f1; text-align: center; padding: 5px; font-size: 12px; color: #999;'>"
+                        + "Pride Bank, Plot 6-9,Victoria Office Park; 6-9 Ben Kiwanuka Okot Close; Bukoto, Kampala, Uganda"
+                        + "</div>"
+                        + "<div style='background-color: #f1f1f1; text-align: center; padding: 5px; font-size: 12px; color: #999;'>"
+                        + "Call or WhatsApp: +256 754 346930"
+                        + "</div>"
+                        + "<div style='background-color: #f1f1f1; text-align: center; padding: 5px; font-size: 12px; color: #999;'>"
+                        + "&copy; 2025 Pride Bank. All rights reserved."
+                        + "</div>"
+                        + "<div style='background-color: #f1f1f1; text-align: center; padding: 10px; font-size: 12px; color: #999;'>"
+                        + "</div>"
+                        + "</div>"
+                        + "</div>"
+                        + "</body></html>",
                 headerText, headerText, verifyLink, buttonText, expirationTime, passwordSection
         );
     }
@@ -152,8 +180,8 @@ public class Email {
 
         String totalRow = String.format(
                 "<tr style='background-color: #835F1E; color: white;'>"
-                        + "<td style='padding: 10px; font-weight: bold;' colspan='3'>Total Quantity</td>"
-                        + "<td style='padding: 10px; font-weight: bold;'>%d</td>"
+                        + "<td style='padding: 12px; font-weight: bold;' colspan='3'>Total Quantity</td>"
+                        + "<td style='padding: 12px; font-weight: bold;'>%d</td>"
                         + "</tr>",
                 totalQuantity
         );
@@ -167,33 +195,47 @@ public class Email {
                 String.format("<p>A new store request has been initiated by <strong>%s</strong> for the following item(s):</p>", requester);
 
         return String.format(
-                "<div style='font-family: Arial, sans-serif; line-height: 1.5; color: #333;'>"
-                        + "<p><strong>Dear %s</strong></p>"
+                "<html><body>" +
+                        "<div style='font-family: \"Segoe UI\", sans-serif; color: #333; background-color: #DFF2FE; padding: 30px;'>"
+                        + "<div style='max-width: 700px; margin: auto; background-color: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.08);'>"
+                        + "<div style='padding: 30px;'>"
+                        + "<div style='text-align:center;'>"
+                        + "<img src='cid:logoImage' alt='Pride Bank Logo' style='max-width: 250px; height: auto;' />"
+                        + "</div>"
+                        + "<h4 style='color: #05544B;'>Dear %s,</h4>"
                         + "%s"
-                        + "<table style='width: 60%%; border-collapse: collapse; font-size: 14px;'>"
+                        + "<table style='width: 100%%; border-collapse: collapse; margin-top: 20px;'>"
                         + "<thead>"
-                        + "<tr style='background-color: #05544B; color: #FFFFFF;'>"
-                        + "<th style='padding: 10px; text-align: left;'>Request ID#</th>"
-                        + "<th style='padding: 10px; text-align: left;'>Item Name</th>"
-                        + "<th style='padding: 10px; text-align: left;'>Unit of Measure</th>"
-                        + "<th style='padding: 10px; text-align: left;'>Quantity</th>"
+                        + "<tr style='background-color: #05544B; color: white;'>"
+                        + "<th style='padding: 12px; text-align: left;'>#</th>"
+                        + "<th style='padding: 12px; text-align: left;'>Item Name</th>"
+                        + "<th style='padding: 12px; text-align: left;'>Unit</th>"
+                        + "<th style='padding: 12px; text-align: left;'>Quantity</th>"
                         + "</tr>"
                         + "</thead>"
                         + "<tbody>%s</tbody>"
                         + "<tfoot>%s</tfoot>"
                         + "</table>"
-
-                        + "<p style='margin-top: 20px;'>"
-                        + "To view the request, click the link below:"
-                        + "</p>"
-                        + "<a href='%s' style='display: inline-block; padding: 10px 20px; color: white; background-color: #05544B; text-decoration: none; border-radius: 5px;'>"
-                        + "%s"
-                        + "</a>"
-
-                        + "<p style='color: #777; margin-top: 30px;'>"
-                        + "DO NOT REPLY TO THIS EMAIL. THIS IS AN AUTOMATED NOTIFICATION FROM THE ASSET MANAGEMENT SYSTEM."
-                        + "</p>"
-                        + "</div>",
+                        + "<p style='margin-top: 30px;'>To view the request, click the button below:</p>"
+                        + "<a href='%s' style='display: inline-block; padding: 12px 24px; color: white; background-color: #05544B; text-decoration: none; border-radius: 5px;'>%s</a>"
+                        + "<p style='color: #777; font-size: 13px; margin-top: 30px;'>DO NOT REPLY TO THIS EMAIL. THIS IS AN AUTOMATED NOTIFICATION FROM THE ASSET MANAGEMENT SYSTEM.</p>"
+                        + "</div>"
+                        + "<div style='background-color: #f1f1f1; text-align: center; padding: 10px; font-size: 12px; color: #999;'>"
+                        + "</div>"
+                        + "<div style='background-color: #f1f1f1; text-align: center; padding: 5px; font-size: 12px; color: #999;'>"
+                        + "Pride Bank, Plot 6-9,Victoria Office Park; 6-9 Ben Kiwanuka Okot Close; Bukoto, Kampala, Uganda"
+                        + "</div>"
+                        + "<div style='background-color: #f1f1f1; text-align: center; padding: 5px; font-size: 12px; color: #999;'>"
+                        + "Call or WhatsApp: +256 754 346930"
+                        + "</div>"
+                        + "<div style='background-color: #f1f1f1; text-align: center; padding: 5px; font-size: 12px; color: #999;'>"
+                        + "&copy; 2025 Pride Bank. All rights reserved."
+                        + "</div>"
+                        + "<div style='background-color: #f1f1f1; text-align: center; padding: 10px; font-size: 12px; color: #999;'>"
+                        + "</div>"
+                        + "</div>"
+                        + "</div>"
+                        + "</body></html>",
                 approver,
                 text,
                 tableRows,
@@ -249,8 +291,14 @@ public class Email {
                 .format(stock.getCreateDate());
 
         return String.format(
-                "<div style='font-family: Arial, sans-serif; color: #333; line-height: 1.6;'>"
-                        + "<h2 style='color: #05544B;'>%s</h2>"
+                "<html><body>" +
+                        "<div style='font-family: \"Segoe UI\", sans-serif; color: #333; background-color: #DFF2FE; padding: 30px;'>"
+                        + "<div style='max-width: 700px; margin: auto; background-color: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.08);'>"
+                        + "<div style='padding: 30px;'>"
+                        + "<div style='text-align:center;'>"
+                        + "<img src='cid:logoImage' alt='Pride Bank Logo' style='max-width: 250px; height: auto;' />"
+                        + "</div>"
+                        + "<h4 style='color: #05544B;'>%s</h4>"
                         + "<p><strong>Date Received:</strong> %s</p>"
                         + "<p><strong>LPO Number:</strong> %s</p>"
                         + "<p><strong>Supplier:</strong> %s</p>"
@@ -258,13 +306,26 @@ public class Email {
 
                         + "<p style='margin-top: 20px;'>%s</p>"
 
-                        + "<a href='%s' style='display: inline-block; padding: 10px 20px; color: white; "
-                        + "background-color: #05544B; text-decoration: none; border-radius: 5px;'>%s</a>"
+                        + "<a href='%s' style='display: inline-block; padding: 12px 24px; color: white; background-color: #05544B; text-decoration: none; border-radius: 5px; margin-top: 15px;'>%s</a>"
 
-                        + "<p style='color: #999; font-size: 13px; margin-top: 30px;'>"
-                        + "DO NOT REPLY TO THIS EMAIL. THIS IS AN AUTOMATED NOTIFICATION FROM THE ASSET MANAGEMENT SYSTEM."
-                        + "</p>"
-                        + "</div>",
+                        + "<p style='color: #777; font-size: 13px; margin-top: 30px;'>DO NOT REPLY TO THIS EMAIL. THIS IS AN AUTOMATED NOTIFICATION FROM THE ASSET MANAGEMENT SYSTEM.</p>"
+                        + "</div>"
+                        + "<div style='background-color: #f1f1f1; text-align: center; padding: 10px; font-size: 12px; color: #999;'>"
+                        + "</div>"
+                        + "<div style='background-color: #f1f1f1; text-align: center; padding: 5px; font-size: 12px; color: #999;'>"
+                        + "Pride Bank, Plot 6-9,Victoria Office Park; 6-9 Ben Kiwanuka Okot Close; Bukoto, Kampala, Uganda"
+                        + "</div>"
+                        + "<div style='background-color: #f1f1f1; text-align: center; padding: 5px; font-size: 12px; color: #999;'>"
+                        + "Call or WhatsApp: +256 754 346930"
+                        + "</div>"
+                        + "<div style='background-color: #f1f1f1; text-align: center; padding: 5px; font-size: 12px; color: #999;'>"
+                        + "&copy; 2025 Pride Bank. All rights reserved."
+                        + "</div>"
+                        + "<div style='background-color: #f1f1f1; text-align: center; padding: 10px; font-size: 12px; color: #999;'>"
+                        + "</div>"
+                        + "</div>"
+                        + "</div>"
+                        + "</body></html>",
                 headerText,
                 dateReceived,
                 stock.getLpoNumber(),
