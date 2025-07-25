@@ -554,8 +554,11 @@ public class StockService {
             notifyIndividual(
                     itTeamEmailAddress,
                     stock,
-                    "IT Officer",
-                    String.format("Please update the system with the following IT equipment:<br/><br/>%s", itCommodities)
+                    "Dear Technical Team,",
+                    buildAdminEmailBody(
+                            itCommodities.toString(),
+                            "update the inventory of stocked IT assets"
+                    )
             );
         }
 
@@ -563,8 +566,11 @@ public class StockService {
             notifyIndividual(
                     adminTeamEmailAddress,
                     stock,
-                    "Admin Officer",
-                    String.format("Please update the system with the following Office equipment:<br/><br/>%s", officeCommodities)
+                    "Dear Administration Team,",
+                    buildAdminEmailBody(
+                            officeCommodities.toString(),
+                            "update the inventory of all stocked furniture and non-IT assets"
+                    )
             );
         }
     }
@@ -602,6 +608,16 @@ public class StockService {
                 null,
                 stock
         );
+    }
+
+    private String buildAdminEmailBody(
+            String commodityDetails,
+            String inventoryMessage
+    ) {
+        return "Kindly proceed to <strong>" + inventoryMessage + "</strong>, " +
+                "and ensure that the items are <strong>properly prepared and ready for allocation or setup</strong> as needed.<br/>" +
+                "Please confirm once the task has been completed.<br/><br/>" +
+                commodityDetails + "<br/>";
     }
 
 }

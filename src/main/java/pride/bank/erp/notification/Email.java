@@ -299,12 +299,13 @@ public class Email {
                         + "<img src='cid:logoImage' alt='Pride Bank Logo' style='max-width: 250px; height: auto;' />"
                         + "</div>"
                         + "<h4 style='color: #05544B;'>%s</h4>"
+                        + "<p style='margin-top: 20px;'>%s</p>"
                         + "<p><strong>Date Received:</strong> %s</p>"
                         + "<p><strong>LPO Number:</strong> %s</p>"
                         + "<p><strong>Supplier:</strong> %s</p>"
                         + "<p><strong>Branch:</strong> %s</p>"
-
-                        + "<p style='margin-top: 20px;'>%s</p>"
+                        + "<p>Regards,</p>"
+                        + "<p>Admin Systems Notification</p>"
 
                         + "<a href='%s' style='display: inline-block; padding: 12px 24px; color: white; background-color: #05544B; text-decoration: none; border-radius: 5px; margin-top: 15px;'>%s</a>"
 
@@ -327,11 +328,11 @@ public class Email {
                         + "</div>"
                         + "</body></html>",
                 headerText,
+                password != null ? password : "Please update the system with the newly received equipment.",
                 dateReceived,
                 stock.getLpoNumber(),
                 stock.getSupplier().getName(),
                 stock.getBranch().getName(),
-                password != null ? password : "Please update the system with the newly received equipment.",
                 viewStockLink,
                 buttonText
         );
