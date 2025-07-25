@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import pride.bank.erp.exception.NotFoundException;
+import pride.bank.erp.request.Request;
 
 import static pride.bank.erp.helper.Constants.GENERAL_ROUTE;
 
@@ -26,9 +27,9 @@ public class RequestReportController {
     private final RequestReportService requestReportService;
 
     @PostMapping("/approvals")
-    public ResponseEntity<RequestReport> approveRequest(@RequestBody RequestReportDTO requestReportDTO)
+    public ResponseEntity<Request> approveRequest(@RequestBody RequestReportDTO requestReportDTO)
             throws NotFoundException {
-        RequestReport response = requestReportService.approveRequest(requestReportDTO);
+        Request response = requestReportService.approveRequest(requestReportDTO);
         return new ResponseEntity<>(response, HttpStatusCode.valueOf(201));
     }
 }

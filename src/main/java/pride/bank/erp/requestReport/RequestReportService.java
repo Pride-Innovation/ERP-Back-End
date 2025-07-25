@@ -40,7 +40,7 @@ public class RequestReportService {
     private String adminEmailAddress;
 
     @Transactional
-    public RequestReport approveRequest(RequestReportDTO body)
+    public Request approveRequest(RequestReportDTO body)
             throws NotFoundException {
         Request request = requestService.findRequest(body.getRequestId());
         User approver = userService.findUser(body.getApproverId());
@@ -57,7 +57,7 @@ public class RequestReportService {
 
         RequestReport response = requestReportRepository.save(requestReport);
         response.setMessage(message);
-        return response;
+        return request;
     }
 
     /**
@@ -65,6 +65,7 @@ public class RequestReportService {
      * If the request is rejected, only the requester is notified.
      * If the request is approved, both the requester and the admin are notified.
      */
+    @Transactional
     private String handleStatusUpdate(
             Request request,
             Status status,
