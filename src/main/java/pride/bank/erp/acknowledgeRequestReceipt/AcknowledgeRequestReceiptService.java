@@ -32,7 +32,7 @@ public class AcknowledgeRequestReceiptService {
     private final Email emailService;
 
     @Transactional
-    public AcknowledgeRequestReceipt createAcknowledgeRequestReceipt(
+    public Request createAcknowledgeRequestReceipt(
             AcknowledgeRequestReceiptDTO acknowledgeRequestReceiptDTO
     ) throws NotFoundException {
 
@@ -59,7 +59,7 @@ public class AcknowledgeRequestReceiptService {
                 request.getRequester().getFirstName()
         );
 
-        return response;
+        return request;
     }
 
     public AcknowledgeRequestReceipt findAcknowledgeRequestReceiptByRequestId(Long requestId) {
