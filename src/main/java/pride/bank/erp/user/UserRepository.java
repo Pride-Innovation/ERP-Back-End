@@ -28,4 +28,12 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Query("SELECT u FROM User u WHERE u.title.id = :titleId AND u.branch.id = :branchId")
     List<User> findByTitleIdAndBranchId(@Param("titleId") Long titleId, @Param("branchId") Long branchId);
 
+    @Query("SELECT u.id FROM User u WHERE u.branch.id = :branchId")
+    List<Long> findUserIdsByBranchId(@Param("branchId") Long branchId);
+
+    @Query("SELECT u.id FROM User u WHERE u.branch.id = 1")
+    List<Long> findUserIdsFromHeadOffice();
+
+    @Query("SELECT b.branchOperationsManager.id FROM Branch b WHERE b.branchOperationsManager IS NOT NULL")
+    List<Long> findAllBranchOperationsManagerIds();
 }

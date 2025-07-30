@@ -384,6 +384,7 @@ public class RequestService {
             case "Manager" -> "MANAGER";
             case "Admin Officer" -> "ADMIN_OFFICER";
             case "Admin Manager" -> "ADMIN_MANAGER";
+            case "Branch Operations Manager" -> "BOM";
             default -> "";
         };
     }
@@ -429,7 +430,13 @@ public class RequestService {
 
             case "ADMIN_OFFICER" -> {
                 if ("PENDING".equalsIgnoreCase(status) || "ISSUED".equalsIgnoreCase(status)) {
-                    yield Collections.emptyList();
+                    List<Long> headOfficeUserIds = userRepository.findUserIdsFromHeadOffice();
+                    List<Long> bomIds = userRepository.findAllBranchOperationsManagerIds();
+                    Set<Long> allowedUserIds = new HashSet<>();
+                    allowedUserIds.addAll(headOfficeUserIds);
+                    allowedUserIds.addAll(bomIds);
+                    yield new ArrayList<>(allowedUserIds);
+
                 } else if ("CREATED".equalsIgnoreCase(status) || "REJECTED".equalsIgnoreCase(status)) {
                     yield List.of(currentUserService.getCurrentUser().getId());
                 } else {
@@ -447,6 +454,16 @@ public class RequestService {
                 }
             }
 
+            case "BOM" -> {
+                if ("PENDING".equalsIgnoreCase(status) || "ISSUED".equalsIgnoreCase(status)) {
+                    Long currentBranchId = currentUserService.getCurrentUser().getBranch().getId();
+                    yield userRepository.findUserIdsByBranchId(currentBranchId);
+                } else if ("CREATED".equalsIgnoreCase(status) || "REJECTED".equalsIgnoreCase(status)) {
+                    yield List.of(currentUserService.getCurrentUser().getId());
+                } else {
+                    yield List.of(currentUserService.getCurrentUser().getId());
+                }
+            }
             default -> Collections.emptyList();
         };
     }
