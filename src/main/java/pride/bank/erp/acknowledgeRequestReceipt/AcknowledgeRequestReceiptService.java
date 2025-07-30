@@ -14,12 +14,15 @@ import org.springframework.transaction.annotation.Transactional;
 import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.ExtractNumberFromEmailAddress;
+import pride.bank.erp.issuance.UserBuilder;
 import pride.bank.erp.notification.Email;
 import pride.bank.erp.request.Request;
+import pride.bank.erp.request.RequestDTO;
 import pride.bank.erp.request.RequestRepository;
 import pride.bank.erp.request.RequestService;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
+import pride.bank.erp.user.User;
 
 @Service
 @RequiredArgsConstructor
@@ -30,9 +33,10 @@ public class AcknowledgeRequestReceiptService {
     private final RequestRepository requestRepository;
     private final CurrentUserService currentUserService;
     private final Email emailService;
+    private final UserBuilder userBuilder;
 
     @Transactional
-    public Request createAcknowledgeRequestReceipt(
+    public RequestDTO createAcknowledgeRequestReceipt(
             AcknowledgeRequestReceiptDTO acknowledgeRequestReceiptDTO
     ) throws NotFoundException {
 
@@ -59,7 +63,32 @@ public class AcknowledgeRequestReceiptService {
                 request.getRequester().getFirstName()
         );
 
-        return request;
+        return RequestDTO
+                .builder()
+                .id(request.getId())
+                .name(request.getName())
+                .priority(request.getPriority())
+                .commodities(request.getCommodities())
+                .description(request.getDescription())
+                .signaturePath(request.getSignaturePath())
+                .status(request.getStatus() != null ?
+                        Status.builder()
+                                .id(request.getStatus().getId())
+                                .name(request.getStatus().getName())
+                                .description(request.getStatus().getDescription())
+                                .status(request.getStatus().getStatus())
+                                .code(request.getStatus().getCode())
+                                .build() : null)
+                .timeOfSubmissionOfRequest(request.getTimeOfSubmissionOfRequest())
+                .createDate(request.getCreateDate())
+                .lastModified(request.getLastModified())
+                .createdBy(request.getCreatedBy())
+                .lastModifiedBy(request.getLastModifiedBy())
+                .requester(request.getRequester() != null ?
+                        userBuilder.builder(request.getRequester()) : null)
+                .currentApprover(request.getCurrentApprover() != null ?
+                        userBuilder.builder(request.getCurrentApprover()) : null)
+                .build();
     }
 
     public AcknowledgeRequestReceipt findAcknowledgeRequestReceiptByRequestId(Long requestId) {

@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.*;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
 import pride.bank.erp.request.Request;
+import pride.bank.erp.request.RequestDTO;
 
 @RestController
 @RequestMapping(Constants.GENERAL_ROUTE)
@@ -15,10 +16,10 @@ public class AcknowledgeIssuanceReceiptController {
     private final AcknowledgeIssuanceReceiptService acknowledgeIssuanceReceiptService;
 
     @PostMapping("/acknowledge-issuance")
-    public ResponseEntity<Request> createAcknowledgeRequestIssuance(
+    public ResponseEntity<RequestDTO> createAcknowledgeRequestIssuance(
             @RequestBody AcknowledgeIssuanceReceiptDTO acknowledgeIssuanceReceiptDTO
     ) throws NotFoundException {
-        Request response = acknowledgeIssuanceReceiptService
+        RequestDTO response = acknowledgeIssuanceReceiptService
                 .createAcknowledgeRequestIssuance(acknowledgeIssuanceReceiptDTO);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }

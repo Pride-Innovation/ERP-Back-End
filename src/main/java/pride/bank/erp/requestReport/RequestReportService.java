@@ -11,10 +11,13 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import pride.bank.erp.acknowledgeIssuanceReceipt.AcknowledgeIssuanceReceiptService;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.ExtractNumberFromEmailAddress;
+import pride.bank.erp.issuance.UserBuilder;
 import pride.bank.erp.notification.Email;
 import pride.bank.erp.request.Request;
+import pride.bank.erp.request.RequestDTO;
 import pride.bank.erp.request.RequestRepository;
 import pride.bank.erp.request.RequestService;
 import pride.bank.erp.status.Status;
@@ -33,12 +36,13 @@ public class RequestReportService {
     private final RequestRepository requestRepository;
     private final Email emailService;
     private final UserRepository userRepository;
+    private final UserBuilder userBuilder;
 
     @Value("${application.admin.email}")
     private String adminEmailAddress;
 
     @Transactional
-    public Request approveRequest(RequestReportDTO body)
+    public RequestDTO approveRequest(RequestReportDTO body)
             throws NotFoundException {
         Request request = requestService.findRequest(body.getRequestId());
         User approver = userService.findUser(body.getApproverId());
@@ -55,7 +59,32 @@ public class RequestReportService {
 
         RequestReport response = requestReportRepository.save(requestReport);
         response.setMessage(message);
-        return request;
+        return RequestDTO
+                .builder()
+                .id(request.getId())
+                .name(request.getName())
+                .priority(request.getPriority())
+                .commodities(request.getCommodities())
+                .description(request.getDescription())
+                .signaturePath(request.getSignaturePath())
+                .status(request.getStatus() != null ?
+                        Status.builder()
+                                .id(request.getStatus().getId())
+                                .name(request.getStatus().getName())
+                                .description(request.getStatus().getDescription())
+                                .status(request.getStatus().getStatus())
+                                .code(request.getStatus().getCode())
+                                .build() : null)
+                .timeOfSubmissionOfRequest(request.getTimeOfSubmissionOfRequest())
+                .createDate(request.getCreateDate())
+                .lastModified(request.getLastModified())
+                .createdBy(request.getCreatedBy())
+                .lastModifiedBy(request.getLastModifiedBy())
+                .requester(request.getRequester() != null ?
+                        userBuilder.builder(request.getRequester()) : null)
+                .currentApprover(request.getCurrentApprover() != null ?
+                        userBuilder.builder(request.getCurrentApprover()) : null)
+                .build();
     }
 
     /**
