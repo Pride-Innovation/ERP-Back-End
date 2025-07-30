@@ -34,7 +34,7 @@ public class RequestController {
     private RequestService requestService;
 
     @GetMapping("/requests")
-    public ResponseEntity<Page<Request>> fetchAllRequests(
+    public ResponseEntity<Page<RequestDTO>> fetchAllRequests(
             @RequestParam(required = false, defaultValue = "10") int pageSize,
             @RequestParam(required = false, defaultValue = DESCENDING_SORT_DIRECTION) String sortDirection,
             @RequestParam(required = false, defaultValue = "0") int pageNumber,
@@ -46,7 +46,7 @@ public class RequestController {
             @RequestParam(required = false) List<Long> statusIds,
             @RequestParam(required = false) String status
     ) {
-        Page<Request> requests = requestService.fetchAllRequests(
+        Page<RequestDTO> requests = requestService.fetchAllRequests(
                 pageSize,
                 sortDirection,
                 pageNumber,
@@ -165,7 +165,7 @@ public class RequestController {
 
 
     @GetMapping("/latest-pending-request")
-    public ResponseEntity<Page<Request>> findLatestPendingRequestsWithDetails(
+    public ResponseEntity<Page<RequestDTO>> findLatestPendingRequestsWithDetails(
             @RequestParam(required = false, defaultValue = "3") int pageSize,
             @RequestParam(required = false, defaultValue = DESCENDING_SORT_DIRECTION) String sortDirection,
             @RequestParam(required = false, defaultValue = "0") int pageNumber,
@@ -177,17 +177,23 @@ public class RequestController {
             @RequestParam(required = false, defaultValue = "3") List<Long> statusIds, // Status Ids for an Approved Request.
             @RequestParam(required = false) String status
     ) {
-        return new ResponseEntity<>(requestService.findLatestPendingRequestsWithDetails(
-                pageSize,
-                sortDirection,
-                pageNumber,
-                sortBy,
-                name,
-                priority,
-                description,
-                timeOfSubmissionOfRequest,
-                statusIds,
-                status
-        ), HttpStatus.OK);
+        try {
+
+            Page<RequestDTO> response = requestService.findLatestPendingRequestsWithDetails(
+                    pageSize,
+                    sortDirection,
+                    pageNumber,
+                    sortBy,
+                    name,
+                    priority,
+                    description,
+                    timeOfSubmissionOfRequest,
+                    statusIds,
+                    status
+            );
+            return new ResponseEntity<>(response, HttpStatus.OK);
+        } catch (Exception ex) {
+            return null;
+        }
     }
 }

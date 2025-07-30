@@ -9,6 +9,7 @@ package pride.bank.erp.assetAssignmentHostory;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,6 +21,7 @@ import pride.bank.erp.status.StatusService;
 import pride.bank.erp.user.User;
 import pride.bank.erp.user.UserService;
 
+import java.util.List;
 import java.util.Objects;
 
 import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
@@ -33,7 +35,7 @@ public class AssetAssignmentHistoryService {
     private final StatusService statusService;
     private final AssetAssignmentHistorySearchDao assetAssignmentHistorySearchDao;
 
-    public Page<AssetAssignmentHistory> findAllAssetAssignmentHistory(
+    public Page<AssetAssignmentHistoryDAO> findAllAssetAssignmentHistory(
             int pageSize,
             String sortDirection,
             int pageNumber,
@@ -52,9 +54,16 @@ public class AssetAssignmentHistoryService {
                     .builder()
                     .assetId(assetId)
                     .build();
-            return assetAssignmentHistorySearchDao.findAllWithFilters(
+
+            Page<AssetAssignmentHistory> assetAssignmentHistoryPageResult = assetAssignmentHistorySearchDao.findAllWithFilters(
                     assetAssignmentHistoryPage,
                     assetAssignmentHistorySearchCriteria
+            );
+            List<AssetAssignmentHistoryDAO> dtoList = mapToDTOList(assetAssignmentHistoryPageResult.getContent());
+            return new PageImpl<>(
+                    dtoList,
+                    assetAssignmentHistoryPageResult.getPageable(),
+                    assetAssignmentHistoryPageResult.getTotalElements()
             );
         } catch (Exception e) {
             return null;
@@ -84,5 +93,61 @@ public class AssetAssignmentHistoryService {
 
     private Sort.Direction determineSortDirection(String direction) {
         return Objects.equals(direction, DESCENDING_SORT_DIRECTION) ? Sort.Direction.DESC : Sort.Direction.ASC;
+    }
+
+    private List<AssetAssignmentHistoryDAO> mapToDTOList(List<AssetAssignmentHistory> assetAssignmentHistories) {
+        return assetAssignmentHistories.stream().map(this::buildAssetAssignmentHistoryDao).toList();
+    }
+
+    private AssetAssignmentHistoryDAO buildAssetAssignmentHistoryDao(AssetAssignmentHistory assetAssignmentHistory) {
+        return AssetAssignmentHistoryDAO
+                .builder()
+                .id(assetAssignmentHistory.getId())
+                .startDate(assetAssignmentHistory.getStartDate())
+                .endDate(assetAssignmentHistory.getEndDate())
+                .user(assetAssignmentHistory.getUser() != null ?
+                        User.builder()
+                                .availability(assetAssignmentHistory.getUser().getAvailability())
+                                .branch(assetAssignmentHistory.getUser().getBranch())
+                                .email(assetAssignmentHistory.getUser().getEmail())
+                                .firstName(assetAssignmentHistory.getUser().getFirstName())
+                                .lastName(assetAssignmentHistory.getUser().getLastName())
+                                .otherName(assetAssignmentHistory.getUser().getOtherName())
+                                .gender(assetAssignmentHistory.getUser().getGender())
+                                .staffNumber(assetAssignmentHistory.getUser().getStaffNumber())
+                                .title(assetAssignmentHistory.getUser().getTitle())
+                                .department(assetAssignmentHistory.getUser().getDepartment())
+                                .isEnabled(assetAssignmentHistory.getUser().isEnabled())
+                                .isAccountNonLocked(assetAssignmentHistory.getUser().isAccountNonLocked())
+                                .blocked(assetAssignmentHistory.getUser().isBlocked())
+                                .build() : null)
+                .asset(assetAssignmentHistory.getAsset() != null ?
+                        Asset.builder()
+                                .id(assetAssignmentHistory.getAsset().getId())
+                                .assetName(assetAssignmentHistory.getAsset().getAssetName())
+                                .hostname(assetAssignmentHistory.getAsset().getHostname())
+                                .detailNetBookValue(assetAssignmentHistory.getAsset().getDetailNetBookValue())
+                                .engravedNumber(assetAssignmentHistory.getAsset().getEngravedNumber())
+                                .dateReceipt(assetAssignmentHistory.getAsset().getDateReceipt())
+                                .make(assetAssignmentHistory.getAsset().getMake())
+                                .unitOfMeasure(assetAssignmentHistory.getAsset().getUnitOfMeasure())
+                                .purchaseCost(assetAssignmentHistory.getAsset().getPurchaseCost())
+                                .costOfTheAsset(assetAssignmentHistory.getAsset().getCostOfTheAsset())
+                                .netValueB(assetAssignmentHistory.getAsset().getNetValueB())
+                                .model(assetAssignmentHistory.getAsset().getModel())
+                                .serialNumber(assetAssignmentHistory.getAsset().getSerialNumber())
+                                .ram(assetAssignmentHistory.getAsset().getRam())
+                                .cpuSpeed(assetAssignmentHistory.getAsset().getCpuSpeed())
+                                .hardDiskSize(assetAssignmentHistory.getAsset().getHardDiskSize())
+                                .macAddress(assetAssignmentHistory.getAsset().getMacAddress())
+                                .ipAddress(assetAssignmentHistory.getAsset().getIpAddress())
+                                .interfaceType(assetAssignmentHistory.getAsset().getInterfaceType())
+                                .assetDepreciationRate(assetAssignmentHistory.getAsset().getAssetDepreciationRate())
+                                .description(assetAssignmentHistory.getAsset().getDescription())
+                                .image(assetAssignmentHistory.getAsset().getImage())
+                                .build() : null)
+                .statusBefore(assetAssignmentHistory.getStatusBefore())
+                .statusAfter(assetAssignmentHistory.getStatusAfter())
+                .build();
     }
 }

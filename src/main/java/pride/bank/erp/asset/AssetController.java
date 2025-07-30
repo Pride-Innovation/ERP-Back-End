@@ -26,7 +26,7 @@ public class AssetController {
     private final AssetService assetService;
 
     @GetMapping("/assets")
-    public ResponseEntity<Page<Asset>> fetchAllAssets(
+    public ResponseEntity<Page<AssetDAO>> fetchAllAssets(
             @RequestParam(required = false, defaultValue = "10") int pageSize,
             @RequestParam(required = false, defaultValue = DESCENDING_SORT_DIRECTION) String sortDirection,
             @RequestParam(required = false, defaultValue = "0") int pageNumber,
@@ -38,7 +38,7 @@ public class AssetController {
             @RequestParam(required = false) String engravedNumber,
             @RequestParam(required = false) Long assignedToId
     ) {
-        Page<Asset> response = assetService.fetchAllAssets(
+        Page<AssetDAO> response = assetService.fetchAllAssets(
                 pageSize,
                 sortDirection,
                 pageNumber,
@@ -61,9 +61,9 @@ public class AssetController {
     }
 
     @GetMapping("/assets/{id}")
-    public ResponseEntity<Asset> getSingleAsset(@PathVariable Long id)
+    public ResponseEntity<AssetDAO> getSingleAsset(@PathVariable Long id)
             throws NotFoundException {
-        Asset asset = assetService.findOne(id);
+        AssetDAO asset = assetService.fetchSingleAsset(id);
         return new ResponseEntity<>(asset, HttpStatus.OK);
     }
 

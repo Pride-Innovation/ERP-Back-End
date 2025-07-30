@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -66,52 +67,97 @@ public class StockService {
     private String adminTeamEmailAddress;
 
     @Transactional
-    public Page<Stock> fetchAllStocks(
+    public Page<StockDAO> fetchAllStocks(
             int pageSize,
             String sortDirection,
             int pageNumber,
             String sortBy,
             String lpoNumber
     ) {
+        try {
 
-        StockPage stockPage = StockPage.builder()
-                .pageSize(pageSize)
-                .sortDirection(determineSortDirection(sortDirection))
-                .pageNumber(pageNumber)
-                .sortBy(sortBy)
-                .build();
+            StockPage stockPage = StockPage.builder()
+                    .pageSize(pageSize)
+                    .sortDirection(determineSortDirection(sortDirection))
+                    .pageNumber(pageNumber)
+                    .sortBy(sortBy)
+                    .build();
 
-        StockSearchCriteria criteria = StockSearchCriteria.builder()
-                .lpoNumber(lpoNumber)
-                .build();
+            StockSearchCriteria criteria = StockSearchCriteria.builder()
+                    .lpoNumber(lpoNumber)
+                    .build();
 
-        Page<Stock> stocks = stockSearchDao.findAllWithFilters(stockPage, criteria);
+            Page<Stock> stocks = stockSearchDao.findAllWithFilters(stockPage, criteria);
 
-        List<Long> stockIds = stocks.stream()
-                .map(Stock::getId)
-                .toList();
-
-        List<StockCommodity> allStockCommodities = stockCommodityRepository.findByStockIdIn(stockIds);
-
-        Map<Long, List<StockCommodity>> commoditiesByStockId = allStockCommodities.stream()
-                .collect(Collectors.groupingBy(sc -> sc.getStock().getId()));
-
-        stocks.forEach(stock -> {
-            List<StockCommodity> scList = commoditiesByStockId.getOrDefault(stock.getId(), List.of());
-            List<CommodityWithDetailsDao> details = scList.stream()
-                    .map(sc -> CommodityWithDetailsDao.builder()
-                            .commodity(sc.getCommodity())
-                            .orderedQuantity(sc.getOrderedQuantity())
-                            .deliveredQuantity(sc.getDeliveredQuantity())
-                            .costPrice(sc.getCostPrice())
-                            .purchasePrice(sc.getPurchasePrice())
-                            .build())
+            List<Long> stockIds = stocks.stream()
+                    .map(Stock::getId)
                     .toList();
 
-            stock.setCommodities(details);
-        });
+            List<StockCommodity> allStockCommodities = stockCommodityRepository.findByStockIdIn(stockIds);
 
-        return stocks;
+            Map<Long, List<StockCommodity>> commoditiesByStockId = allStockCommodities.stream()
+                    .collect(Collectors.groupingBy(sc -> sc.getStock().getId()));
+
+            stocks.forEach(stock -> {
+                List<StockCommodity> scList = commoditiesByStockId.getOrDefault(stock.getId(), List.of());
+                List<CommodityWithDetailsDao> details = scList.stream()
+                        .map(sc -> CommodityWithDetailsDao.builder()
+                                .commodity(sc.getCommodity())
+                                .orderedQuantity(sc.getOrderedQuantity())
+                                .deliveredQuantity(sc.getDeliveredQuantity())
+                                .costPrice(sc.getCostPrice())
+                                .purchasePrice(sc.getPurchasePrice())
+                                .build())
+                        .toList();
+
+                stock.setCommodities(details);
+            });
+
+            List<StockDAO> stockDAOS = convertToStockDTOList(stocks.getContent());
+            return new PageImpl<>(stockDAOS, stocks.getPageable(), stocks.getTotalElements());
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private List<StockDAO> convertToStockDTOList(List<Stock> stocks) {
+        return stocks.stream().map(stock ->
+                StockDAO.builder()
+                        .id(stock.getId())
+                        .referenceNumber(stock.getReferenceNumber())
+                        .name(stock.getName())
+                        .totalCost(stock.getTotalCost())
+                        .balanceCost(stock.getBalanceCost())
+                        .grnNumber(stock.getGrnNumber())
+                        .lpoNumber(stock.getLpoNumber())
+                        .status(stock.getStatus() != null ?
+                                Status.builder()
+                                        .name(stock.getStatus().getName())
+                                        .description(stock.getStatus().getDescription())
+                                        .id(stock.getStatus().getId())
+                                        .status(stock.getStatus().getStatus())
+                                        .build() : null)
+                        .branch(stock.getBranch() != null ?
+                                Branch.builder()
+                                        .id(stock.getBranch().getId())
+                                        .email(stock.getBranch().getEmail())
+                                        .telephone(stock.getBranch().getTelephone())
+                                        .name(stock.getBranch().getName())
+                                        .build() : null)
+                        .supplier(stock.getSupplier() != null ?
+                                Supplier.builder()
+                                        .name(stock.getSupplier().getName())
+                                        .address(stock.getSupplier().getAddress())
+                                        .telephone(stock.getSupplier().getTelephone())
+                                        .email(stock.getSupplier().getEmail())
+                                        .build() : null)
+                        .createDate(stock.getCreateDate())
+                        .lastModified(stock.getLastModified())
+                        .createdBy(stock.getCreatedBy())
+                        .lastModifiedBy(stock.getLastModifiedBy())
+                        .commodities(stock.getCommodities())
+                        .grnReports(stock.getGrnReports())
+                        .build()).toList();
     }
 
 

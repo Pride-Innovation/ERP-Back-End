@@ -7,6 +7,7 @@ Managing Director
 
 package pride.bank.erp.stock;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -58,6 +59,7 @@ public class Stock {
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "branch_id", nullable = false)
+    @JsonIgnore
     @NotAudited
     private Branch branch;
 

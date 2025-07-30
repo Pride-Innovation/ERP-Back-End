@@ -27,21 +27,26 @@ public class StockController {
     private final StockService stockService;
 
     @GetMapping("/stocks")
-    public ResponseEntity<Page<Stock>> fetchAllStocks(
+    public ResponseEntity<Page<StockDAO>> fetchAllStocks(
             @RequestParam(required = false, defaultValue = "10") int pageSize,
             @RequestParam(required = false, defaultValue = DESCENDING_SORT_DIRECTION) String sortDirection,
             @RequestParam(required = false, defaultValue = "0") int pageNumber,
             @RequestParam(required = false, defaultValue = "id") String sortBy,
             @RequestParam(required = false) String lpoNumber
     ) {
-        Page<Stock> response = stockService.fetchAllStocks(
-                pageSize,
-                sortDirection,
-                pageNumber,
-                sortBy,
-                lpoNumber
-        );
-        return new ResponseEntity<>(response, HttpStatus.OK);
+        try {
+            Page<StockDAO> response = stockService.fetchAllStocks(
+                    pageSize,
+                    sortDirection,
+                    pageNumber,
+                    sortBy,
+                    lpoNumber
+            );
+            return new ResponseEntity<>(response, HttpStatus.OK);
+        } catch (Exception ex) {
+            return null;
+        }
+
     }
 
     @PostMapping("/stocks")

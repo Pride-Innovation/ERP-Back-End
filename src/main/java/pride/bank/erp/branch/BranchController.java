@@ -26,14 +26,14 @@ public class BranchController {
     private final BranchService branchService;
 
     @GetMapping("/branches")
-    public ResponseEntity<Page<Branch>> fetchAllBranches(
+    public ResponseEntity<Page<BranchWithManagersDTO>> fetchAllBranches(
             @RequestParam(required = false, defaultValue = "10") int pageSize,
             @RequestParam(required = false, defaultValue = ASCENDING_SORT_DIRECTION) String sortDirection,
             @RequestParam(required = false, defaultValue = "0") int pageNumber,
             @RequestParam(required = false, defaultValue = "id") String sortBy,
             @RequestParam(required = false) String name
     ) {
-        Page<Branch> response = branchService.fetchAllBranches(
+        Page<BranchWithManagersDTO> response = branchService.fetchAllBranches(
                 pageSize,
                 sortDirection,
                 pageNumber,

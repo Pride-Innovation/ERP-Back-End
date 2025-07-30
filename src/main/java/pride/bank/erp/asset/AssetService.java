@@ -7,8 +7,13 @@ Managing Director
 
 package pride.bank.erp.asset;
 
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,10 +22,18 @@ import pride.bank.erp.assetAssignmentHostory.AssetAssignmentHistoryRepository;
 import pride.bank.erp.assetType.AssetType;
 import pride.bank.erp.assetType.AssetTypeService;
 import pride.bank.erp.branch.Branch;
+import pride.bank.erp.branch.BranchDAO;
 import pride.bank.erp.branch.BranchService;
 import pride.bank.erp.commodity.Commodity;
 import pride.bank.erp.commodity.CommodityService;
 import pride.bank.erp.exception.NotFoundException;
+import pride.bank.erp.helper.Constants;
+import pride.bank.erp.request.CommodityWithQuantityDTO;
+import pride.bank.erp.request.Request;
+import pride.bank.erp.request.RequestDTO;
+import pride.bank.erp.requestCommodity.RequestCommodity;
+import pride.bank.erp.requestReport.RequestReport;
+import pride.bank.erp.requestReport.RequestReportDAO;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
 import pride.bank.erp.stock.Stock;
@@ -28,13 +41,17 @@ import pride.bank.erp.stock.StockRepository;
 import pride.bank.erp.stockCommodity.StockCommodity;
 import pride.bank.erp.stockCommodity.StockCommodityRepository;
 import pride.bank.erp.supplier.Supplier;
+import pride.bank.erp.supplier.SupplierDTO;
 import pride.bank.erp.supplier.SupplierService;
 import pride.bank.erp.user.User;
+import pride.bank.erp.user.UserDAO;
+import pride.bank.erp.user.UserDTO;
 import pride.bank.erp.user.UserService;
 
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
 
@@ -53,7 +70,7 @@ public class AssetService {
     private final StockCommodityRepository stockCommodityRepository;
     private final AssetAssignmentHistoryRepository assetAssignmentHistoryRepository;
 
-    public Page<Asset> fetchAllAssets(
+    public Page<AssetDAO> fetchAllAssets(
             int pageSize,
             String sortDirection,
             int pageNumber,
@@ -82,7 +99,10 @@ public class AssetService {
                     .assignedToId(assignedToId)
                     .commodityId(commodityId)
                     .build();
-            return assetSearchDao.findAllWithFilters(assetPage, assetSearchCriteria);
+
+            Page<Asset> assetPageResult = assetSearchDao.findAllWithFilters(assetPage, assetSearchCriteria);
+            List<AssetDAO> dtoList = mapToDTOList(assetPageResult.getContent());
+            return new PageImpl<>(dtoList, assetPageResult.getPageable(), assetPageResult.getTotalElements());
         } catch (Exception e) {
             return null;
         }
@@ -174,6 +194,12 @@ public class AssetService {
         return assetRepository.findById(id).orElseThrow(
                 () -> new NotFoundException(String.format("Asset with id %s is not found", id))
         );
+    }
+
+    @Transactional
+    public AssetDAO fetchSingleAsset(Long assetId) throws NotFoundException {
+        Asset asset = findOne(assetId);
+        return buildAssetDao(asset);
     }
 
     @Transactional
@@ -278,4 +304,110 @@ public class AssetService {
     public List<AssetTypeSummaryView> listDashboardAssetReport() {
         return assetRepository.getAssetTypeSummary();
     }
+
+
+    private List<AssetDAO> mapToDTOList(List<Asset> assets) {
+        return assets.stream().map(this::buildAssetDao).toList();
+    }
+
+    private AssetDAO buildAssetDao(Asset asset) {
+        return AssetDAO.builder()
+                .id(asset.getId())
+                .assetName(asset.getAssetName())
+                .hostname(asset.getHostname())
+                .detailNetBookValue(asset.getDetailNetBookValue())
+                .engravedNumber(asset.getEngravedNumber())
+                .dateReceipt(asset.getDateReceipt())
+                .make(asset.getMake())
+                .unitOfMeasure(asset.getUnitOfMeasure())
+                .purchaseCost(asset.getPurchaseCost())
+                .costOfTheAsset(asset.getCostOfTheAsset())
+                .netValueB(asset.getNetValueB())
+                .model(asset.getModel())
+                .serialNumber(asset.getSerialNumber())
+                .ram(asset.getRam())
+                .cpuSpeed(asset.getCpuSpeed())
+                .hardDiskSize(asset.getHardDiskSize())
+                .macAddress(asset.getMacAddress())
+                .ipAddress(asset.getIpAddress())
+                .interfaceType(asset.getInterfaceType())
+                .assetDepreciationRate(asset.getAssetDepreciationRate())
+                .description(asset.getDescription())
+                .image(asset.getImage())
+
+                // Map nested references as simple DTOs or just their IDs and names to avoid recursion
+                .supplier(asset.getSupplier() != null ?
+                        Supplier.builder()
+                                .id(asset.getSupplier().getId())
+                                .name(asset.getSupplier().getName())
+                                .address(asset.getSupplier().getAddress())
+                                .telephone(asset.getSupplier().getTelephone())
+                                .email(asset.getSupplier().getEmail())
+                                .build() : null)
+                .assignedTo(asset.getAssignedTo() != null ?
+                        User.builder()
+                                .availability(asset.getAssignedTo().getAvailability())
+                                .branch(asset.getAssignedTo().getBranch())
+                                .email(asset.getAssignedTo().getEmail())
+                                .firstName(asset.getAssignedTo().getFirstName())
+                                .lastName(asset.getAssignedTo().getLastName())
+                                .otherName(asset.getAssignedTo().getOtherName())
+                                .gender(asset.getAssignedTo().getGender())
+                                .staffNumber(asset.getAssignedTo().getStaffNumber())
+                                .title(asset.getAssignedTo().getTitle())
+                                .department(asset.getAssignedTo().getDepartment())
+                                .isEnabled(asset.getAssignedTo().isEnabled())
+                                .isAccountNonLocked(asset.getAssignedTo().isAccountNonLocked())
+                                .blocked(asset.getAssignedTo().isBlocked())
+                                .build() : null)
+                .branch(asset.getBranch() != null ?
+                        Branch.builder()
+                                .id(asset.getBranch().getId())
+                                .district(asset.getBranch().getDistrict())
+                                .branchManager(asset.getBranch().getBranchManager())
+                                .branchOperationsManager(asset.getBranch().getBranchOperationsManager())
+                                .creditAdministrator(asset.getBranch().getCreditAdministrator())
+                                .relationshipManager(asset.getBranch().getRelationshipManager())
+                                .name(asset.getBranch().getName())
+                                .region(asset.getBranch().getRegion())
+                                .telephone(asset.getBranch().getTelephone())
+                                .email(asset.getBranch().getEmail())
+                                .build() : null)
+                .assetStatus(asset.getAssetStatus() != null ?
+                        Status.builder()
+                                .id(asset.getAssetStatus().getId())
+                                .code(asset.getAssetStatus().getCode())
+                                .name(asset.getAssetStatus().getName())
+                                .description(asset.getAssetStatus().getDescription())
+                                .status(asset.getAssetStatus().getStatus())
+                                .build() : null)
+                .assetType(asset.getAssetType() != null ?
+                        AssetType.builder()
+                                .id(asset.getAssetType().getId())
+                                .name(asset.getAssetType().getName())
+                                .description(asset.getAssetType().getDescription())
+                                .build() : null)
+                .commodity(asset.getCommodity() != null ?
+                        Commodity.builder()
+                                .id(asset.getCommodity().getId())
+                                .name(asset.getCommodity().getName())
+                                .groupName(asset.getCommodity().getGroupName())
+                                .build() : null)
+                .stock(asset.getStock() != null ?
+                        Stock.builder()
+                                .id(asset.getStock().getId())
+                                .referenceNumber(asset.getStock().getReferenceNumber())
+                                .name(asset.getStock().getName())
+                                .totalCost(asset.getStock().getTotalCost())
+                                .balanceCost(asset.getStock().getBalanceCost())
+                                .lpoNumber(asset.getStock().getLpoNumber())
+                                .grnNumber(asset.getStock().getGrnNumber())
+                                .build() : null)
+                .createDate(asset.getCreateDate())
+                .lastModified(asset.getLastModified())
+                .createdBy(asset.getCreatedBy())
+                .lastModifiedBy(asset.getLastModifiedBy())
+                .build();
+    }
+
 }

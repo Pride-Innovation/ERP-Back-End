@@ -35,7 +35,7 @@ public class BranchService {
     private final DistrictService districtService;
     private final RegionService regionService;
 
-    public Page<Branch> fetchAllBranches(
+    public Page<BranchWithManagersDTO> fetchAllBranches(
             int pageSize,
             String sortDirection,
             int pageNumber,
@@ -54,7 +54,8 @@ public class BranchService {
                     .builder()
                     .name(name)
                     .build();
-            return branchSearchDao.findAllWithFilters(branchPage, branchSearchCriteria);
+            Page<Branch> branches = branchSearchDao.findAllWithFilters(branchPage, branchSearchCriteria);
+            return branches.map(this::mapToDto);
         } catch (Exception e) {
             return null;
         }
@@ -120,5 +121,30 @@ public class BranchService {
 
     private Sort.Direction determineSortDirection(String direction) {
         return Objects.equals(direction, DESCENDING_SORT_DIRECTION) ? Sort.Direction.DESC : Sort.Direction.ASC;
+    }
+
+    private BranchWithManagersDTO mapToDto(Branch branch) {
+        return BranchWithManagersDTO.builder()
+                .id(branch.getId())
+                .name(branch.getName())
+                .email(branch.getEmail())
+                .telephone(branch.getTelephone())
+                .branchManager(mapUser(branch.getBranchManager()))
+                .branchOperationsManager(mapUser(branch.getBranchOperationsManager()))
+                .relationshipManager(mapUser(branch.getRelationshipManager()))
+                .creditAdministrator(mapUser(branch.getCreditAdministrator()))
+                .region(branch.getRegion())
+                .district(branch.getDistrict())
+                .build();
+    }
+
+    private User mapUser(User user) {
+        if (user == null) return null;
+        return User.builder()
+                .id(user.getId())
+                .firstName(user.getFirstName())
+                .lastName(user.getLastName())
+                .email(user.getEmail())
+                .build();
     }
 }

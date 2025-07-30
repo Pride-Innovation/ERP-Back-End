@@ -26,7 +26,7 @@ public class AssetAssignmentHistoryController {
     private final AssetAssignmentHistoryService assetAssignmentHistoryService;
 
     @GetMapping("/assignment-history")
-    public ResponseEntity<Page<AssetAssignmentHistory>> findAllAssetAssignmentHistory(
+    public ResponseEntity<Page<AssetAssignmentHistoryDAO>> findAllAssetAssignmentHistory(
             @RequestParam(required = false, defaultValue = "10") int pageSize,
             @RequestParam(required = false, defaultValue = ASCENDING_SORT_DIRECTION) String sortDirection,
             @RequestParam(required = false, defaultValue = "0") int pageNumber,
@@ -34,7 +34,7 @@ public class AssetAssignmentHistoryController {
             @RequestParam(required = false) Long assetId
     ) {
 
-        Page<AssetAssignmentHistory> response = assetAssignmentHistoryService
+        Page<AssetAssignmentHistoryDAO> response = assetAssignmentHistoryService
                 .findAllAssetAssignmentHistory(
                         pageSize,
                         sortDirection,

@@ -23,8 +23,6 @@ import pride.bank.erp.user.User;
 import pride.bank.erp.user.UserRepository;
 import pride.bank.erp.user.UserService;
 
-import java.util.Optional;
-
 @Service
 @RequiredArgsConstructor
 public class RequestReportService {
@@ -70,11 +68,12 @@ public class RequestReportService {
             Request request,
             Status status,
             String comment
-    ) {
+    ) throws NotFoundException {
         request.setStatus(status);
         requestRepository.save(request);
 
         String statusName = status.getStatus();
+        User requester = request.getRequester();
 
         if ("requestRejected".equalsIgnoreCase(statusName)) {
             setRequestPosition(request, request.getRequester());
@@ -87,26 +86,41 @@ public class RequestReportService {
         }
 
         if ("requestApproved".equalsIgnoreCase(statusName)) {
-            Optional<User> admin = userRepository.findByEmail(adminEmailAddress);
-            if (admin.isEmpty()) {
-                throw new IllegalStateException("Admin user not found for email: " + adminEmailAddress);
-            }
-
-            setRequestPosition(request, admin.get());
-
             notifyIndividual(
-                    request.getRequester().getEmail(),
+                    requester.getEmail(),
                     "Request has been Approved by your Manager",
                     request,
-                    request.getRequester().getFirstName()
+                    requester.getFirstName()
             );
 
-            return notifyIndividual(
-                    adminEmailAddress,
-                    comment,
-                    request,
-                    "Admin"
-            );
+            if (isHeadOffice(requester)) {
+                // Notify Admin if from Head Office
+                User admin = userRepository.findByEmail(adminEmailAddress)
+                        .orElseThrow(() -> new IllegalStateException("Admin user not found for email: " + adminEmailAddress));
+
+                setRequestPosition(request, admin);
+                return notifyIndividual(
+                        admin.getEmail(),
+                        comment,
+                        request,
+                        "Admin"
+                );
+            } else {
+                // Notify Branch Operations Manager
+                User branchOpsManager = requester.getBranch().getBranchOperationsManager();
+                if (branchOpsManager == null) {
+                    throw new NotFoundException("Branch Operations Manager not assigned for branch: "
+                            + requester.getBranch().getName());
+                }
+
+                setRequestPosition(request, branchOpsManager);
+                return notifyIndividual(
+                        branchOpsManager.getEmail(),
+                        comment,
+                        request,
+                        branchOpsManager.getFirstName()
+                );
+            }
         }
 
         return null;
@@ -142,6 +156,10 @@ public class RequestReportService {
     private void setRequestPosition(Request request, User newPosition) {
         request.setCurrentApprover(newPosition);
         requestRepository.save(request);
+    }
+
+    private boolean isHeadOffice(User user) {
+        return user.getBranch() != null && user.getBranch().getId() == 1;
     }
 
 }

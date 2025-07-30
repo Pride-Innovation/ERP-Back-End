@@ -46,18 +46,22 @@ public class Branch {
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "branch_manager_id")
+    @JsonIgnore
     private User branchManager;
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "branch_operations_manager_id")
+    @JsonIgnore
     private User branchOperationsManager;
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "relationship_manager_id")
+    @JsonIgnore
     private User relationshipManager;
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "credit_administrator_id")
+    @JsonIgnore
     private User creditAdministrator;
 
     @OneToMany(mappedBy = "branch", cascade = CascadeType.PERSIST)

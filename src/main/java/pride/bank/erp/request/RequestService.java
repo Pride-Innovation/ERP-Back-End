@@ -9,11 +9,7 @@ package pride.bank.erp.request;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
+import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -122,7 +118,7 @@ public class RequestService {
             throw new RuntimeException("Failed to save request: " + ex.getMessage(), ex);
         }
 
-        User supervisor = null;
+        User supervisor;
         try {
             supervisor = findSupervisorToApproveRequest();
             savedRequest.setCurrentApprover(supervisor);
@@ -203,7 +199,8 @@ public class RequestService {
         }
     }
 
-    public Page<Request> fetchAllRequests(
+    @Transactional
+    public Page<RequestDTO> fetchAllRequests(
             int pageSize,
             String sortDirection,
             int pageNumber,
@@ -232,7 +229,10 @@ public class RequestService {
                     .requesterIds(requestersList(status))
                     .timeOfSubmissionOfRequest(timeOfSubmissionOfRequest)
                     .build();
-            return requestSearchDao.findAllWithFilters(requestPage, requestSearchCriteria);
+            Page<Request> requestPageResult = requestSearchDao.findAllWithFilters(requestPage, requestSearchCriteria);
+            List<RequestDTO> dtoList = convertToRequestDTOList(requestPageResult.getContent());
+            return new PageImpl<>(dtoList, requestPageResult.getPageable(), requestPageResult.getTotalElements());
+
         } catch (Exception e) {
             return null;
         }
@@ -334,13 +334,26 @@ public class RequestService {
             throws NotFoundException {
         User requester = currentUserService.getCurrentUser();
 
-        Long supervisorTitleId = requester.getTitle().getReportsTo().getId();
-        List<User> supervisors = userRepository.findByTitleId(supervisorTitleId);
-
-        if (supervisors.isEmpty()) {
-            throw new NotFoundException("No supervisor found for title ID: " + supervisorTitleId);
+        if (requester == null || requester.getTitle() == null || requester.getBranch() == null) {
+            throw new IllegalStateException("Requester must have a title and be assigned to a branch.");
         }
-        return supervisors.get(0);
+
+        if (requester.getTitle().getReportsTo() == null) {
+            throw new NotFoundException("The requester's title has no assigned manager (reportsTo is null).");
+        }
+
+        Long managerTitleId = requester.getTitle().getReportsTo().getId();
+        Long branchId = requester.getBranch().getId();
+
+        List<User> possibleManagers = userRepository.findByTitleIdAndBranchId(managerTitleId, branchId);
+
+        if (possibleManagers.isEmpty()) {
+            throw new NotFoundException(
+                    "No manager found with title ID: " + managerTitleId + " in branch ID: " + branchId
+            );
+        }
+
+        return possibleManagers.get(0);
     }
 
     private String notifySupervisor(User supervisor, Request request) {
@@ -457,7 +470,7 @@ public class RequestService {
     }
 
     @Transactional
-    public Page<Request> findLatestPendingRequestsWithDetails(
+    public Page<RequestDTO> findLatestPendingRequestsWithDetails(
             int pageSize,
             String sortDirection,
             int pageNumber,
@@ -467,7 +480,8 @@ public class RequestService {
             String description,
             LocalDateTime timeOfSubmissionOfRequest,
             List<Long> statusIds,
-            String status) {
+            String status
+    ) {
         try {
             RequestPage requestPage = RequestPage.builder()
                     .pageSize(pageSize)
@@ -476,8 +490,7 @@ public class RequestService {
                     .pageNumber(pageNumber)
                     .build();
 
-            RequestSearchCriteria requestSearchCriteria = RequestSearchCriteria
-                    .builder()
+            RequestSearchCriteria requestSearchCriteria = RequestSearchCriteria.builder()
                     .name(name)
                     .priority(priority)
                     .description(description)
@@ -487,26 +500,43 @@ public class RequestService {
                     .build();
 
             Page<Request> requestPageResult = requestSearchDao.findAllWithFilters(requestPage, requestSearchCriteria);
+            List<RequestDTO> dtoList = convertToRequestDTOList(requestPageResult.getContent());
+            return new PageImpl<>(dtoList, requestPageResult.getPageable(), requestPageResult.getTotalElements());
 
-            requestPageResult.getContent().forEach(request -> {
-                List<RequestCommodity> requestCommodities = requestCommodityRepository.findByRequestId(request.getId());
-
-                if (requestCommodities != null && !requestCommodities.isEmpty()) {
-                    List<CommodityWithQuantityDTO> commodityDTOs = requestCommodities.stream()
-                            .map(rc -> CommodityWithQuantityDTO.builder()
-                                    .commodity(rc.getCommodity())
-                                    .quantity(rc.getQuantity())
-                                    .build())
-                            .toList();
-                    request.setCommodities(commodityDTOs);
-                } else {
-                    request.setCommodities(List.of()); // or null, if preferred
-                }
-            });
-
-            return requestPageResult;
         } catch (Exception e) {
-            return null;
+            return Page.empty();
         }
     }
+
+    private List<RequestDTO> convertToRequestDTOList(List<Request> requests) {
+        return requests.stream().map(request -> {
+            List<RequestCommodity> requestCommodities = requestCommodityRepository.findByRequestId(request.getId());
+
+            List<CommodityWithQuantityDTO> commodityDTOs = requestCommodities.stream()
+                    .map(rc -> CommodityWithQuantityDTO.builder()
+                            .commodity(rc.getCommodity())
+                            .quantity(rc.getQuantity())
+                            .build())
+                    .toList();
+
+            return RequestDTO.builder()
+                    .id(request.getId())
+                    .name(request.getName())
+                    .priority(request.getPriority())
+                    .description(request.getDescription())
+                    .signaturePath(request.getSignaturePath())
+                    .status(request.getStatus())
+                    .timeOfSubmissionOfRequest(request.getTimeOfSubmissionOfRequest())
+                    .createDate(request.getCreateDate())
+                    .lastModified(request.getLastModified())
+                    .createdBy(request.getCreatedBy())
+                    .lastModifiedBy(request.getLastModifiedBy())
+                    .requester(request.getRequester())
+                    .currentApprover(request.getCurrentApprover())
+                    .commodities(commodityDTOs)
+                    .requestReports(request.getRequestReportDAOS())
+                    .build();
+        }).toList();
+    }
+
 }
