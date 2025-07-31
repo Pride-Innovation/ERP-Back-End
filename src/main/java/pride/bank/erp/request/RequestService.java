@@ -472,9 +472,12 @@ public class RequestService {
     public List<AssetRequestSummaryDTO> getCurrentYearRequestSummary() {
         Long receiptAcknowledged = 7L; // This must be the ID of  Receipt Acknowledged Status
         Long requestRejected = 2L; // This must be the ID of Request Rejected Status
+        Long branchId = currentUserService.getCurrentUser().getBranch().getId();
 
         try {
-            return requestRepository.fetchAssetRequestSummaries(receiptAcknowledged, requestRejected).stream()
+            return requestRepository
+                    .fetchAssetRequestSummaries(receiptAcknowledged, requestRejected, branchId)
+                    .stream()
                     .map(r -> new AssetRequestSummaryDTO(
                             (String) r[0],
                             ((Number) r[1]).longValue(),

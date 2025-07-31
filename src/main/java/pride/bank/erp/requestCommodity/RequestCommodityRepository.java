@@ -34,8 +34,13 @@ public interface RequestCommodityRepository extends JpaRepository<RequestCommodi
                 FROM RequestCommodity rc
                 WHERE MONTH(rc.request.createDate) = :month
                   AND YEAR(rc.request.createDate) = :year
+                  AND rc.request.requester.branch.id = :branchId
             """)
-    Integer getTotalQuantityByMonthAndYear(@Param("month") int month, @Param("year") int year);
+    Integer getTotalQuantityByMonthAndYear(
+            @Param("month") int month,
+            @Param("year") int year,
+            @Param("branchId") Long branchId
+    );
 
     @Query(value = """
                 SELECT

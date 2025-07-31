@@ -23,6 +23,7 @@ public class RequestCommodityService {
      */
     public Map<String, Integer> getMonthlyCommodityStats() {
         LocalDate now = LocalDate.now();
+        Long branchId = currentUserService.getCurrentUser().getBranch().getId();
 
         int currentMonth = now.getMonthValue();
         int currentYear = now.getYear();
@@ -31,8 +32,10 @@ public class RequestCommodityService {
         int previousMonth = previousMonthDate.getMonthValue();
         int previousYear = previousMonthDate.getYear();
 
-        Integer currentMonthTotal = requestCommodityRepository.getTotalQuantityByMonthAndYear(currentMonth, currentYear);
-        Integer previousMonthTotal = requestCommodityRepository.getTotalQuantityByMonthAndYear(previousMonth, previousYear);
+        Integer currentMonthTotal = requestCommodityRepository
+                .getTotalQuantityByMonthAndYear(currentMonth, currentYear, branchId);
+        Integer previousMonthTotal = requestCommodityRepository
+                .getTotalQuantityByMonthAndYear(previousMonth, previousYear, branchId);
 
         Map<String, Integer> result = new HashMap<>();
         result.put("currentMonth", currentMonthTotal != null ? currentMonthTotal : 0);

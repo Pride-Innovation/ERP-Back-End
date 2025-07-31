@@ -7,8 +7,6 @@ Managing Director
 
 package pride.bank.erp.request;
 
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -27,16 +25,19 @@ public interface RequestRepository extends JpaRepository<Request, Long> {
                               ELSE 0 END
                        ) AS totalDelivered
                 FROM request r
+                JOIN users u ON r.requester_id = u.id
                 JOIN request_commodity rc ON rc.request_id = r.id
                 JOIN commodity c ON rc.commodity_id = c.id
                 JOIN asset_type at ON c.asset_type_id = at.id
                 WHERE YEAR(r.create_date) = YEAR(CURRENT_DATE())
                   AND r.status_id != :rejectedStatusId
+                  AND u.branch_id = :branchId
                 GROUP BY at.name
             """, nativeQuery = true)
     List<Object[]> fetchAssetRequestSummaries(
             @Param("acknowledgedStatusId") Long acknowledgedStatusId,
-            @Param("rejectedStatusId") Long rejectedStatusId
+            @Param("rejectedStatusId") Long rejectedStatusId,
+            @Param("branchId") Long branchId
     );
 
 }

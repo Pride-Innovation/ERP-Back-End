@@ -97,7 +97,7 @@ public interface StockCommodityRepository extends JpaRepository<StockCommodity, 
                   LIMIT 1
                 )
             """, nativeQuery = true)
-    List<Object[]> findTopAndLeastITStockedCommodities();
+    List<Object[]> findTopAndLeastITStockedCommodities(@Param("branchId") Long branchId);
 
 
     @Query(value = """

@@ -120,8 +120,10 @@ public class StockCommodityService {
 
     public List<StockSummaryDTO> getItAndOfficeMonthlyStockSummary() {
         List<StockSummaryDTO> summaryList = new ArrayList<>();
+        Long branchId = currentUserService.getCurrentUser().getBranch().getId();
 
-        List<Object[]> itData = stockCommodityRepository.findTopAndLeastITStockedCommodities();
+        List<Object[]> itData = stockCommodityRepository
+                .findTopAndLeastITStockedCommodities(branchId);
         if (itData.size() == 2) {
             summaryList.add(new StockSummaryDTO(
                     "IT Equipment",
