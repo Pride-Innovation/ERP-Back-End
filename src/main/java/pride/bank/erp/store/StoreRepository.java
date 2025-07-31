@@ -45,4 +45,17 @@ public interface StoreRepository extends JpaRepository<Store, Long> {
             """, nativeQuery = true)
     AssetTypeSummaryView findAssetTypeSummary(@Param("assetTypeName") String assetTypeName);
 
+    @Query("""
+                SELECT c.name AS commodityName, SUM(s.quantity) AS totalQuantity
+                FROM Store s
+                JOIN s.commodity c
+                JOIN c.assetType at
+                WHERE at.name = 'Stationery'
+                  AND s.branch.id = :branchId
+                  AND FUNCTION('MONTH', s.createDate) = FUNCTION('MONTH', CURRENT_DATE)
+                  AND FUNCTION('YEAR', s.createDate) = FUNCTION('YEAR', CURRENT_DATE)
+                GROUP BY c.name
+            """)
+    List<CommoditySummary> getStationeryCommoditiesCurrentMonthByBranch(@Param("branchId") Long branchId);
+
 }

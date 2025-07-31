@@ -2,6 +2,7 @@ package pride.bank.erp.stockCommodity;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.requestCommodity.MonthlyStationeryStockDTO;
 
 import java.time.LocalDate;
@@ -13,6 +14,7 @@ import java.util.*;
 @RequiredArgsConstructor
 public class StockCommodityService {
     private final StockCommodityRepository stockCommodityRepository;
+    private final CurrentUserService currentUserService;
 
     private static final List<String> ASSET_TYPE_KEYS = Arrays.asList(
             "itEquipment", "officeEquipment", "stationery", "fleet"
@@ -96,7 +98,9 @@ public class StockCommodityService {
      * @return Current Month Stationery Stock Report
      */
     public MonthlyStationeryStockDTO getCurrentMonthStationeryStocks() {
-        List<Object[]> rows = stockCommodityRepository.findCurrentMonthStationeryStockSums();
+        Long branchId = currentUserService.getCurrentUser().getBranch().getId();
+
+        List<Object[]> rows = stockCommodityRepository.findCurrentMonthStationeryStockSums(branchId);
 
         Map<String, Integer> commodityCounts = new LinkedHashMap<>();
         for (Object[] row : rows) {

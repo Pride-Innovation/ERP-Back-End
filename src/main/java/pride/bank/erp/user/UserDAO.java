@@ -1,16 +1,11 @@
 package pride.bank.erp.user;
 
-import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import pride.bank.erp.branch.Branch;
 import pride.bank.erp.department.Department;
-import pride.bank.erp.helper.Constants;
 import pride.bank.erp.title.Title;
 
 @Data

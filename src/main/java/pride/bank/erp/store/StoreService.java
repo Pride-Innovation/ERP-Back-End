@@ -9,16 +9,20 @@ import pride.bank.erp.asset.AssetTypeSummaryView;
 import pride.bank.erp.branch.Branch;
 import pride.bank.erp.branch.BranchService;
 import pride.bank.erp.commodity.Commodity;
+import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.stock.CommodityWithDetailsDao;
 
-import java.util.List;
+import java.time.LocalDate;
+import java.time.format.TextStyle;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
 public class StoreService {
     private final StoreRepository storeRepository;
     private final BranchService branchService;
+    private final CurrentUserService currentUserService;
 
     /**
      * Adds or updates commodities in the store for a specific branch.
@@ -124,5 +128,23 @@ public class StoreService {
 
     public AssetTypeSummaryView findCommoditiesInStockByAssetType() {
         return storeRepository.findAssetTypeSummary("Stationery");
+    }
+
+    public Map<String, Object> getCurrentMonthStationeryForBranch() {
+        Long branchId = currentUserService.getCurrentUser().getBranch().getId();
+        List<CommoditySummary> summaries = storeRepository.getStationeryCommoditiesCurrentMonthByBranch(branchId);
+
+        Map<String, Integer> commodities = new HashMap<>();
+        for (CommoditySummary summary : summaries) {
+            commodities.put(summary.getCommodityName(), summary.getTotalQuantity());
+        }
+
+        String monthName = LocalDate.now().getMonth().getDisplayName(TextStyle.FULL, Locale.ENGLISH);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("month", monthName);
+        result.put("commodities", commodities);
+
+        return result;
     }
 }

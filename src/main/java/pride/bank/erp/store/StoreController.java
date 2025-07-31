@@ -12,6 +12,7 @@ import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping(Constants.GENERAL_ROUTE)
@@ -45,5 +46,10 @@ public class StoreController {
     @GetMapping("/stationery-report")
     public ResponseEntity<AssetTypeSummaryView> findCommoditiesInStockByAssetType() {
         return new ResponseEntity<>(storeService.findCommoditiesInStockByAssetType(), HttpStatus.OK);
+    }
+
+    @GetMapping("/stationery-report/branch")
+    public ResponseEntity<Map<String, Object>> getCurrentMonthStationeryForBranch() {
+        return new ResponseEntity<>(storeService.getCurrentMonthStationeryForBranch(), HttpStatus.OK);
     }
 }

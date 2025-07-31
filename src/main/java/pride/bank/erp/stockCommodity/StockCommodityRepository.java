@@ -64,7 +64,7 @@ public interface StockCommodityRepository extends JpaRepository<StockCommodity, 
                   AND YEAR(s.create_date) = YEAR(CURRENT_DATE())
                 GROUP BY c.name
             """, nativeQuery = true)
-    List<Object[]> findCurrentMonthStationeryStockSums();
+    List<Object[]> findCurrentMonthStationeryStockSums(@Param("branchId") Long branchId);
 
     @Query(value = """
                 (

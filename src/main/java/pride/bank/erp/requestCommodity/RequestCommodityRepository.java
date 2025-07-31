@@ -44,11 +44,13 @@ public interface RequestCommodityRepository extends JpaRepository<RequestCommodi
                     SUM(rc.quantity) AS total_quantity
                 FROM request_commodity rc
                 JOIN request r ON rc.request_id = r.id
+                JOIN users u ON r.requester_id = u.id
                 WHERE r.create_date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+                  AND u.branch_id = :branchId
                 GROUP BY MONTH(r.create_date), MONTHNAME(r.create_date)
                 ORDER BY MONTH(r.create_date)
             """, nativeQuery = true)
-    List<Object[]> getMonthlyCommodityQuantitiesLastYear();
+    List<Object[]> getMonthlyCommodityQuantitiesLastYearByBranch(@Param("branchId") Long branchId);
 
     @Query(value = """
                 SELECT
@@ -71,13 +73,15 @@ public interface RequestCommodityRepository extends JpaRepository<RequestCommodi
                   SELECT 12, 'December'
                 ) m
                 LEFT JOIN request r ON MONTH(r.create_date) = m.month_number AND YEAR(r.create_date) = YEAR(CURDATE())
+                LEFT JOIN users u ON r.requester_id = u.id
                 LEFT JOIN request_commodity rc ON rc.request_id = r.id
                 LEFT JOIN commodity c ON rc.commodity_id = c.id
                 LEFT JOIN asset_type at ON c.asset_type_id = at.id
+                WHERE u.branch_id = :branchId
                 GROUP BY m.month_number, m.month_name
                 ORDER BY m.month_number
             """, nativeQuery = true)
-    List<Object[]> fetchMonthlyItAndOfficeTotals();
+    List<Object[]> fetchMonthlyItAndOfficeTotals(@Param("branchId") Long branchId);
 
 
     @Query(value = """

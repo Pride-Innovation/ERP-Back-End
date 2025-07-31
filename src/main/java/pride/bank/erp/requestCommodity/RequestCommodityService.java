@@ -3,6 +3,8 @@ package pride.bank.erp.requestCommodity;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import pride.bank.erp.config.CurrentUserService;
+import pride.bank.erp.user.User;
 
 import java.time.LocalDate;
 import java.time.format.TextStyle;
@@ -13,6 +15,7 @@ import java.util.*;
 @Slf4j
 public class RequestCommodityService {
     private final RequestCommodityRepository requestCommodityRepository;
+    private final CurrentUserService currentUserService;
 
     /**
      * Returns the total quantity of commodities requested in the current and previous months.
@@ -38,8 +41,13 @@ public class RequestCommodityService {
         return result;
     }
 
-    public List<MonthlyCommoditySummary> getMonthlyCommodityStatsLastYear() {
-        List<Object[]> results = requestCommodityRepository.getMonthlyCommodityQuantitiesLastYear();
+    public List<MonthlyCommoditySummary> getMonthlyCommodityStatsLastYearForBranch() {
+
+        User currentUser = currentUserService.getCurrentUser();
+        Long branchId = currentUser.getBranch().getId();
+
+        List<Object[]> results = requestCommodityRepository
+                .getMonthlyCommodityQuantitiesLastYearByBranch(branchId);
 
         return results.stream()
                 .map(row -> new MonthlyCommoditySummary(
@@ -50,7 +58,9 @@ public class RequestCommodityService {
     }
 
     public List<MonthlyAssetTotals> getMonthlyItAndOfficeStats() {
-        return requestCommodityRepository.fetchMonthlyItAndOfficeTotals().stream()
+        Long branchId = currentUserService.getCurrentUser().getBranch().getId();
+        return requestCommodityRepository.fetchMonthlyItAndOfficeTotals(branchId)
+                .stream()
                 .map(row -> new MonthlyAssetTotals(
                         (String) row[1],
                         ((Number) row[2]).intValue(),
