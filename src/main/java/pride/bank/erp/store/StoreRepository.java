@@ -52,10 +52,8 @@ public interface StoreRepository extends JpaRepository<Store, Long> {
                 JOIN c.assetType at
                 WHERE at.name = 'Stationery'
                   AND s.branch.id = :branchId
-                  AND FUNCTION('MONTH', s.createDate) = FUNCTION('MONTH', CURRENT_DATE)
-                  AND FUNCTION('YEAR', s.createDate) = FUNCTION('YEAR', CURRENT_DATE)
                 GROUP BY c.name
             """)
-    List<CommoditySummary> getStationeryCommoditiesCurrentMonthByBranch(@Param("branchId") Long branchId);
+    List<CommoditySummary> getStationeryCommoditiesByCurrentMonthByBranch(@Param("branchId") Long branchId);
 
 }

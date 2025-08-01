@@ -15,7 +15,6 @@ import org.springframework.stereotype.Repository;
 import pride.bank.erp.requestReport.RequestReport;
 
 import java.util.List;
-import java.util.Set;
 
 @Repository
 public interface RequestCommodityRepository extends JpaRepository<RequestCommodity, Long> {
@@ -27,7 +26,7 @@ public interface RequestCommodityRepository extends JpaRepository<RequestCommodi
     void deleteByRequestId(@Param("requestId") Long requestId);
 
     @Query("SELECT rr FROM RequestReport rr WHERE rr.request.id = :requestId")
-    Set<RequestReport> findReportByRequestId(@Param("requestId") Long requestId);
+    List<RequestReport> findReportByRequestId(@Param("requestId") Long requestId);
 
     @Query("""
                 SELECT SUM(rc.quantity)

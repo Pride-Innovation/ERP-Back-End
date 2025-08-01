@@ -22,9 +22,9 @@ public class IssuanceController {
     private final IssuanceService issuanceService;
 
     @PostMapping("/issuance")
-    public ResponseEntity<Issuance> issueRequest(@RequestBody IssuanceDTO issuanceDTO)
+    public ResponseEntity<IssuanceDAO> issueRequest(@RequestBody IssuanceDTO issuanceDTO)
             throws NotFoundException {
-        Issuance response = issuanceService.issueCommodities(issuanceDTO);
+        IssuanceDAO response = issuanceService.issueCommodities(issuanceDTO);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 

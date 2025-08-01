@@ -150,10 +150,13 @@ public class RequestController {
 
     @GetMapping("/requests/{requestID}")
     public ResponseEntity<?> findRequest(@PathVariable Long requestID) {
+        System.out.println("We are in here bitch");
+
         try {
             RequestDTO response = requestService.fetchSingleRequest(requestID);
             return new ResponseEntity<>(response, HttpStatusCode.valueOf(200));
         } catch (Exception e) {
+            e.printStackTrace();
             return new ResponseEntity<>(e.getMessage(), HttpStatus.BAD_REQUEST);
         }
     }

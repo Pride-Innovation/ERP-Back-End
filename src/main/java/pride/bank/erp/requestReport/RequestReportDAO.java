@@ -1,5 +1,6 @@
 package pride.bank.erp.requestReport;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -16,6 +17,7 @@ import java.time.LocalDateTime;
 @Builder
 public class RequestReportDAO {
     private Long id;
+    @JsonIgnore
     private Request request;
     private User approver;
     private Status status;

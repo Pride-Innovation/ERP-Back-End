@@ -132,7 +132,7 @@ public class StoreService {
 
     public Map<String, Object> getCurrentMonthStationeryForBranch() {
         Long branchId = currentUserService.getCurrentUser().getBranch().getId();
-        List<CommoditySummary> summaries = storeRepository.getStationeryCommoditiesCurrentMonthByBranch(branchId);
+        List<CommoditySummary> summaries = storeRepository.getStationeryCommoditiesByCurrentMonthByBranch(branchId);
 
         Map<String, Integer> commodities = new HashMap<>();
         for (CommoditySummary summary : summaries) {

@@ -21,6 +21,7 @@ import pride.bank.erp.helper.Constants;
 import pride.bank.erp.helper.DeleteResponse;
 import pride.bank.erp.helper.ExtractNumberFromEmailAddress;
 import pride.bank.erp.helper.FileUpload;
+import pride.bank.erp.issuance.UserBuilder;
 import pride.bank.erp.notification.Email;
 import pride.bank.erp.requestCommodity.RequestCommodity;
 import pride.bank.erp.requestCommodity.RequestCommodityDTO;
@@ -57,6 +58,7 @@ public class RequestService {
     private final Email emailService;
     private final CurrentUserService currentUserService;
     private final TitleRepository titleRepository;
+    private final UserBuilder userBuilder;
 
     @Transactional
     public Request createRequest(
@@ -261,25 +263,34 @@ public class RequestService {
         List<RequestCommodity> requestCommodities = requestCommodityRepository.findByRequestId(requestId);
         List<CommodityWithQuantityDTO> commodities = commodityWithQuantityDTO(requestCommodities);
         request.setCommodities(commodities);
-        Set<RequestReport> reports = requestCommodityRepository.findReportByRequestId(requestId);
+        List<RequestReport> reports = requestCommodityRepository.findReportByRequestId(requestId);
         List<RequestReportDAO> requestReportDAOS = reports.stream().map(this::buildObject).toList();
 
         return RequestDTO.builder()
                 .id(request.getId())
                 .name(request.getName())
                 .priority(request.getPriority())
-                .commodities(commodities)
+                .commodities(getRequestCommodities(request))
                 .description(request.getDescription())
                 .signaturePath(request.getSignaturePath())
-                .status(request.getStatus())
+                .status(request.getStatus() != null ?
+                        Status.builder()
+                                .id(request.getStatus().getId())
+                                .name(request.getStatus().getName())
+                                .description(request.getStatus().getDescription())
+                                .status(request.getStatus().getStatus())
+                                .code(request.getStatus().getCode())
+                                .build() : null)
                 .timeOfSubmissionOfRequest(request.getTimeOfSubmissionOfRequest())
                 .createdBy(request.getCreatedBy())
                 .createDate(request.getCreateDate())
                 .lastModified(request.getLastModified())
                 .lastModifiedBy(request.getLastModifiedBy())
-                .requester(request.getRequester())
+                .requester(request.getRequester() != null ?
+                        userBuilder.builder(request.getRequester()) : null)
                 .requestReports(requestReportDAOS)
-                .currentApprover(request.getCurrentApprover())
+                .currentApprover(request.getCurrentApprover() != null ?
+                        userBuilder.builder(request.getCurrentApprover()) : null)
                 .build();
     }
 
@@ -529,34 +540,67 @@ public class RequestService {
     }
 
     private List<RequestDTO> convertToRequestDTOList(List<Request> requests) {
-        return requests.stream().map(request -> {
-            List<RequestCommodity> requestCommodities = requestCommodityRepository.findByRequestId(request.getId());
+        return requests.stream().map(request -> RequestDTO.builder()
+                .id(request.getId())
+                .name(request.getName())
+                .priority(request.getPriority())
+                .description(request.getDescription())
+                .signaturePath(request.getSignaturePath())
+                .status(request.getStatus())
+                .timeOfSubmissionOfRequest(request.getTimeOfSubmissionOfRequest())
+                .createDate(request.getCreateDate())
+                .lastModified(request.getLastModified())
+                .createdBy(request.getCreatedBy())
+                .lastModifiedBy(request.getLastModifiedBy())
+                .requester(request.getRequester())
+                .currentApprover(request.getCurrentApprover())
+                .commodities(getRequestCommodities(request))
+                .requestReports(request.getRequestReportDAOS())
+                .build()).toList();
+    }
 
-            List<CommodityWithQuantityDTO> commodityDTOs = requestCommodities.stream()
-                    .map(rc -> CommodityWithQuantityDTO.builder()
-                            .commodity(rc.getCommodity())
-                            .quantity(rc.getQuantity())
-                            .build())
-                    .toList();
+    private List<CommodityWithQuantityDTO> getRequestCommodities(Request request) {
+        List<RequestCommodity> requestCommodities = requestCommodityRepository.findByRequestId(request.getId());
 
-            return RequestDTO.builder()
-                    .id(request.getId())
-                    .name(request.getName())
-                    .priority(request.getPriority())
-                    .description(request.getDescription())
-                    .signaturePath(request.getSignaturePath())
-                    .status(request.getStatus())
-                    .timeOfSubmissionOfRequest(request.getTimeOfSubmissionOfRequest())
-                    .createDate(request.getCreateDate())
-                    .lastModified(request.getLastModified())
-                    .createdBy(request.getCreatedBy())
-                    .lastModifiedBy(request.getLastModifiedBy())
-                    .requester(request.getRequester())
-                    .currentApprover(request.getCurrentApprover())
-                    .commodities(commodityDTOs)
-                    .requestReports(request.getRequestReportDAOS())
-                    .build();
-        }).toList();
+        return requestCommodities.stream()
+                .map(rc -> CommodityWithQuantityDTO.builder()
+                        .commodity(rc.getCommodity())
+                        .quantity(rc.getQuantity())
+                        .build())
+                .toList();
+    }
+
+    private List<RequestReportDAO> buildRequestReportDAOS(List<RequestReport> reports) {
+        return reports.stream().map(dto -> RequestReportDAO
+                .builder()
+                .id(dto.getId())
+                .request(dto.getRequest() != null ?
+                        Request.builder()
+                                .id(dto.getRequest().getId())
+                                .name(dto.getRequest().getName())
+                                .priority(dto.getRequest().getPriority())
+                                .description(dto.getRequest().getDescription())
+                                .signaturePath(dto.getRequest().getSignaturePath())
+                                .status(dto.getRequest().getStatus())
+                                .timeOfSubmissionOfRequest(dto.getRequest().getTimeOfSubmissionOfRequest())
+                                .createDate(dto.getRequest().getCreateDate())
+                                .lastModified(dto.getRequest().getLastModified())
+                                .createdBy(dto.getRequest().getCreatedBy())
+                                .lastModifiedBy(dto.getRequest().getLastModifiedBy())
+                                .requester(dto.getRequest().getRequester())
+                                .currentApprover(dto.getRequest().getCurrentApprover())
+                                .build() : null)
+                .approver(dto.getApprover() != null ?
+                        userBuilder.builder(dto.getApprover()) : null)
+                .status(dto.getStatus() != null ?
+                        Status.builder()
+                                .id(dto.getStatus().getId())
+                                .name(dto.getStatus().getName())
+                                .description(dto.getStatus().getDescription())
+                                .status(dto.getStatus().getStatus())
+                                .code(dto.getStatus().getCode())
+                                .build() : null)
+                .build()).toList();
     }
 
 }

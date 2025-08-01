@@ -57,9 +57,10 @@ public class IssuanceService {
     private final CurrentUserService currentUserService;
     private final Email emailService;
     private final UserRepository userRepository;
+    private final UserBuilder userBuilder;
 
     @Transactional
-    public Issuance issueCommodities(IssuanceDTO request)
+    public IssuanceDAO issueCommodities(IssuanceDTO request)
             throws NotFoundException {
         User requester = userService.findUser(request.getRequester());
         Status status = statusService.findOneStatus(5L);
@@ -98,7 +99,23 @@ public class IssuanceService {
                 requestDetails
         );
 
-        return savedIssuance;
+        return IssuanceDAO
+                .builder()
+                .id(issuance.getId())
+                .comment(issuance.getComment())
+                .requester(issuance.getRequester() != null ?
+                        userBuilder.builder(issuance.getRequester()) : null)
+                .status(issuance.getStatus() != null ?
+                        Status.builder()
+                                .id(issuance.getStatus().getId())
+                                .code(issuance.getStatus().getCode())
+                                .name(issuance.getStatus().getName())
+                                .description(issuance.getStatus().getDescription())
+                                .status(issuance.getStatus().getStatus())
+                                .build() : null)
+                .request(issuance.getRequest() != null ?
+                        Request.builder().build() : null)
+                .build();
     }
 
 
