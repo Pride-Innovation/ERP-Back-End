@@ -156,7 +156,6 @@ public class RequestController {
             RequestDTO response = requestService.fetchSingleRequest(requestID);
             return new ResponseEntity<>(response, HttpStatusCode.valueOf(200));
         } catch (Exception e) {
-            e.printStackTrace();
             return new ResponseEntity<>(e.getMessage(), HttpStatus.BAD_REQUEST);
         }
     }
