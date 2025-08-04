@@ -1,2 +1,4 @@
-package pride.bank.erp.issuedCommodity;public class CommodityQuantity {
+package pride.bank.erp.issuedCommodity;
+
+public class CommodityQuantity {
 }
