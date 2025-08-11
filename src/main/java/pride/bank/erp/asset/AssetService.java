@@ -26,6 +26,7 @@ import pride.bank.erp.branch.BranchDAO;
 import pride.bank.erp.branch.BranchService;
 import pride.bank.erp.commodity.Commodity;
 import pride.bank.erp.commodity.CommodityService;
+import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
 import pride.bank.erp.request.CommodityWithQuantityDTO;
@@ -69,6 +70,7 @@ public class AssetService {
     private final StockRepository stockRepository;
     private final StockCommodityRepository stockCommodityRepository;
     private final AssetAssignmentHistoryRepository assetAssignmentHistoryRepository;
+    private final CurrentUserService currentUserService;
 
     public Page<AssetDAO> fetchAllAssets(
             int pageSize,
@@ -408,6 +410,11 @@ public class AssetService {
                 .createdBy(asset.getCreatedBy())
                 .lastModifiedBy(asset.getLastModifiedBy())
                 .build();
+    }
+
+    public List<AssetTypeStatsProjection> getAssetTypeStatistics() {
+        Long branchId = currentUserService.getCurrentUser().getBranch().getId();
+        return assetRepository.getAssetStatsByType(branchId);
     }
 
 }

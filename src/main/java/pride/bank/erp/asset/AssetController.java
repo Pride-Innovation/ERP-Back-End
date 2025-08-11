@@ -80,4 +80,9 @@ public class AssetController {
     public ResponseEntity<List<AssetTypeSummaryView>> listDashboardAssetReport() {
         return new ResponseEntity<>(assetService.listDashboardAssetReport(), HttpStatus.OK);
     }
+
+    @GetMapping("/assets/statistics")
+    public List<AssetTypeStatsProjection> getAssetStatistics() {
+        return assetService.getAssetTypeStatistics();
+    }
 }

@@ -26,4 +26,18 @@ public interface AssetRepository extends JpaRepository<Asset, Long> {
                 GROUP BY at.name
             """, nativeQuery = true)
     List<AssetTypeSummaryView> getAssetTypeSummary();
+
+    @Query("""
+            SELECT
+                a.assetType.name AS assetType,
+                COUNT(a.id) AS total,
+                SUM(CASE WHEN a.assetStatus.status = 'inMaintenance' THEN 1 ELSE 0 END) AS inMaintenance,
+                SUM(CASE WHEN a.assetStatus.status = 'requireUpdate' THEN 1 ELSE 0 END) AS unassigned
+            FROM Asset a
+            WHERE a.assetType.name IN ('Office Equipment', 'IT Equipment', 'Fleet')
+              AND a.branch.id = :branchId
+            GROUP BY a.assetType.name
+            ORDER BY a.assetType.name
+            """)
+    List<AssetTypeStatsProjection> getAssetStatsByType(Long branchId);
 }
