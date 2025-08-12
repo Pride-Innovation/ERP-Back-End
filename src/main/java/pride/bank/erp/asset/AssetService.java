@@ -7,10 +7,6 @@ Managing Director
 
 package pride.bank.erp.asset;
 
-import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -22,19 +18,11 @@ import pride.bank.erp.assetAssignmentHostory.AssetAssignmentHistoryRepository;
 import pride.bank.erp.assetType.AssetType;
 import pride.bank.erp.assetType.AssetTypeService;
 import pride.bank.erp.branch.Branch;
-import pride.bank.erp.branch.BranchDAO;
 import pride.bank.erp.branch.BranchService;
 import pride.bank.erp.commodity.Commodity;
 import pride.bank.erp.commodity.CommodityService;
 import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.exception.NotFoundException;
-import pride.bank.erp.helper.Constants;
-import pride.bank.erp.request.CommodityWithQuantityDTO;
-import pride.bank.erp.request.Request;
-import pride.bank.erp.request.RequestDTO;
-import pride.bank.erp.requestCommodity.RequestCommodity;
-import pride.bank.erp.requestReport.RequestReport;
-import pride.bank.erp.requestReport.RequestReportDAO;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
 import pride.bank.erp.stock.Stock;
@@ -42,17 +30,15 @@ import pride.bank.erp.stock.StockRepository;
 import pride.bank.erp.stockCommodity.StockCommodity;
 import pride.bank.erp.stockCommodity.StockCommodityRepository;
 import pride.bank.erp.supplier.Supplier;
-import pride.bank.erp.supplier.SupplierDTO;
 import pride.bank.erp.supplier.SupplierService;
 import pride.bank.erp.user.User;
-import pride.bank.erp.user.UserDAO;
-import pride.bank.erp.user.UserDTO;
 import pride.bank.erp.user.UserService;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
+import java.util.stream.Collectors;
 
 import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
 
@@ -415,6 +401,30 @@ public class AssetService {
     public List<AssetTypeStatsProjection> getAssetTypeStatistics() {
         Long branchId = currentUserService.getCurrentUser().getBranch().getId();
         return assetRepository.getAssetStatsByType(branchId);
+    }
+
+    public List<AssetGroupDTO> getAssetsGroupedByType() {
+        Long currentUserId = currentUserService.getCurrentUser().getId();
+        List<Asset> assets = assetRepository.findAllByAssignedToIdWithTypeAndStatus(currentUserId);
+
+        Map<String, List<Asset>> grouped = assets.stream()
+                .collect(Collectors.groupingBy(a -> a.getAssetType().getName()));
+
+        return grouped.entrySet().stream()
+                .map(entry -> new AssetGroupDTO(
+                        entry.getKey(),
+                        (long) entry.getValue().size(),
+                        entry.getValue().stream()
+                                .map(a -> new AssetGroupDTO.AssetDTO(
+                                        a.getId(),
+                                        a.getAssetName(),
+                                        a.getEngravedNumber(),
+                                        a.getAssetStatus() != null ? a.getAssetStatus().getName() : null,
+                                        a.getSerialNumber()
+                                ))
+                                .collect(Collectors.toList())
+                ))
+                .collect(Collectors.toList());
     }
 
 }

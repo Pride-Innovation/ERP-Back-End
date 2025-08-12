@@ -9,6 +9,7 @@ package pride.bank.erp.asset;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -40,4 +41,13 @@ public interface AssetRepository extends JpaRepository<Asset, Long> {
             ORDER BY a.assetType.name
             """)
     List<AssetTypeStatsProjection> getAssetStatsByType(Long branchId);
+
+    @Query("""
+                SELECT a
+                FROM Asset a
+                JOIN FETCH a.assetType at
+                LEFT JOIN FETCH a.assetStatus s
+                WHERE a.assignedTo.id = :userId
+            """)
+    List<Asset> findAllByAssignedToIdWithTypeAndStatus(@Param("userId") Long userId);
 }

@@ -85,4 +85,9 @@ public class AssetController {
     public List<AssetTypeStatsProjection> getAssetStatistics() {
         return assetService.getAssetTypeStatistics();
     }
+
+    @GetMapping("/assets/my-assets")
+    public List<AssetGroupDTO> getMyAssets() {
+        return assetService.getAssetsGroupedByType();
+    }
 }
