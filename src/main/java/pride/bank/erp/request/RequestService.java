@@ -430,17 +430,22 @@ public class RequestService {
      * <p>
      * Returning an empty list implies no filtering (i.e., fetch all requests).
      *
-     * @param status The status of the request (e.g., CREATED, PENDING, ISSUED, REJECTED).
+     * @param status The status of the request (e.g., CREATED, PENDING, ISSUED, REJECTED, DASHBOARD).
      * @return A list of user IDs that should be considered requesters based on role and status.
      */
     private List<Long> requestersList(String status) {
+
+        final boolean pendingIssuedOrDashboard = "PENDING".equalsIgnoreCase(status)
+                || "ISSUED".equalsIgnoreCase(status)
+                || "DASHBOARD".equalsIgnoreCase(status);
+
         return switch (determineUserRole()) {
             case "OFFICER" -> List.of(currentUserService.getCurrentUser().getId());
 
             case "MANAGER" -> getManagerAndSubordinateUserIds();
 
             case "ADMIN_OFFICER" -> {
-                if ("PENDING".equalsIgnoreCase(status) || "ISSUED".equalsIgnoreCase(status)) {
+                if (pendingIssuedOrDashboard) {
                     List<Long> headOfficeUserIds = userRepository.findUserIdsFromHeadOffice();
                     List<Long> bomIds = userRepository.findAllBranchOperationsManagerIds();
                     Set<Long> allowedUserIds = new HashSet<>();
@@ -466,7 +471,7 @@ public class RequestService {
             }
 
             case "BOM" -> {
-                if ("PENDING".equalsIgnoreCase(status) || "ISSUED".equalsIgnoreCase(status)) {
+                if (pendingIssuedOrDashboard) {
                     Long currentBranchId = currentUserService.getCurrentUser().getBranch().getId();
                     yield userRepository.findUserIdsByBranchId(currentBranchId);
                 } else if ("CREATED".equalsIgnoreCase(status) || "REJECTED".equalsIgnoreCase(status)) {
@@ -513,7 +518,13 @@ public class RequestService {
             List<Long> statusIds,
             String status
     ) {
+
+        // Determine the status of the request to be shown to different roles
+        List<Long> updatedStatusIds = determineStatusIds(statusIds);
+        System.out.println("Updated Status IDs:: " + updatedStatusIds);
+
         try {
+
             RequestPage requestPage = RequestPage.builder()
                     .pageSize(pageSize)
                     .sortDirection(determineSortDirection(sortDirection))
@@ -525,7 +536,7 @@ public class RequestService {
                     .name(name)
                     .priority(priority)
                     .description(description)
-                    .statusIds(statusIds)
+                    .statusIds(updatedStatusIds)
                     .requesterIds(requestersList(status))
                     .timeOfSubmissionOfRequest(timeOfSubmissionOfRequest)
                     .build();
@@ -570,37 +581,27 @@ public class RequestService {
                 .toList();
     }
 
-    private List<RequestReportDAO> buildRequestReportDAOS(List<RequestReport> reports) {
-        return reports.stream().map(dto -> RequestReportDAO
-                .builder()
-                .id(dto.getId())
-                .request(dto.getRequest() != null ?
-                        Request.builder()
-                                .id(dto.getRequest().getId())
-                                .name(dto.getRequest().getName())
-                                .priority(dto.getRequest().getPriority())
-                                .description(dto.getRequest().getDescription())
-                                .signaturePath(dto.getRequest().getSignaturePath())
-                                .status(dto.getRequest().getStatus())
-                                .timeOfSubmissionOfRequest(dto.getRequest().getTimeOfSubmissionOfRequest())
-                                .createDate(dto.getRequest().getCreateDate())
-                                .lastModified(dto.getRequest().getLastModified())
-                                .createdBy(dto.getRequest().getCreatedBy())
-                                .lastModifiedBy(dto.getRequest().getLastModifiedBy())
-                                .requester(dto.getRequest().getRequester())
-                                .currentApprover(dto.getRequest().getCurrentApprover())
-                                .build() : null)
-                .approver(dto.getApprover() != null ?
-                        userBuilder.builder(dto.getApprover()) : null)
-                .status(dto.getStatus() != null ?
-                        Status.builder()
-                                .id(dto.getStatus().getId())
-                                .name(dto.getStatus().getName())
-                                .description(dto.getStatus().getDescription())
-                                .status(dto.getStatus().getStatus())
-                                .code(dto.getStatus().getCode())
-                                .build() : null)
-                .build()).toList();
+    /**
+     * @param statusIDs Request status which by default are the recommended requests
+     * @return Returns a list of Request status IDs
+     */
+    private List<Long> determineStatusIds(List<Long> statusIDs) {
+        if (statusIDs == null) {
+            statusIDs = new ArrayList<>();
+        }
+        return switch (determineUserRole()) {
+
+            /*
+             *  Display the created request only to managers and the subordinates
+             */
+            case "OFFICER", "MANAGER" -> {
+                statusIDs.remove(3L);
+                statusIDs.add(1L);
+                yield statusIDs;
+            }
+
+            default -> statusIDs;
+        };
     }
 
 }

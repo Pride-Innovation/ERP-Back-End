@@ -177,7 +177,7 @@ public class RequestController {
             @RequestParam(required = false) String description,
             @RequestParam(required = false) LocalDateTime timeOfSubmissionOfRequest,
             @RequestParam(required = false, defaultValue = "3") List<Long> statusIds, // Status Ids for an Approved Request.
-            @RequestParam(required = false) String status
+            @RequestParam(required = false, defaultValue = "DASHBOARD") String status
     ) {
         try {
 
