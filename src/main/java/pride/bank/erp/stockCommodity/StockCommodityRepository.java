@@ -133,5 +133,18 @@ public interface StockCommodityRepository extends JpaRepository<StockCommodity, 
             """, nativeQuery = true)
     List<Object[]> findTopAndLeastOfficeStockedCommodities();
 
-
+    @Query(value = """
+                SELECT
+                    DATE_FORMAT(s.create_date, '%M') AS month,
+                    SUM(CASE WHEN at.name = 'IT Equipment' THEN sc.delivered_quantity ELSE 0 END) AS itEquipment,
+                    SUM(CASE WHEN at.name = 'Office Equipment' THEN sc.delivered_quantity ELSE 0 END) AS officeEquipment
+                FROM stock s
+                JOIN stock_commodity sc ON s.id = sc.stock_id
+                JOIN commodity c ON c.id = sc.commodity_id
+                JOIN asset_type at ON at.id = c.asset_type_id
+                WHERE at.name IN ('IT Equipment', 'Office Equipment')
+                GROUP BY DATE_FORMAT(s.create_date, '%M'), MONTH(s.create_date)
+                ORDER BY MONTH(s.create_date)
+            """, nativeQuery = true)
+    List<MonthlyStockSummary> getMonthlyStockSummary();
 }

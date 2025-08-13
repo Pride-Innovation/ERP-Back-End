@@ -9,6 +9,7 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.TextStyle;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -147,4 +148,17 @@ public class StockCommodityService {
 
         return summaryList;
     }
+
+    public List<AnnualStockSummaryDTO> getAnnualStockSummary() {
+        List<MonthlyStockSummary> rawResults = stockCommodityRepository.getMonthlyStockSummary();
+
+        return rawResults.stream()
+                .map(row -> new AnnualStockSummaryDTO(
+                        row.getMonth().trim(),
+                        row.getItEquipment(),
+                        row.getOfficeEquipment()
+                ))
+                .collect(Collectors.toList());
+    }
+
 }

@@ -32,4 +32,10 @@ public class StockCommodityController {
     public ResponseEntity<List<StockSummaryDTO>> getItAndOfficeMonthlyStockSummary() {
         return ResponseEntity.ok(stockCommodityService.getItAndOfficeMonthlyStockSummary());
     }
+
+
+    @GetMapping("/it-and-office/annual-stock")
+    public ResponseEntity<List<AnnualStockSummaryDTO>> getAnnualStockSummary() {
+        return ResponseEntity.ok(stockCommodityService.getAnnualStockSummary());
+    }
 }
