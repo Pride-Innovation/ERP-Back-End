@@ -13,6 +13,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface AssetRepository extends JpaRepository<Asset, Long> {
@@ -50,4 +51,6 @@ public interface AssetRepository extends JpaRepository<Asset, Long> {
                 WHERE a.assignedTo.id = :userId
             """)
     List<Asset> findAllByAssignedToIdWithTypeAndStatus(@Param("userId") Long userId);
+
+    Optional<Asset> findByTagName(@Param("tagName") String tagName);
 }

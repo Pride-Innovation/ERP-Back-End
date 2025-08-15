@@ -62,6 +62,9 @@ public class Asset {
     private String description;
     private String image;
 
+    @Column(unique = true)
+    private String tagName;
+
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "supplier_id")
     @NotAudited

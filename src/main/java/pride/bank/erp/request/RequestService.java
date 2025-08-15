@@ -521,7 +521,6 @@ public class RequestService {
 
         // Determine the status of the request to be shown to different roles
         List<Long> updatedStatusIds = determineStatusIds(statusIds);
-        System.out.println("Updated Status IDs:: " + updatedStatusIds);
 
         try {
 

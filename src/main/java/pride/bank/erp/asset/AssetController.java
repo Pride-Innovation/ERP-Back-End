@@ -90,4 +90,10 @@ public class AssetController {
     public List<AssetGroupDTO> getMyAssets() {
         return assetService.getAssetsGroupedByType();
     }
+
+    @GetMapping("/assets/tag-name")
+    public ResponseEntity<Asset> findAssetByTagName(@RequestParam String tagName)
+            throws NotFoundException {
+        return ResponseEntity.ok(assetService.findAssetByTagName(tagName));
+    }
 }

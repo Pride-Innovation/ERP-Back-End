@@ -427,4 +427,11 @@ public class AssetService {
                 .collect(Collectors.toList());
     }
 
+    public Asset findAssetByTagName(String tagName) throws NotFoundException {
+        return assetRepository.findByTagName(tagName)
+                .orElseThrow(
+                        () -> new NotFoundException(String
+                                .format("Asset with Tag Number: %s is not found", tagName))
+                );
+    }
 }
