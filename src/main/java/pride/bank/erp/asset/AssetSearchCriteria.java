@@ -21,4 +21,5 @@ public class AssetSearchCriteria {
     private Long commodityId;
     private String engravedNumber;
     private Long assignedToId;
+    private Boolean disposed;
 }

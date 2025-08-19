@@ -68,7 +68,8 @@ public class AssetService {
             Long assetStatusId,
             Long commodityId,
             String engravedNumber,
-            Long assignedToId
+            Long assignedToId,
+            Boolean disposed
     ) {
 
         try {
@@ -86,6 +87,7 @@ public class AssetService {
                     .engravedNumber(engravedNumber)
                     .assignedToId(assignedToId)
                     .commodityId(commodityId)
+                    .disposed(disposed)
                     .build();
 
             Page<Asset> assetPageResult = assetSearchDao.findAllWithFilters(assetPage, assetSearchCriteria);
@@ -433,5 +435,12 @@ public class AssetService {
                         () -> new NotFoundException(String
                                 .format("Asset with Tag Number: %s is not found", tagName))
                 );
+    }
+
+    public Asset disposeAsset(Long assetID) throws NotFoundException {
+        Asset asset = findOne(assetID);
+        asset.setDisposed(true);
+        asset.setDisposalDate(LocalDateTime.now());
+        return assetRepository.save(asset);
     }
 }

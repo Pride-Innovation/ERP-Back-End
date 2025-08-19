@@ -110,6 +110,10 @@ public class AssetSearchDao {
             );
         }
 
+        if (Objects.nonNull(assetSearchCriteria.getDisposed())) {
+            predicates.add(criteriaBuilder.equal(assetRoot.get("disposed"), assetSearchCriteria.getDisposed()));
+        }
+
         return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
     }
 

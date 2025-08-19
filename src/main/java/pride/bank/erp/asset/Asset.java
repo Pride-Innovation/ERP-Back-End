@@ -61,6 +61,8 @@ public class Asset {
     private String assetDepreciationRate;
     private String description;
     private String image;
+    private Boolean disposed = false;
+    private LocalDateTime disposalDate;
 
     @Column(unique = true)
     private String tagName;
@@ -108,7 +110,7 @@ public class Asset {
     private LocalDateTime lastModified;
 
     @CreatedBy
-    @Column( updatable = false)
+    @Column(updatable = false)
     private Long createdBy;
 
     @LastModifiedBy

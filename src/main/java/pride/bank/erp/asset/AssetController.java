@@ -36,7 +36,8 @@ public class AssetController {
             @RequestParam(required = false) Long assetStatusId,
             @RequestParam(required = false) Long commodityId,
             @RequestParam(required = false) String engravedNumber,
-            @RequestParam(required = false) Long assignedToId
+            @RequestParam(required = false) Long assignedToId,
+            @RequestParam(required = false, defaultValue = "false") Boolean disposed
     ) {
         Page<AssetDAO> response = assetService.fetchAllAssets(
                 pageSize,
@@ -48,7 +49,8 @@ public class AssetController {
                 assetStatusId,
                 commodityId,
                 engravedNumber,
-                assignedToId
+                assignedToId,
+                disposed
         );
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
@@ -95,5 +97,14 @@ public class AssetController {
     public ResponseEntity<Asset> findAssetByTagName(@RequestParam String tagName)
             throws NotFoundException {
         return ResponseEntity.ok(assetService.findAssetByTagName(tagName));
+    }
+
+    @DeleteMapping("/assets/{assetID}")
+    public ResponseEntity<Asset> disposeAsset(@PathVariable Long assetID)
+            throws NotFoundException {
+        return new ResponseEntity<>(
+                assetService.disposeAsset(assetID),
+                HttpStatus.CREATED
+        );
     }
 }
