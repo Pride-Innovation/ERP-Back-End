@@ -7,6 +7,8 @@ Managing Director
 
 package pride.bank.erp.user;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -36,4 +38,11 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     @Query("SELECT b.branchOperationsManager.id FROM Branch b WHERE b.branchOperationsManager IS NOT NULL")
     List<Long> findAllBranchOperationsManagerIds();
+
+    @Query("SELECT u FROM User u " +
+            "WHERE LOWER(u.firstName) LIKE LOWER(CONCAT('%', :text, '%')) " +
+            "   OR LOWER(u.lastName) LIKE LOWER(CONCAT('%', :text, '%')) " +
+            "   OR LOWER(u.email) LIKE LOWER(CONCAT('%', :text, '%')) " +
+            "   OR LOWER(u.staffNumber) LIKE LOWER(CONCAT('%', :text, '%'))")
+    Page<User> searchByNameEmailOrStaffNumber(@Param("text") String text, Pageable pageable);
 }

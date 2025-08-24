@@ -11,6 +11,7 @@ import jakarta.transaction.Transactional;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -99,7 +100,8 @@ public class UserService {
                 );
 
         if (!emailSent) {
-            Response emailResponse = new Response("failed", "Failed to send verification email to " + newUser.getEmail());
+            Response emailResponse = new Response("failed",
+                    "Failed to send verification email to " + newUser.getEmail());
             return UserResponse
                     .builder()
                     .response(emailResponse)
@@ -108,7 +110,8 @@ public class UserService {
         }
 
         User savedUser = userRepository.save(newUser);
-        Response emailResponse = new Response("success", "Verification email has been sent to " + savedUser.getEmail());
+        Response emailResponse = new Response("success",
+                "Verification email has been sent to " + savedUser.getEmail());
         return UserResponse
                 .builder()
                 .response(emailResponse)
@@ -187,7 +190,11 @@ public class UserService {
     }
 
     private Sort.Direction determineSortDirection(String direction) {
-        return Objects.equals(direction, DESCENDING_SORT_DIRECTION) ? Sort.Direction.DESC : Sort.Direction.ASC;
+        return Objects.equals(direction, DESCENDING_SORT_DIRECTION)
+                ? Sort.Direction.DESC : Sort.Direction.ASC;
     }
 
+    public Page<User> searchUserByEmailNameStaffNumber(String text, Pageable pageable) {
+        return userRepository.searchByNameEmailOrStaffNumber(text, pageable);
+    }
 }

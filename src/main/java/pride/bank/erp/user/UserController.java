@@ -10,6 +10,8 @@ package pride.bank.erp.user;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
@@ -78,5 +80,16 @@ public class UserController {
             throws NotFoundException {
         User response = userService.deleteUser(userID);
         return new ResponseEntity<>(response, HttpStatusCode.valueOf(204));
+    }
+
+    @GetMapping("/users/search")
+    public ResponseEntity<Page<User>> searchUserByEmailNameStaffNumber(
+            @RequestParam String text,
+            @RequestParam(defaultValue = "0") int pageNumber,
+            @RequestParam(defaultValue = "10") int pageSize
+    ) {
+        Pageable pageable = PageRequest.of(pageNumber, pageSize);
+        Page<User> users = userService.searchUserByEmailNameStaffNumber(text, pageable);
+        return ResponseEntity.ok(users);
     }
 }
