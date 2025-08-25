@@ -453,4 +453,8 @@ public class AssetService {
         asset.setAssignedTo(user);
         return buildAssetDao(assetRepository.save(asset));
     }
+
+    public AssetDAO repairAsset(Long assetID) {
+        return null;
+    }
 }

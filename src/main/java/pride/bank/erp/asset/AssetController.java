@@ -110,9 +110,17 @@ public class AssetController {
     public ResponseEntity<AssetDAO> reassignAsset(
             @PathVariable Long assetID,
             @RequestBody ReassignAsset reassignAsset
-            )
+    )
             throws NotFoundException {
         AssetDAO response = assetService.reassignAsset(assetID, reassignAsset);
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
+    }
+
+    @PostMapping("/assets/repair/{assetID}")
+    public ResponseEntity<AssetDAO> repairAsset(
+            @PathVariable Long assetID
+    ) {
+        AssetDAO response = assetService.repairAsset(assetID);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 }
