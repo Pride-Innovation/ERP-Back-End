@@ -193,7 +193,7 @@ public class AssetService {
     }
 
     @Transactional
-    public Asset updateAsset(AssetDTO request, Long id) throws NotFoundException {
+    public AssetDAO updateAsset(AssetDTO request, Long id) throws NotFoundException {
         Branch branch = (request.getBranch() != null) ? branchService.findBranch(request.getBranch()) : null;
         User assignedTo = (request.getAssignedTo() != null) ? userService.findUser(request.getAssignedTo()) : null;
         Status status = (request.getAssetStatus() != null) ? statusService.findOneStatus(request.getAssetStatus()) : null;
@@ -248,8 +248,7 @@ public class AssetService {
         asset.setDetailNetBookValue(request.getDetailNetBookValue());
         asset.setDescription(request.getDescription());
         asset.setBranch(branch);
-
-        return assetRepository.save(asset);
+        return buildAssetDao(assetRepository.save(asset));
     }
 
     /**
@@ -437,10 +436,21 @@ public class AssetService {
                 );
     }
 
-    public Asset disposeAsset(Long assetID) throws NotFoundException {
+    @Transactional
+    public AssetDAO disposeAsset(Long assetID) throws NotFoundException {
         Asset asset = findOne(assetID);
         asset.setDisposed(true);
         asset.setDisposalDate(LocalDateTime.now());
-        return assetRepository.save(asset);
+        Asset data = assetRepository.save(asset);
+        return buildAssetDao(data);
+    }
+
+    @Transactional
+    public AssetDAO reassignAsset(Long assetID, ReassignAsset reassignAsset)
+            throws NotFoundException {
+        Asset asset = findOne(assetID);
+        User user = userService.findUser(reassignAsset.assignedTo());
+        asset.setAssignedTo(user);
+        return buildAssetDao(assetRepository.save(asset));
     }
 }

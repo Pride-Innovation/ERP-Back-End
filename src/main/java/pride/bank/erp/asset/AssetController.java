@@ -70,11 +70,11 @@ public class AssetController {
     }
 
     @PutMapping("/assets/{id}")
-    public ResponseEntity<Asset> updateAsset(
+    public ResponseEntity<AssetDAO> updateAsset(
             @PathVariable Long id,
             @RequestBody AssetDTO assetDTO
     ) throws NotFoundException {
-        Asset response = assetService.updateAsset(assetDTO, id);
+        AssetDAO response = assetService.updateAsset(assetDTO, id);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 
@@ -99,12 +99,20 @@ public class AssetController {
         return ResponseEntity.ok(assetService.findAssetByTagName(tagName));
     }
 
-    @DeleteMapping("/assets/{assetID}")
-    public ResponseEntity<Asset> disposeAsset(@PathVariable Long assetID)
+    @PostMapping("/assets/{assetID}")
+    public ResponseEntity<AssetDAO> disposeAsset(@PathVariable Long assetID)
             throws NotFoundException {
-        return new ResponseEntity<>(
-                assetService.disposeAsset(assetID),
-                HttpStatus.CREATED
-        );
+        AssetDAO response = assetService.disposeAsset(assetID);
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
+    }
+
+    @PostMapping("/assets/reassign/{assetID}")
+    public ResponseEntity<AssetDAO> reassignAsset(
+            @PathVariable Long assetID,
+            @RequestBody ReassignAsset reassignAsset
+            )
+            throws NotFoundException {
+        AssetDAO response = assetService.reassignAsset(assetID, reassignAsset);
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 }
