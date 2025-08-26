@@ -7,7 +7,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import pride.bank.erp.asset.Asset;
+import pride.bank.erp.asset.AssetDAO;
 import pride.bank.erp.asset.AssetService;
+import pride.bank.erp.assetType.AssetType;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.FileUpload;
 
@@ -57,7 +59,39 @@ public class RepairService {
     }
 
     @Transactional
-    public Page<Repair> listRepairDetails(Long assetId, Pageable pageable) {
-        return repairRepository.findByAssetId(assetId, pageable);
+    public Page<RepairDTO> listRepairDetails(Long assetId, Pageable pageable) {
+        return repairRepository.findByAssetId(assetId, pageable)
+                .map(this::convertToDTO);
+    }
+
+    private RepairDTO convertToDTO(Repair repair) {
+        Asset asset = repair.getAsset();
+
+        AssetDAO assetDAO = AssetDAO.builder()
+                .id(asset.getId())
+                .assetName(asset.getAssetName())
+                .hostname(asset.getHostname())
+                .serialNumber(asset.getSerialNumber())
+                .make(asset.getMake())
+                .model(asset.getModel())
+                .engravedNumber(asset.getEngravedNumber())
+                .assetType(asset.getAssetType() != null ?
+                        AssetType.builder()
+                                .id(asset.getAssetType().getId())
+                                .name(asset.getAssetType().getName())
+                                .description(asset.getAssetType().getDescription())
+                                .build() : null)
+                .build();
+
+        return RepairDTO.builder()
+                .id(repair.getId())
+                .repairStartDate(repair.getRepairStartDate())
+                .repairEndDate(repair.getRepairEndDate())
+                .technician(repair.getTechnician())
+                .repairReason(repair.getRepairReason())
+                .status(repair.getStatus())
+                .documents(repair.getDocuments())
+                .asset(assetDAO)
+                .build();
     }
 }

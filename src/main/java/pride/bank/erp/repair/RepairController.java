@@ -45,13 +45,13 @@ public class RepairController {
     }
 
     @GetMapping(value = "/assets/repairs/{assetId}")
-    public ResponseEntity<Page<Repair>> listRepairDetails(
+    public ResponseEntity<Page<RepairDTO>> listRepairDetails(
             @PathVariable Long assetId,
             @RequestParam(required = false, defaultValue = "10") int pageSize,
             @RequestParam(required = false, defaultValue = "0") int pageNumber
     ) {
         Pageable pageable = PageRequest.of(pageNumber, pageSize);
-        Page<Repair> response = repairService.listRepairDetails(assetId, pageable);
+        Page<RepairDTO> response = repairService.listRepairDetails(assetId, pageable);
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
 }
