@@ -1,7 +1,10 @@
 package pride.bank.erp.repair;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import pride.bank.erp.asset.Asset;
 import pride.bank.erp.asset.AssetService;
@@ -19,7 +22,7 @@ public class RepairService {
     private final AssetService assetService;
     private final FileUpload fileUpload;
 
-
+    @Transactional
     public Repair createRepair(Long assetId,
                                LocalDateTime repairStartDate,
                                LocalDateTime repairEndDate,
@@ -53,7 +56,8 @@ public class RepairService {
         return repairRepository.save(repair);
     }
 
-    public List<Repair> listRepairDetails(Long assetId) {
-        return repairRepository.findByAssetId(assetId);
+    @Transactional
+    public Page<Repair> listRepairDetails(Long assetId, Pageable pageable) {
+        return repairRepository.findByAssetId(assetId, pageable);
     }
 }

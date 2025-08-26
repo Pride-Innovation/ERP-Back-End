@@ -1,6 +1,9 @@
 package pride.bank.erp.repair;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -9,7 +12,6 @@ import org.springframework.web.multipart.MultipartFile;
 import pride.bank.erp.helper.Constants;
 
 import java.time.LocalDateTime;
-import java.util.List;
 
 @RestController
 @RequestMapping(Constants.GENERAL_ROUTE)
@@ -43,8 +45,13 @@ public class RepairController {
     }
 
     @GetMapping(value = "/assets/repairs/{assetId}")
-    public ResponseEntity<List<Repair>> listRepairDetails(@PathVariable Long assetId) {
-        List<Repair> response = repairService.listRepairDetails(assetId);
+    public ResponseEntity<Page<Repair>> listRepairDetails(
+            @PathVariable Long assetId,
+            @RequestParam(required = false, defaultValue = "10") int pageSize,
+            @RequestParam(required = false, defaultValue = "0") int pageNumber
+    ) {
+        Pageable pageable = PageRequest.of(pageNumber, pageSize);
+        Page<Repair> response = repairService.listRepairDetails(assetId, pageable);
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
 }
