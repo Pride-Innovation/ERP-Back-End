@@ -1,5 +1,6 @@
 package pride.bank.erp.repair;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -23,9 +24,14 @@ public class Repair {
     private LocalDateTime repairEndDate;
     private String technician;
     private String repairReason;
+
+    @ElementCollection
+    @CollectionTable(name = "repair_documents", joinColumns = @JoinColumn(name = "repair_id"))
+    @Column(name = "document")
     private List<String> documents;
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "asset_id")
+    @JsonIgnore
     private Asset asset;
 }

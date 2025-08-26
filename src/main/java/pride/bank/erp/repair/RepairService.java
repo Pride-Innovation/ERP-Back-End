@@ -8,6 +8,7 @@ import pride.bank.erp.asset.AssetService;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.FileUpload;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -19,7 +20,12 @@ public class RepairService {
     private final FileUpload fileUpload;
 
 
-    public Repair createRepair(Long assetId, RepairDTO dto, MultipartFile[] files)
+    public Repair createRepair(Long assetId,
+                               LocalDateTime repairStartDate,
+                               LocalDateTime repairEndDate,
+                               String technician,
+                               String repairReason,
+                               MultipartFile[] files)
             throws Exception {
         Asset asset = assetService.findOne(assetId);
         if (asset == null) {
@@ -27,7 +33,6 @@ public class RepairService {
         }
 
         List<String> documentPaths = new ArrayList<>();
-
         if (files != null) {
             for (MultipartFile file : files) {
                 if (!file.isEmpty()) {
@@ -38,13 +43,17 @@ public class RepairService {
         }
 
         Repair repair = Repair.builder()
-                .repairStartDate(dto.getRepairStartDate())
-                .repairReason(dto.getRepairReason())
-                .technician(dto.getTechnician())
+                .repairStartDate(repairStartDate)
+                .repairReason(repairReason)
+                .technician(technician)
                 .documents(documentPaths)
                 .asset(asset)
                 .build();
 
         return repairRepository.save(repair);
+    }
+
+    public List<Repair> listRepairDetails(Long assetId) {
+        return repairRepository.findByAssetId(assetId);
     }
 }
