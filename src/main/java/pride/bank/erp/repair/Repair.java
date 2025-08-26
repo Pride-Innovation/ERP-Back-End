@@ -24,6 +24,7 @@ public class Repair {
     private LocalDateTime repairEndDate;
     private String technician;
     private String repairReason;
+    private String status;
 
     @ElementCollection
     @CollectionTable(name = "repair_documents", joinColumns = @JoinColumn(name = "repair_id"))
