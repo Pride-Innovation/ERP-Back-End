@@ -10,11 +10,14 @@ package pride.bank.erp.asset;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
 
+import java.io.IOException;
 import java.util.List;
 
 import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
@@ -121,6 +124,15 @@ public class AssetController {
             @PathVariable Long assetID
     ) {
         AssetDAO response = assetService.repairAsset(assetID);
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
+    }
+
+    @PutMapping(value = "assets/image/{assetID}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<AssetDAO> uploadAssetImage(
+            @RequestParam(value = "file", required = false) MultipartFile file,
+            @PathVariable Long assetID
+    ) throws IOException, NotFoundException {
+        AssetDAO response = assetService.uploadAssetImage(file, assetID);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 }

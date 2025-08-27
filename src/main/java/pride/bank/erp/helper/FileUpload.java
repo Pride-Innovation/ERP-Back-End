@@ -44,8 +44,9 @@ public class FileUpload {
                             && !originalFilename.endsWith(".png")
                             && !originalFilename.endsWith(".PNG")
                             && !originalFilename.endsWith(".jpeg")
+                            && !originalFilename.endsWith(".jfif")
                             && !originalFilename.endsWith(".pdf"))) {
-                throw new IllegalArgumentException("Invalid file type. Only JPG, PNG, JPEG and PDF are allowed.");
+                throw new IllegalArgumentException("Invalid file type. Only JPG, PNG, JPEG, JFIF and PDF are allowed.");
             }
 
             String newFilename = UUID.randomUUID() + "_" + originalFilename;

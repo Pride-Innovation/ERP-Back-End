@@ -13,6 +13,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 import pride.bank.erp.assetAssignmentHostory.AssetAssignmentHistory;
 import pride.bank.erp.assetAssignmentHostory.AssetAssignmentHistoryRepository;
 import pride.bank.erp.assetType.AssetType;
@@ -23,6 +24,7 @@ import pride.bank.erp.commodity.Commodity;
 import pride.bank.erp.commodity.CommodityService;
 import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.exception.NotFoundException;
+import pride.bank.erp.helper.FileUpload;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
 import pride.bank.erp.stock.Stock;
@@ -34,6 +36,7 @@ import pride.bank.erp.supplier.SupplierService;
 import pride.bank.erp.user.User;
 import pride.bank.erp.user.UserService;
 
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -57,6 +60,7 @@ public class AssetService {
     private final StockCommodityRepository stockCommodityRepository;
     private final AssetAssignmentHistoryRepository assetAssignmentHistoryRepository;
     private final CurrentUserService currentUserService;
+    private final FileUpload fileUpload;
 
     public Page<AssetDAO> fetchAllAssets(
             int pageSize,
@@ -456,5 +460,22 @@ public class AssetService {
 
     public AssetDAO repairAsset(Long assetID) {
         return null;
+    }
+
+    public AssetDAO uploadAssetImage(MultipartFile file, Long assetID)
+            throws IOException, NotFoundException {
+        Asset asset = findOne(assetID);
+        String filePath = null;
+
+        if (file != null && !file.isEmpty()) {
+            try {
+                filePath = fileUpload.uploadFileToLocalDirectory(file);
+            } catch (IOException ex) {
+                throw new IOException("Failed to upload file: " + ex.getMessage(), ex);
+            }
+        }
+        System.out.println("File Path:: " + filePath);
+        asset.setImage(filePath);
+        return buildAssetDao(assetRepository.save(asset));
     }
 }
