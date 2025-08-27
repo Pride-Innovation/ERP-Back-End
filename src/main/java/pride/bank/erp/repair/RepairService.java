@@ -13,6 +13,7 @@ import pride.bank.erp.assetType.AssetType;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.FileUpload;
 
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -91,7 +92,39 @@ public class RepairService {
                 .repairReason(repair.getRepairReason())
                 .status(repair.getStatus())
                 .documents(repair.getDocuments())
+                .completionNotes(repair.getCompletionNotes())
+                .completionDocuments(repair.getCompletionDocuments())
                 .asset(assetDAO)
                 .build();
+    }
+
+    private Repair findOneRepair(Long id) throws NotFoundException {
+        return repairRepository.findById(id).orElseThrow(
+                () -> new NotFoundException(String.format("Repair with ID %s is not Found", id))
+        );
+    }
+
+    public Repair completeRepair(
+            Long repairId,
+            LocalDateTime repairEndDate,
+            String completionNotes,
+            MultipartFile[] files
+    ) throws NotFoundException, IOException {
+        Repair repair = findOneRepair(repairId);
+
+        List<String> documentPaths = new ArrayList<>();
+
+        if (files != null) {
+            for (MultipartFile file : files) {
+                if (!file.isEmpty()) {
+                    String path = fileUpload.uploadFileToLocalDirectory(file);
+                    documentPaths.add(path);
+                }
+            }
+        }
+        repair.setRepairEndDate(repairEndDate);
+        repair.setCompletionNotes(completionNotes);
+        repair.setCompletionDocuments(documentPaths);
+        return repairRepository.save(repair);
     }
 }

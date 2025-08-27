@@ -22,4 +22,6 @@ public class RepairDTO {
     private String status;
     private List<String> documents;
     private AssetDAO asset;  // A smaller Asset DTO
+    private String completionNotes;
+    private List<String> completionDocuments;
 }

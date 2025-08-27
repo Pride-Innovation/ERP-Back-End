@@ -54,4 +54,24 @@ public class RepairController {
         Page<RepairDTO> response = repairService.listRepairDetails(assetId, pageable);
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
+
+    @PutMapping(value = "/assets/repairs/{repairId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> completeRepair(
+            @PathVariable Long repairId,
+            @RequestParam(value = "repairEndDate") LocalDateTime repairEndDate,
+            @RequestParam(value = "completionNotes", required = false) String completionNotes,
+            @RequestParam(value = "completionDocuments", required = false) MultipartFile[] files
+    ) {
+        try {
+            Repair repair = repairService.completeRepair(
+                    repairId,
+                    repairEndDate,
+                    completionNotes,
+                    files);
+            return ResponseEntity.status(HttpStatus.CREATED).body(repair);
+        } catch (Exception ex) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error creating repair: " + ex.getMessage());
+        }
+    }
 }

@@ -25,11 +25,17 @@ public class Repair {
     private String technician;
     private String repairReason;
     private String status;
+    private String completionNotes;
 
     @ElementCollection
     @CollectionTable(name = "repair_documents", joinColumns = @JoinColumn(name = "repair_id"))
     @Column(name = "document")
     private List<String> documents;
+
+    @ElementCollection
+    @CollectionTable(name = "repair_completion_documents", joinColumns = @JoinColumn(name = "repair_id"))
+    @Column(name = "document")
+    private List<String> completionDocuments;
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "asset_id")
