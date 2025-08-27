@@ -474,8 +474,14 @@ public class AssetService {
                 throw new IOException("Failed to upload file: " + ex.getMessage(), ex);
             }
         }
-        System.out.println("File Path:: " + filePath);
         asset.setImage(filePath);
+        return buildAssetDao(assetRepository.save(asset));
+    }
+
+    public AssetDAO removeAssetImage(Long assetID)
+            throws NotFoundException {
+        Asset asset = findOne(assetID);
+        asset.setImage(null);
         return buildAssetDao(assetRepository.save(asset));
     }
 }

@@ -135,4 +135,12 @@ public class AssetController {
         AssetDAO response = assetService.uploadAssetImage(file, assetID);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
+
+    @PutMapping("assets/remove/image/{assetID}")
+    public ResponseEntity<AssetDAO> removeAssetImage(
+            @PathVariable Long assetID
+    ) throws NotFoundException {
+        AssetDAO response = assetService.removeAssetImage(assetID);
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
+    }
 }
