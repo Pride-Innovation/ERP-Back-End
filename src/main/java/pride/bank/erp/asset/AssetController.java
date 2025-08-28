@@ -7,6 +7,8 @@ Managing Director
 
 package pride.bank.erp.asset;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
@@ -19,6 +21,7 @@ import pride.bank.erp.helper.Constants;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 
 import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
 
@@ -149,6 +152,21 @@ public class AssetController {
             @PathVariable Long assetID
     ) throws NotFoundException {
         AssetDAO response = assetService.sendAssetToStore(assetID);
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
+    }
+
+    @PostMapping("assets/bulk-insert")
+    public ResponseEntity<Map<String, Object>> bulkInsertAsset(
+            @RequestParam("assets") String assets,
+            @RequestParam("assetTypeID") Long assetTypeID
+    ) throws JsonProcessingException, NotFoundException {
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        List<BulkAssetDTO> assetList = objectMapper.readValue(assets,
+                objectMapper.getTypeFactory()
+                        .constructCollectionType(List.class, BulkAssetDTO.class));
+
+        Map<String, Object> response = assetService.bulkInsertAsset(assetList, assetTypeID);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 }

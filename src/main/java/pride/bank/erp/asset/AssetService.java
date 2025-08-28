@@ -37,7 +37,10 @@ import pride.bank.erp.user.User;
 import pride.bank.erp.user.UserService;
 
 import java.io.IOException;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -490,5 +493,49 @@ public class AssetService {
         Status status = statusService.findOneStatus(12L); // Status ID for sending asset to store
         asset.setAssetStatus(status);
         return buildAssetDao(assetRepository.save(asset));
+    }
+
+    public Map<String, Object> bulkInsertAsset(List<BulkAssetDTO> assetList, Long assetTypeID)
+            throws NotFoundException {
+        Branch defaultBranch = branchService.findBranch(1L); // Default to Head Office
+        Status status = statusService.findOneStatus(9L); // Status for requiring Updating
+        AssetType assetType = assetTypeService.findOneAssetType(assetTypeID);
+
+        Map<String, Object> data = new HashMap<>();
+
+        try {
+            for (BulkAssetDTO dto : assetList) {
+                Branch branch = branchService.findBranchByName(dto.getLocation());
+
+                if (branch == null) {
+                    branch = defaultBranch;
+                }
+                LocalDate dateReceipt = LocalDate.of(1899, 12, 30).plusDays(dto.getDateOfPmVerification());
+                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+                String dateReceiptString = dateReceipt.format(formatter);
+
+                System.out.println("Date Receipt String:: " + dateReceiptString);
+
+                Asset asset = Asset.builder()
+                        .assetName(dto.getProductName())
+                        .engravedNumber(dto.getAssetTag())
+                        .serialNumber(dto.getAssetSerialNo())
+                        .model(dto.getModel())
+                        .branch(branch)
+                        .assetStatus(status)
+                        .disposed(false)
+                        .assetType(assetType)
+                        .dateReceipt(dateReceiptString)
+                        .build();
+                assetRepository.save(asset);
+            }
+
+            data.put("message", "Assets created");
+            data.put("success", true);
+        } catch (Exception e) {
+            data.put("message", e.getMessage());
+            data.put("success", false);
+        }
+        return data;
     }
 }

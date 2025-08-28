@@ -147,4 +147,8 @@ public class BranchService {
                 .email(user.getEmail())
                 .build();
     }
+
+    public Branch findBranchByName(String name) {
+        return branchRepository.findByName(name).orElse(null);
+    }
 }
