@@ -484,4 +484,11 @@ public class AssetService {
         asset.setImage(null);
         return buildAssetDao(assetRepository.save(asset));
     }
+
+    public AssetDAO sendAssetToStore(Long assetID) throws NotFoundException {
+        Asset asset = findOne(assetID);
+        Status status = statusService.findOneStatus(12L); // Status ID for sending asset to store
+        asset.setAssetStatus(status);
+        return buildAssetDao(assetRepository.save(asset));
+    }
 }
