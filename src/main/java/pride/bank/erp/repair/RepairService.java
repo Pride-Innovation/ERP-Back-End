@@ -8,10 +8,13 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import pride.bank.erp.asset.Asset;
 import pride.bank.erp.asset.AssetDAO;
+import pride.bank.erp.asset.AssetRepository;
 import pride.bank.erp.asset.AssetService;
 import pride.bank.erp.assetType.AssetType;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.FileUpload;
+import pride.bank.erp.status.Status;
+import pride.bank.erp.status.StatusService;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
@@ -24,6 +27,8 @@ public class RepairService {
     private final RepairRepository repairRepository;
     private final AssetService assetService;
     private final FileUpload fileUpload;
+    private final StatusService statusService;
+    private final AssetRepository assetRepository;
 
     @Transactional
     public Repair createRepair(Long assetId,
@@ -31,17 +36,26 @@ public class RepairService {
                                LocalDateTime repairEndDate,
                                String technician,
                                String repairReason,
-                               MultipartFile[] files)
-            throws Exception {
+                               MultipartFile[] files) throws Exception {
+
+        if (assetId == null) {
+            throw new IllegalArgumentException("Asset ID must not be null.");
+        }
+
         Asset asset = assetService.findOne(assetId);
         if (asset == null) {
-            throw new NotFoundException("Asset not found with ID: " + assetId);
+            throw new IllegalArgumentException("Asset not found with ID: " + assetId);
         }
+
+        final long REPAIR_STATUS_ID = 13L;
+        Status repairStatus = statusService.findOneStatus(REPAIR_STATUS_ID);
+        asset.setAssetStatus(repairStatus);
+        assetRepository.save(asset);
 
         List<String> documentPaths = new ArrayList<>();
         if (files != null) {
             for (MultipartFile file : files) {
-                if (!file.isEmpty()) {
+                if (file != null && !file.isEmpty()) {
                     String path = fileUpload.uploadFileToLocalDirectory(file);
                     documentPaths.add(path);
                 }
@@ -50,10 +64,12 @@ public class RepairService {
 
         Repair repair = Repair.builder()
                 .repairStartDate(repairStartDate)
+                .repairEndDate(repairEndDate)
                 .repairReason(repairReason)
                 .technician(technician)
                 .documents(documentPaths)
                 .asset(asset)
+                .status("Pending")
                 .build();
 
         return repairRepository.save(repair);
