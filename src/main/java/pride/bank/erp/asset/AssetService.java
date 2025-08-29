@@ -488,6 +488,7 @@ public class AssetService {
         Asset asset = findOne(assetID);
         Status status = statusService.findOneStatus(12L); // Status ID for sending asset to store
         asset.setAssetStatus(status);
+        asset.setAssignedTo(null);
         return buildAssetDao(assetRepository.save(asset));
     }
 
