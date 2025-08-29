@@ -461,10 +461,6 @@ public class AssetService {
         return buildAssetDao(assetRepository.save(asset));
     }
 
-    public AssetDAO repairAsset(Long assetID) {
-        return null;
-    }
-
     public AssetDAO uploadAssetImage(MultipartFile file, Long assetID)
             throws IOException, NotFoundException {
         Asset asset = findOne(assetID);

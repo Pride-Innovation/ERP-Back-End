@@ -122,14 +122,6 @@ public class AssetController {
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 
-    @PostMapping("/assets/repair/{assetID}")
-    public ResponseEntity<AssetDAO> repairAsset(
-            @PathVariable Long assetID
-    ) {
-        AssetDAO response = assetService.repairAsset(assetID);
-        return new ResponseEntity<>(response, HttpStatus.CREATED);
-    }
-
     @PutMapping(value = "assets/image/{assetID}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<AssetDAO> uploadAssetImage(
             @RequestParam(value = "file", required = false) MultipartFile file,
