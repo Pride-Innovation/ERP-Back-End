@@ -9,6 +9,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import pride.bank.erp.asset.AssetDAO;
 import pride.bank.erp.helper.Constants;
 
 import java.time.LocalDateTime;
@@ -30,14 +31,14 @@ public class RepairController {
             @RequestParam(value = "documents", required = false) MultipartFile[] files
     ) {
         try {
-            Repair repair = repairService.createRepair(
+            AssetDAO response = repairService.createRepair(
                     assetId,
                     repairStartDate,
                     repairEndDate,
                     technician,
                     repairReason,
                     files);
-            return ResponseEntity.status(HttpStatus.CREATED).body(repair);
+            return ResponseEntity.status(HttpStatus.CREATED).body(response);
         } catch (Exception ex) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Error creating repair: " + ex.getMessage());

@@ -306,7 +306,7 @@ public class AssetService {
         return assets.stream().map(this::buildAssetDao).toList();
     }
 
-    private AssetDAO buildAssetDao(Asset asset) {
+    public AssetDAO buildAssetDao(Asset asset) {
         return AssetDAO.builder()
                 .id(asset.getId())
                 .assetName(asset.getAssetName())

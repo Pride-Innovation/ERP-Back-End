@@ -31,7 +31,7 @@ public class RepairService {
     private final AssetRepository assetRepository;
 
     @Transactional
-    public Repair createRepair(Long assetId,
+    public AssetDAO createRepair(Long assetId,
                                LocalDateTime repairStartDate,
                                LocalDateTime repairEndDate,
                                String technician,
@@ -72,7 +72,8 @@ public class RepairService {
                 .status("Pending")
                 .build();
 
-        return repairRepository.save(repair);
+        repairRepository.save(repair);
+        return assetService.buildAssetDao(asset);
     }
 
     @Transactional
