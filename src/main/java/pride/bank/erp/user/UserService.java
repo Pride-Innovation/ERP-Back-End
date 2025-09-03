@@ -15,6 +15,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 import pride.bank.erp.apiResponse.Response;
 import pride.bank.erp.branch.Branch;
 import pride.bank.erp.branch.BranchRepository;
@@ -23,11 +24,13 @@ import pride.bank.erp.department.Department;
 import pride.bank.erp.department.DepartmentRepository;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.ExtractNumberFromEmailAddress;
+import pride.bank.erp.helper.FileUpload;
 import pride.bank.erp.helper.PasswordGenerator;
 import pride.bank.erp.notification.Email;
 import pride.bank.erp.title.Title;
 import pride.bank.erp.title.TitleService;
 
+import java.io.IOException;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -46,6 +49,8 @@ public class UserService {
     private final TitleService titleService;
     private final BranchRepository branchRepository;
     private final DepartmentRepository departmentRepository;
+    private final FileUpload fileUpload;
+
 
     public User findUser(Long userId) throws NotFoundException {
         return userRepository.findById(userId)
@@ -131,7 +136,7 @@ public class UserService {
 
         Department department = null;
 
-        if (user.getDepartment() != null) {
+        if (request.getDepartment() != null) {
             department = departmentRepository.findById(request.getDepartment()).orElse(null);
         }
 
@@ -196,5 +201,26 @@ public class UserService {
 
     public Page<User> searchUserByEmailNameStaffNumber(String text, Pageable pageable) {
         return userRepository.searchByNameEmailOrStaffNumber(text, pageable);
+    }
+
+    public User uploadUserImage(MultipartFile file, Long userID) throws NotFoundException, IOException {
+        User user = findUser(userID);
+        String filePath = null;
+
+        if (file != null && !file.isEmpty()) {
+            try {
+                filePath = fileUpload.uploadFileToLocalDirectory(file);
+            } catch (IOException ex) {
+                throw new IOException("Failed to upload file: " + ex.getMessage(), ex);
+            }
+        }
+        user.setProfileImage(filePath);
+        return userRepository.save(user);
+    }
+
+    public User removeUserImage(Long userID) throws NotFoundException {
+        User user = findUser(userID);
+        user.setProfileImage(null);
+        return userRepository.save(user);
     }
 }

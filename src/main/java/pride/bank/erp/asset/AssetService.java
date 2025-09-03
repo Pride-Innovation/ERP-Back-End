@@ -458,6 +458,7 @@ public class AssetService {
         Asset asset = findOne(assetID);
         User user = userService.findUser(reassignAsset.assignedTo());
         asset.setAssignedTo(user);
+        asset.setBranch(user.getBranch());
         return buildAssetDao(assetRepository.save(asset));
     }
 

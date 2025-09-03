@@ -14,10 +14,14 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
+
+import java.io.IOException;
 
 import static pride.bank.erp.helper.Constants.ASCENDING_SORT_DIRECTION;
 
@@ -91,5 +95,22 @@ public class UserController {
         Pageable pageable = PageRequest.of(pageNumber, pageSize);
         Page<User> users = userService.searchUserByEmailNameStaffNumber(text, pageable);
         return ResponseEntity.ok(users);
+    }
+
+    @PutMapping(value = "users/image/{assetID}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<User> uploadUserImage(
+            @RequestParam(value = "file", required = false) MultipartFile file,
+            @PathVariable Long userID
+    ) throws IOException, NotFoundException {
+        User response = userService.uploadUserImage(file, userID);
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
+    }
+
+    @PutMapping("users/remove/image/{assetID}")
+    public ResponseEntity<User> removeUserImage(
+            @PathVariable Long userID
+    ) throws NotFoundException {
+        User response = userService.removeUserImage(userID);
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 }

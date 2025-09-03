@@ -32,11 +32,11 @@ public class RepairService {
 
     @Transactional
     public AssetDAO createRepair(Long assetId,
-                               LocalDateTime repairStartDate,
-                               LocalDateTime repairEndDate,
-                               String technician,
-                               String repairReason,
-                               MultipartFile[] files) throws Exception {
+                                 LocalDateTime repairStartDate,
+                                 LocalDateTime repairEndDate,
+                                 String technician,
+                                 String repairReason,
+                                 MultipartFile[] files) throws Exception {
 
         if (assetId == null) {
             throw new IllegalArgumentException("Asset ID must not be null.");
@@ -64,7 +64,7 @@ public class RepairService {
 
         Repair repair = Repair.builder()
                 .repairStartDate(repairStartDate)
-                .repairEndDate(repairEndDate)
+                .repairEndDate(null)
                 .repairReason(repairReason)
                 .technician(technician)
                 .documents(documentPaths)
@@ -128,6 +128,12 @@ public class RepairService {
             MultipartFile[] files
     ) throws NotFoundException, IOException {
         Repair repair = findOneRepair(repairId);
+        Asset asset = repair.getAsset();
+
+        final long IN_STORE_STATUS_ID = 12L; // Return the asset to store after Repair
+        Status inStoreStatus = statusService.findOneStatus(IN_STORE_STATUS_ID);
+        asset.setAssetStatus(inStoreStatus);
+        assetRepository.save(asset);
 
         List<String> documentPaths = new ArrayList<>();
 
@@ -142,6 +148,7 @@ public class RepairService {
         repair.setRepairEndDate(repairEndDate);
         repair.setCompletionNotes(completionNotes);
         repair.setCompletionDocuments(documentPaths);
+        repair.setStatus("Completed");
         return repairRepository.save(repair);
     }
 }
