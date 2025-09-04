@@ -19,6 +19,7 @@ import org.springframework.web.multipart.MultipartFile;
 import pride.bank.erp.apiResponse.Response;
 import pride.bank.erp.branch.Branch;
 import pride.bank.erp.branch.BranchRepository;
+import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.config.JwtService;
 import pride.bank.erp.department.Department;
 import pride.bank.erp.department.DepartmentRepository;
@@ -50,6 +51,7 @@ public class UserService {
     private final BranchRepository branchRepository;
     private final DepartmentRepository departmentRepository;
     private final FileUpload fileUpload;
+    private final CurrentUserService currentUserService;
 
 
     public User findUser(Long userId) throws NotFoundException {
@@ -223,4 +225,28 @@ public class UserService {
         user.setProfileImage(null);
         return userRepository.save(user);
     }
+
+    public User changePassword(ChangePasswordDTO request) {
+        String oldPassword = request.getOldPassword();
+        String newPassword = request.getNewPassword();
+
+        User user = currentUserService.getCurrentUser();
+
+        // Validate that the old password matches the stored password
+        if (!passwordEncoder.matches(oldPassword, user.getPassword())) {
+            throw new IllegalArgumentException("Old password is incorrect.");
+        }
+
+        // Optionally: prevent user from reusing the same password
+        if (passwordEncoder.matches(newPassword, user.getPassword())) {
+            throw new IllegalArgumentException("New password must be different from the old password.");
+        }
+
+        // Set new password
+        String encodedNewPassword = passwordEncoder.encode(newPassword);
+        user.setPassword(encodedNewPassword);
+
+        return userRepository.save(user);
+    }
+
 }

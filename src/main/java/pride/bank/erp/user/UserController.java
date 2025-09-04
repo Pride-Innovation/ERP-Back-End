@@ -97,7 +97,7 @@ public class UserController {
         return ResponseEntity.ok(users);
     }
 
-    @PutMapping(value = "users/image/{assetID}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PutMapping(value = "users/image/{userID}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<User> uploadUserImage(
             @RequestParam(value = "file", required = false) MultipartFile file,
             @PathVariable Long userID
@@ -106,11 +106,19 @@ public class UserController {
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 
-    @PutMapping("users/remove/image/{assetID}")
+    @PutMapping("users/remove/image/{userID}")
     public ResponseEntity<User> removeUserImage(
             @PathVariable Long userID
     ) throws NotFoundException {
         User response = userService.removeUserImage(userID);
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
+    }
+
+    @PostMapping("users/change-password")
+    public ResponseEntity<User> changeUserPassword(
+            @RequestBody ChangePasswordDTO request
+    ) {
+        User response = userService.changePassword(request);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 }

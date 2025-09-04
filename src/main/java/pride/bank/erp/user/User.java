@@ -63,6 +63,7 @@ public class User implements UserDetails {
     private String availability;
     private String profileImage;
     private boolean blocked;
+    private boolean isActing;
 
     @CreatedDate
     @Column(updatable = false)
@@ -105,6 +106,12 @@ public class User implements UserDetails {
     @JoinColumn(name = "title_id")
     @NotAudited
     private Title title;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "acting_title_id")
+    @NotAudited
+//    @JsonIgnore
+    private Title actingTitle;
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "department_id")
