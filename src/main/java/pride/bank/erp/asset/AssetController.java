@@ -45,7 +45,8 @@ public class AssetController {
             @RequestParam(required = false) Long assignedToId,
             @RequestParam(required = false, defaultValue = "false") Boolean disposed,
             @RequestParam(required = false) String model,
-            @RequestParam(required = false) String assignedTo // Name of the assigned to user, can first name, last name or other name
+            @RequestParam(required = false) String assignedTo, // Name of the assigned to user, can first name, last name or other name
+            @RequestParam(required = false) String location
     ) {
         Page<AssetDAO> response = assetService.fetchAllAssets(
                 pageSize,
@@ -60,7 +61,8 @@ public class AssetController {
                 assignedToId,
                 disposed,
                 model,
-                assignedTo
+                assignedTo,
+                location
         );
         return new ResponseEntity<>(response, HttpStatus.OK);
     }

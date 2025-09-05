@@ -9,10 +9,7 @@ package pride.bank.erp.asset;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.TypedQuery;
-import jakarta.persistence.criteria.CriteriaBuilder;
-import jakarta.persistence.criteria.CriteriaQuery;
-import jakarta.persistence.criteria.Predicate;
-import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.*;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Repository;
 
@@ -134,6 +131,48 @@ public class AssetSearchDao {
             );
 
             predicates.add(criteriaBuilder.or(firstNameMatch, lastNameMatch, otherNameMatch));
+        }
+
+        if (Objects.nonNull(assetSearchCriteria.getLocation())) {
+            String locationSearch = "%" + assetSearchCriteria.getLocation().toLowerCase() + "%";
+
+            Expression<String> assetBranchName = criteriaBuilder.lower(assetRoot.get("branch").get("name"));
+            Expression<String> assignedBranchName = criteriaBuilder.lower(assetRoot.get("assignedTo").get("branch").get("name"));
+            Expression<String> departmentName = criteriaBuilder.lower(assetRoot.get("assignedTo").get("department").get("name"));
+
+            Predicate headOfficeByAssignedUser = criteriaBuilder.and(
+                    criteriaBuilder.isNotNull(assetRoot.get("assignedTo")),
+                    criteriaBuilder.equal(assignedBranchName, "head office"),
+                    criteriaBuilder.like(criteriaBuilder.literal("head office"), locationSearch)
+            );
+
+            Predicate headOfficeUnassigned = criteriaBuilder.and(
+                    criteriaBuilder.isNull(assetRoot.get("assignedTo")),
+                    criteriaBuilder.like(assetBranchName, locationSearch),
+                    criteriaBuilder.equal(assetBranchName, "head office")
+            );
+
+            Predicate matchDepartmentInHeadOffice = criteriaBuilder.and(
+                    criteriaBuilder.isNotNull(assetRoot.get("assignedTo")),
+                    criteriaBuilder.equal(assignedBranchName, "head office"),
+                    criteriaBuilder.like(departmentName, locationSearch)
+            );
+
+            Predicate matchAssignedUserBranch = criteriaBuilder.and(
+                    criteriaBuilder.isNotNull(assetRoot.get("assignedTo")),
+                    criteriaBuilder.like(assignedBranchName, locationSearch)
+            );
+
+            Predicate matchAssetBranch = criteriaBuilder.like(assetBranchName, locationSearch);
+
+            // Combine all possible cases
+            predicates.add(criteriaBuilder.or(
+                    matchDepartmentInHeadOffice,  // Match department if in head office
+                    headOfficeByAssignedUser,     // Match if assigned user is in head office AND location is head office
+                    headOfficeUnassigned,         // Match if unassigned but asset branch is head office
+                    matchAssignedUserBranch,      // Match other branches
+                    matchAssetBranch              // Match via asset branch
+            ));
         }
 
 

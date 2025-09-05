@@ -24,4 +24,5 @@ public class AssetSearchCriteria {
     private Boolean disposed;
     private String model;
     private String assignedTo;
+    private String location;
 }
