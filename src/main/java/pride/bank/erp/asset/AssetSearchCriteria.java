@@ -22,4 +22,5 @@ public class AssetSearchCriteria {
     private String engravedNumber;
     private Long assignedToId;
     private Boolean disposed;
+    private String model;
 }

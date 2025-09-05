@@ -114,6 +114,10 @@ public class AssetSearchDao {
             predicates.add(criteriaBuilder.equal(assetRoot.get("disposed"), assetSearchCriteria.getDisposed()));
         }
 
+        if (Objects.nonNull(assetSearchCriteria.getModel())) {
+            predicates.add(criteriaBuilder.like(assetRoot.get("model"), "%" + assetSearchCriteria.getModel() + "%"));
+        }
+
         return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
     }
 

@@ -43,7 +43,8 @@ public class AssetController {
             @RequestParam(required = false) Long commodityId,
             @RequestParam(required = false) String engravedNumber,
             @RequestParam(required = false) Long assignedToId,
-            @RequestParam(required = false, defaultValue = "false") Boolean disposed
+            @RequestParam(required = false, defaultValue = "false") Boolean disposed,
+            @RequestParam(required = false) String model
     ) {
         Page<AssetDAO> response = assetService.fetchAllAssets(
                 pageSize,
@@ -56,7 +57,8 @@ public class AssetController {
                 commodityId,
                 engravedNumber,
                 assignedToId,
-                disposed
+                disposed,
+                model
         );
         return new ResponseEntity<>(response, HttpStatus.OK);
     }

@@ -76,7 +76,8 @@ public class AssetService {
             Long commodityId,
             String engravedNumber,
             Long assignedToId,
-            Boolean disposed
+            Boolean disposed,
+            String model
     ) {
 
         try {
@@ -95,6 +96,7 @@ public class AssetService {
                     .assignedToId(assignedToId)
                     .commodityId(commodityId)
                     .disposed(disposed)
+                    .model(model)
                     .build();
 
             Page<Asset> assetPageResult = assetSearchDao.findAllWithFilters(assetPage, assetSearchCriteria);
