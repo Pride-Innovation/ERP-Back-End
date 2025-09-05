@@ -118,6 +118,25 @@ public class AssetSearchDao {
             predicates.add(criteriaBuilder.like(assetRoot.get("model"), "%" + assetSearchCriteria.getModel() + "%"));
         }
 
+        if (Objects.nonNull(assetSearchCriteria.getAssignedTo())) {
+            String searchName = "%" + assetSearchCriteria.getAssignedTo().toLowerCase() + "%";
+
+            Predicate firstNameMatch = criteriaBuilder.like(
+                    criteriaBuilder.lower(assetRoot.get("assignedTo").get("firstName")), searchName
+            );
+
+            Predicate lastNameMatch = criteriaBuilder.like(
+                    criteriaBuilder.lower(assetRoot.get("assignedTo").get("lastName")), searchName
+            );
+
+            Predicate otherNameMatch = criteriaBuilder.like(
+                    criteriaBuilder.lower(assetRoot.get("assignedTo").get("otherName")), searchName
+            );
+
+            predicates.add(criteriaBuilder.or(firstNameMatch, lastNameMatch, otherNameMatch));
+        }
+
+
         return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
     }
 

@@ -23,4 +23,5 @@ public class AssetSearchCriteria {
     private Long assignedToId;
     private Boolean disposed;
     private String model;
+    private String assignedTo;
 }
