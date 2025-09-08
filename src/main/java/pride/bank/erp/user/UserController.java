@@ -79,17 +79,24 @@ public class UserController {
         return new ResponseEntity<>(user, HttpStatus.OK);
     }
 
-    @DeleteMapping("/users/{userID}")
+    @PostMapping("/users/{userID}/disable")
     public ResponseEntity<User> deleteUser(@PathVariable Long userID)
             throws NotFoundException {
         User response = userService.deleteUser(userID);
-        return new ResponseEntity<>(response, HttpStatusCode.valueOf(204));
+        return new ResponseEntity<>(response, HttpStatusCode.valueOf(201));
     }
 
     @PostMapping("/users/{userID}/enable")
     public ResponseEntity<User> enableUser(@PathVariable Long userID)
             throws NotFoundException {
         User response = userService.enableUser(userID);
+        return new ResponseEntity<>(response, HttpStatusCode.valueOf(201));
+    }
+
+    @PostMapping("/users/{userID}/unblock")
+    public ResponseEntity<User> unblockUser(@PathVariable Long userID)
+            throws NotFoundException {
+        User response = userService.unblockUser(userID);
         return new ResponseEntity<>(response, HttpStatusCode.valueOf(201));
     }
 

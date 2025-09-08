@@ -2,6 +2,7 @@ package pride.bank.erp.availability;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.user.User;
 import pride.bank.erp.user.UserRepository;
@@ -20,31 +21,43 @@ public class LeaveService {
         return leaveRepository.findAll();
     }
 
+    @Transactional
     public Leave createLeave(LeaveDTO request, Long userId)
             throws NotFoundException {
-        User actingUser = userService.findUser(request.getActingUser());
+
+        if (request == null) {
+            throw new IllegalArgumentException("Leave request cannot be null.");
+        }
+
+        if (userId == null) {
+            throw new IllegalArgumentException("User going on leave ID must be provided.");
+        }
+
         User userGoingOnLeave = userService.findUser(userId);
+        if (userGoingOnLeave == null) {
+            throw new NotFoundException("User going on leave not found with ID: " + userId);
+        }
 
-//        userGoingOnLeave.setEnabled(false);
-//        userGoingOnLeave.setAccountNonLocked(false);
+        User actingUser = null;
+        if (request.getActingUser() != null) {
+            actingUser = userService.findUser(request.getActingUser());
+            if (actingUser == null) {
+                throw new NotFoundException("Acting user not found with ID: " + request.getActingUser());
+            }
 
-        actingUser.setActingTitle(userGoingOnLeave.getTitle());
-        actingUser.setActing(true);
+            actingUser.setActingTitle(userGoingOnLeave.getTitle());
+            actingUser.setActing(true);
+            userRepository.save(actingUser);
+        }
 
-        userRepository.save(actingUser);
+        userGoingOnLeave.setAccountNonLocked(false);
         userRepository.save(userGoingOnLeave);
 
-        /*
-         *  Ensure That the current user who is going on leave status to be adjusted
-         *  Ensure that the Acting user is given all the roles if he or she does not already have them
-         */
-
-        Leave leave = Leave
-                .builder()
+        Leave leave = Leave.builder()
                 .leaveType(request.getLeaveType())
                 .actingUser(actingUser)
-                .endDate(request.getEndDate())
                 .startDate(request.getStartDate())
+                .endDate(request.getEndDate())
                 .reason(request.getReason())
                 .build();
 

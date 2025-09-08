@@ -14,6 +14,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.InsufficientAuthenticationException;
+import org.springframework.security.authentication.LockedException;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
@@ -156,8 +157,17 @@ public class ApplicationExceptionHandler {
     @ResponseStatus(HttpStatus.UNAUTHORIZED)
     public ProblemDetail handleDisabledException(DisabledException ex) {
         ProblemDetail errorDetail = ProblemDetail
-                .forStatusAndDetail(HttpStatus.UNAUTHORIZED, "User account is disabled");
-        errorDetail.setProperty("access_denied_reason", "Account Disabled");
+                .forStatusAndDetail(HttpStatus.UNAUTHORIZED, "User account is disabled, Please contact Admin");
+        errorDetail.setProperty("access_denied_reason", "Account Disabled. Please contact Admin");
+        return errorDetail;
+    }
+
+    @ExceptionHandler(LockedException.class)
+    @ResponseStatus(HttpStatus.UNAUTHORIZED)
+    public ProblemDetail handleLockedException(LockedException ex) {
+        ProblemDetail errorDetail = ProblemDetail
+                .forStatusAndDetail(HttpStatus.UNAUTHORIZED, "User account is locked");
+        errorDetail.setProperty("access_denied_reason", "Account Locked. Please verify your email.");
         return errorDetail;
     }
 

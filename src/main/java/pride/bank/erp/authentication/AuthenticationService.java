@@ -12,9 +12,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
-import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.DisabledException;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.authentication.*;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import pride.bank.erp.config.JwtService;
@@ -62,7 +60,7 @@ public class AuthenticationService {
                 .availability(request.getAvailability())
                 .gender(request.getGender())
                 .title(title)
-                .isEnabled(false)
+                .isAccountNonLocked(false)
                 .build();
         User savedUser = userRepository.save(user);
         AuthenticationResponse response = generateToken(savedUser, title);
@@ -83,18 +81,28 @@ public class AuthenticationService {
     }
 
     public AuthenticationResponse authenticate(AuthenticationRequest request) throws NotFoundException {
+        User user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new NotFoundException("User not found"));
+
+        if (!user.isEnabled()) {
+            throw new DisabledException("Account is disabled. Please contact Admin");
+        }
+
+        if (!user.isAccountNonLocked()) {
+            throw new LockedException("Account is locked. Please verify your email.");
+        }
+
+        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+            throw new BadCredentialsException("Invalid username or password");
+        }
+
         authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(
                         request.getEmail(),
                         request.getPassword()
                 )
         );
-        User user = userRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new NotFoundException("User not found"));
 
-        if (!user.isEnabled()) {
-            throw new DisabledException("Account is not verified. Please check your email to verify your account.");
-        }
         revokeAllUserTokens(user);
         return generateToken(user, user.getTitle());
     }
