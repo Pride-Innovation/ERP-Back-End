@@ -86,6 +86,13 @@ public class UserController {
         return new ResponseEntity<>(response, HttpStatusCode.valueOf(204));
     }
 
+    @PostMapping("/users/{userID}/enable")
+    public ResponseEntity<User> enableUser(@PathVariable Long userID)
+            throws NotFoundException {
+        User response = userService.enableUser(userID);
+        return new ResponseEntity<>(response, HttpStatusCode.valueOf(201));
+    }
+
     @GetMapping("/users/search")
     public ResponseEntity<Page<User>> searchUserByEmailNameStaffNumber(
             @RequestParam String text,

@@ -165,6 +165,12 @@ public class UserService {
         return userRepository.save(user);
     }
 
+    public User enableUser(Long userId) throws NotFoundException {
+        User user = findUser(userId);
+        user.setAccountNonLocked(true);
+        return userRepository.save(user);
+    }
+
 
     public Page<User> fetchUsers(
             int pageSize,
