@@ -17,6 +17,8 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import pride.bank.erp.apiResponse.Response;
+import pride.bank.erp.availability.Leave;
+import pride.bank.erp.availability.LeaveRepository;
 import pride.bank.erp.branch.Branch;
 import pride.bank.erp.branch.BranchRepository;
 import pride.bank.erp.config.CurrentUserService;
@@ -32,6 +34,7 @@ import pride.bank.erp.title.Title;
 import pride.bank.erp.title.TitleService;
 
 import java.io.IOException;
+import java.time.LocalDateTime;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -52,7 +55,7 @@ public class UserService {
     private final DepartmentRepository departmentRepository;
     private final FileUpload fileUpload;
     private final CurrentUserService currentUserService;
-
+    private final LeaveRepository leaveRepository;
 
     public User findUser(Long userId) throws NotFoundException {
         return userRepository.findById(userId)
@@ -180,7 +183,32 @@ public class UserService {
         User user = findUser(userID);
         user.setAccountNonLocked(true);
         user.setBlocked(false);
+
+        // Manage Leave if user returning from leave
+        checkIfUserIsReturningFromLeave(user);
+
         return userRepository.save(user);
+    }
+
+    @Transactional
+    private void checkIfUserIsReturningFromLeave(User user) {
+        LocalDateTime now = LocalDateTime.now();
+
+        Optional<Leave> leaveOpt = leaveRepository.findActiveLeaveEndedByUser(user.getId(), now);
+
+        if (leaveOpt.isPresent()) {
+            Leave leave = leaveOpt.get();
+            User actingUser = leave.getActingUser();
+
+            if (actingUser != null) {
+                actingUser.setActing(false);
+                actingUser.setActingTitle(null);
+                userRepository.save(actingUser);
+            }
+
+            leave.setActive(false);
+            leaveRepository.save(leave);
+        }
     }
 
     public Page<User> fetchUsers(
