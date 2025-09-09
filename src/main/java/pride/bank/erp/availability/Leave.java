@@ -24,10 +24,15 @@ public class Leave {
     private LocalDateTime startDate;
     private LocalDateTime endDate;
     private String reason;
+    private Boolean active;
 
-    @ManyToOne(fetch = FetchType.EAGER, optional = false)
-    @JoinColumn(name = "user_id", nullable = false)
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "acting_user")
     @NotAudited
     private User actingUser;
 
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "on_leave_user")
+    @NotAudited
+    private User onLeaveUser;
 }

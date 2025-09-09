@@ -61,6 +61,8 @@ public class LeaveService {
                 .startDate(request.getStartDate())
                 .endDate(request.getEndDate())
                 .reason(request.getReason())
+                .active(true)
+                .onLeaveUser(userGoingOnLeave)
                 .build();
 
         return leaveRepository.save(leave);
