@@ -26,6 +26,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -80,7 +81,7 @@ public class Email {
                 String expirationTime = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
                         .withZone(ZoneId.systemDefault())
                         .format(expirationInstant);
-                htmlContent = getAuthenticationEmailContent(token, expirationTime, headerText, buttonText, password);
+                htmlContent = getAuthenticationEmailContent(token, expirationTime, headerText, buttonText, password, reason);
             } else if ("requests".equalsIgnoreCase(type)) {
                 htmlContent = getRequestEmailContent(request, headerText, buttonText, password);
             } else if ("stocks".equalsIgnoreCase(type)) {
@@ -127,9 +128,12 @@ public class Email {
             String expirationTime,
             String headerText,
             String buttonText,
-            String password
+            String password,
+            String reason
     ) {
-        String verifyLink = String.format("%s/verify?token=%s", verificationUrl, token);
+        String verifyLink = Objects.equals(reason, "reset") ?
+                String.format("%s/reset-password?token=%s", verificationUrl, token)
+                : String.format("%s/verify?token=%s", verificationUrl, token);
 
         String passwordSection = password != null
                 ? String.format(

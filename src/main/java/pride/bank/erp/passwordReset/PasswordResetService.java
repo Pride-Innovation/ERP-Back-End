@@ -53,7 +53,7 @@ public class PasswordResetService {
                 null,
                 null,
                 null,
-                null
+                "reset"
         );
 
         if (!emailSent) {

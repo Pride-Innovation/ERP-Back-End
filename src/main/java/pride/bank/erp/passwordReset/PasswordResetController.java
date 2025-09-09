@@ -29,7 +29,7 @@ public class PasswordResetController {
     @PostMapping("/request-password-reset")
     public ResponseEntity<Map<String, Object>> requestPasswordReset(@RequestParam String email) {
         Map<String, Object> response = passwordResetService.requestPasswordReset(email);
-        return new ResponseEntity<>(response, HttpStatus.OK);
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 
     @PostMapping("/reset-password")
