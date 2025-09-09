@@ -169,6 +169,7 @@ public class UserService {
         User user = findUser(userId);
         user.setEnabled(false);
         user.setAccountNonLocked(false);
+        user.setBlocked(true);
         return userRepository.save(user);
     }
 
@@ -176,6 +177,7 @@ public class UserService {
         User user = findUser(userId);
         user.setEnabled(true);
         user.setAccountNonLocked(true);
+        user.setBlocked(false);
         return userRepository.save(user);
     }
 
