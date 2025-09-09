@@ -103,6 +103,9 @@ public class UserService {
                         generatedPassword,
                         "authentication",
                         null,
+                        null,
+                        null,
+                        null,
                         null
                 );
 

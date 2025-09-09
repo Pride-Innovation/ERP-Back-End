@@ -303,6 +303,9 @@ public class IssuanceService {
                 comment,
                 "requests",
                 request,
+                null,
+                null,
+                null,
                 null
         );
     }

@@ -75,6 +75,9 @@ public class AuthenticationService {
                 generatedPassword,
                 "authentication",
                 null,
+                null,
+                null,
+                null,
                 null
         );
         return response;

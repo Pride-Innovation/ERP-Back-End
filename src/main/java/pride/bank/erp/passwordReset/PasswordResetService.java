@@ -50,6 +50,9 @@ public class PasswordResetService {
                 null,
                 "authentication",
                 null,
+                null,
+                null,
+                null,
                 null
         );
 

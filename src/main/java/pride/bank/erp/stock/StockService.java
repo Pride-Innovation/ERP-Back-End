@@ -652,7 +652,10 @@ public class StockService {
                 commoditySummary,
                 "stocks",
                 null,
-                stock
+                stock,
+                null,
+                null,
+                null
         );
     }
 

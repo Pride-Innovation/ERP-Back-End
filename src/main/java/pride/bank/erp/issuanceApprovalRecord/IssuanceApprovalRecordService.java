@@ -99,6 +99,9 @@ public class IssuanceApprovalRecordService {
                 comment,
                 "requests",
                 request,
+                null,
+                null,
+                null,
                 null
         );
     }

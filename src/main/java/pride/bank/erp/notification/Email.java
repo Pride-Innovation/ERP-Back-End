@@ -66,7 +66,10 @@ public class Email {
             String password,
             String type,
             Request request,
-            Stock stock
+            Stock stock,
+            String startDate,
+            String endDate,
+            String reason
     ) {
         try {
 
@@ -82,6 +85,8 @@ public class Email {
                 htmlContent = getRequestEmailContent(request, headerText, buttonText, password);
             } else if ("stocks".equalsIgnoreCase(type)) {
                 htmlContent = getStockEmailContent(stock, headerText, buttonText, password);
+            } else if ("leave".equalsIgnoreCase(type)) {
+                htmlContent = getLeaveEmailContent(token, headerText, buttonText, password, startDate, endDate, reason);
             } else {
                 logger.error("Invalid email type: {}", type);
                 return false;
@@ -337,5 +342,73 @@ public class Email {
                 buttonText
         );
     }
+
+    private String getLeaveEmailContent(
+            String actingUserName,
+            String leaveUserName,
+            String leaveType,
+            String actingTitle,
+            String startDate,
+            String endDate,
+            String leaveReason
+    ) {
+
+        System.out.println("Acting User:: " + actingUserName);
+        System.out.println("Leaving User:: " + leaveUserName);
+        System.out.println("Leave Type:: " + leaveType);
+        System.out.println("Acting Title::" + actingTitle);
+        System.out.println("Start Date:: " + startDate);
+        System.out.println("End Date:: " + endDate);
+        System.out.println("Leave Reason:: " + leaveReason);
+
+        return String.format(
+                """
+                         <html>
+                           <body>
+                             <div style="font-family: 'Segoe UI', sans-serif; background-color: #f4f8fb; padding: 30px;">
+                               <div style="max-width: 700px; margin: auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.08);">
+                                 <div style="padding: 30px;">
+                                   <div style="text-align:center;">
+                                     <img src="cid:logoImage" alt="Pride Bank Logo" style="max-width: 220px; height: auto;" />
+                                   </div>
+                                   <h3 style="color: #05544B; margin-top: 30px;">You’ve been assigned as Acting Officer</h3>
+                                   <p style="font-size: 16px; color: #333;">Dear <strong>%s</strong>,</p>
+                                   <p style="font-size: 15px; line-height: 1.6;">
+                                     This is to inform you that <strong>%s</strong> has officially gone on <strong>%s</strong> leave from\s
+                                     <strong>%s</strong> to <strong>%s</strong>.
+                                   </p>
+                                   <p style="font-size: 15px; line-height: 1.6;">
+                                     You have been assigned as the acting officer for this period. Please take over the responsibilities of the role titled:
+                                     <strong>%s</strong>.
+                                   </p>
+                                   <div style="background-color: #f1f5f9; padding: 15px; border-left: 4px solid #05544B; margin: 20px 0;">
+                                     <p style="margin: 0;"><strong>Reason for Leave:</strong> %s</p>
+                                   </div>
+                                   <p>Thank you for your continued support and commitment.</p>
+                                   <p style="margin-top: 30px;">Regards,<br/>HR Department<br/>Pride Bank</p>
+                                   <p style="font-size: 12px; color: #777; margin-top: 30px;">
+                                     DO NOT REPLY TO THIS EMAIL. THIS IS AN AUTOMATED NOTIFICATION FROM THE PRIDE BANK HR SYSTEM.
+                                   </p>
+                                 </div>
+                                 <div style="background-color: #f1f1f1; text-align: center; padding: 15px; font-size: 12px; color: #999;">
+                                   Pride Bank, Plot 6-9, Victoria Office Park; Bukoto, Kampala, Uganda<br />
+                                   Call or WhatsApp: +256 754 346930<br />
+                                   &copy; 2025 Pride Bank. All rights reserved.
+                                 </div>
+                               </div>
+                             </div>
+                           </body>
+                         </html>
+                        \s""",
+                actingUserName,
+                leaveUserName,
+                leaveType,
+                startDate,
+                endDate,
+                actingTitle,
+                leaveReason
+        );
+    }
+
 
 }
