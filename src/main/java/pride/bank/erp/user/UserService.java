@@ -176,6 +176,7 @@ public class UserService {
     public User unblockUser(Long userID) throws NotFoundException {
         User user = findUser(userID);
         user.setAccountNonLocked(true);
+        user.setBlocked(false);
         return userRepository.save(user);
     }
 

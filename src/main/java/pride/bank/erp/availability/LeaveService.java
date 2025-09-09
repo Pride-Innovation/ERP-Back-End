@@ -51,6 +51,8 @@ public class LeaveService {
         }
 
         userGoingOnLeave.setAccountNonLocked(false);
+        userGoingOnLeave.setBlocked(true);
+
         userRepository.save(userGoingOnLeave);
 
         Leave leave = Leave.builder()

@@ -92,6 +92,10 @@ public class AuthenticationService {
             throw new LockedException("Account is locked. Please verify your email.");
         }
 
+        if (user.isBlocked()) {
+            throw new LockedException("Account is blocked. Please Contact your Admin.");
+        }
+
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
             throw new BadCredentialsException("Invalid username or password");
         }
