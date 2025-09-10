@@ -19,4 +19,7 @@ public class UserSearchCriteria {
     private String lastName;
     private String email;
     private String phone;
+    private Boolean blocked;
+    private Boolean isEnabled;
+    private Boolean isAccountNonLocked;
 }

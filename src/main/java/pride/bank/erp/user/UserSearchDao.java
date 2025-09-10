@@ -92,6 +92,18 @@ public class UserSearchDao {
             predicates.add(criteriaBuilder.like(userRoot.get("phone"), "%" + userSearchCriteria.getPhone() + "%"));
         }
 
+        if (Objects.nonNull(userSearchCriteria.getBlocked())) {
+            predicates.add(criteriaBuilder.equal(userRoot.get("blocked"), userSearchCriteria.getBlocked()));
+        }
+
+        if (Objects.nonNull(userSearchCriteria.getIsEnabled())) {
+            predicates.add(criteriaBuilder.equal(userRoot.get("isEnabled"), userSearchCriteria.getIsEnabled()));
+        }
+
+        if (Objects.nonNull(userSearchCriteria.getIsAccountNonLocked())) {
+            predicates.add(criteriaBuilder.equal(userRoot.get("isAccountNonLocked"), userSearchCriteria.getIsAccountNonLocked()));
+        }
+
         return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
     }
 
