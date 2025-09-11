@@ -23,4 +23,5 @@ public class UserSearchCriteria {
     private Boolean isEnabled;
     private Boolean isAccountNonLocked;
     private String name;
+    private String staffNumber;
 }

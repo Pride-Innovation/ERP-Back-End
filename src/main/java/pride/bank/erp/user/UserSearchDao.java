@@ -117,6 +117,10 @@ public class UserSearchDao {
             predicates.add(criteriaBuilder.equal(userRoot.get("isAccountNonLocked"), userSearchCriteria.getIsAccountNonLocked()));
         }
 
+        if (Objects.nonNull(userSearchCriteria.getStaffNumber())) {
+            predicates.add(criteriaBuilder.like(userRoot.get("staffNumber"), "%" + userSearchCriteria.getStaffNumber() + "%"));
+        }
+
         return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
     }
 

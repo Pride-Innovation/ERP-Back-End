@@ -225,7 +225,8 @@ public class UserService {
             Boolean blocked,
             Boolean isEnabled,
             Boolean isAccountNonLocked,
-            String name
+            String name,
+            String staffNumber
     ) {
         try {
             UserPage userPage = UserPage.builder()
@@ -244,6 +245,7 @@ public class UserService {
                     .isAccountNonLocked(isAccountNonLocked)
                     .isEnabled(isEnabled)
                     .name(name)
+                    .staffNumber(staffNumber)
                     .build();
             return userSearchDao.findAllWithFilters(userPage, userSearchCriteria);
         } catch (Exception e) {
