@@ -47,7 +47,8 @@ public class UserController {
             @RequestParam(required = false) Boolean isEnabled,
             @RequestParam(required = false) Boolean isAccountNonLocked,
             @RequestParam(required = false) String name,
-            @RequestParam(required = false) String staffNumber
+            @RequestParam(required = false) String staffNumber,
+            @RequestParam(required = false) String title
     ) {
         Page<User> users = userService.fetchUsers(
                 pageSize,
@@ -62,7 +63,8 @@ public class UserController {
                 isEnabled,
                 isAccountNonLocked,
                 name,
-                staffNumber
+                staffNumber,
+                title
         );
         return new ResponseEntity<>(users, HttpStatus.OK);
     }
