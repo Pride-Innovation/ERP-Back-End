@@ -84,6 +84,19 @@ public class UserSearchDao {
             predicates.add(criteriaBuilder.like(userRoot.get("lastName"), "%" + userSearchCriteria.getLastName() + "%"));
         }
 
+        if (Objects.nonNull(userSearchCriteria.getName())) {
+            String searchName = "%" + userSearchCriteria.getName().toLowerCase() + "%";
+
+            Predicate firstNameMatch = criteriaBuilder.like(criteriaBuilder.lower(userRoot.get("firstName")), searchName);
+
+            Predicate lastNameMatch = criteriaBuilder.like(criteriaBuilder.lower(userRoot.get("lastName")), searchName);
+
+            Predicate otherNameMatch = criteriaBuilder.like(criteriaBuilder.lower(userRoot.get("otherName")), searchName);
+
+            predicates.add(criteriaBuilder.or(firstNameMatch, lastNameMatch, otherNameMatch));
+        }
+
+
         if (Objects.nonNull(userSearchCriteria.getEmail())) {
             predicates.add(criteriaBuilder.like(userRoot.get("email"), "%" + userSearchCriteria.getEmail() + "%"));
         }
