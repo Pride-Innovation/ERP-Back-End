@@ -25,4 +25,5 @@ public class RequestSearchCriteria {
     private List<Long> statusIds;
     private List<Long> requesterIds;
     private String requestedBy;
+    private String approver;
 }
