@@ -44,7 +44,8 @@ public class RequestController {
             @RequestParam(required = false) String description,
             @RequestParam(required = false) LocalDateTime timeOfSubmissionOfRequest,
             @RequestParam(required = false) List<Long> statusIds,
-            @RequestParam(required = false) String status
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String requestedBy
     ) {
         Page<RequestDTO> requests = requestService.fetchAllRequests(
                 pageSize,
@@ -56,7 +57,8 @@ public class RequestController {
                 description,
                 timeOfSubmissionOfRequest,
                 statusIds,
-                status
+                status,
+                requestedBy
         );
         return new ResponseEntity<>(requests, HttpStatus.OK);
     }

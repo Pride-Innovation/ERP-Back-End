@@ -101,6 +101,24 @@ public class RequestSearchDao {
             predicates.add(requestRoot.get("requester").get("id").in(requestSearchCriteria.getRequesterIds()));
         }
 
+        if (Objects.nonNull(requestSearchCriteria.getRequestedBy())) {
+            String searchName = "%" + requestSearchCriteria.getRequestedBy().toLowerCase() + "%";
+
+            Predicate firstNameMatch = criteriaBuilder.like(
+                    criteriaBuilder.lower(requestRoot.get("requester").get("firstName")), searchName
+            );
+
+            Predicate lastNameMatch = criteriaBuilder.like(
+                    criteriaBuilder.lower(requestRoot.get("requester").get("lastName")), searchName
+            );
+
+            Predicate otherNameMatch = criteriaBuilder.like(
+                    criteriaBuilder.lower(requestRoot.get("requester").get("otherName")), searchName
+            );
+
+            predicates.add(criteriaBuilder.or(firstNameMatch, lastNameMatch, otherNameMatch));
+        }
+
 
         return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
     }

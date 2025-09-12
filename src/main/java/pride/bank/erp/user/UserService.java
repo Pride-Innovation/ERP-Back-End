@@ -7,7 +7,6 @@ Managing Director
 
 package pride.bank.erp.user;
 
-import jakarta.transaction.Transactional;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -15,6 +14,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import pride.bank.erp.apiResponse.Response;
 import pride.bank.erp.availability.Leave;
@@ -31,13 +31,14 @@ import pride.bank.erp.helper.FileUpload;
 import pride.bank.erp.helper.PasswordGenerator;
 import pride.bank.erp.notification.Email;
 import pride.bank.erp.title.Title;
+import pride.bank.erp.title.TitleRepository;
 import pride.bank.erp.title.TitleService;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 
+import static java.lang.String.format;
 import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
 
 
@@ -56,6 +57,7 @@ public class UserService {
     private final FileUpload fileUpload;
     private final CurrentUserService currentUserService;
     private final LeaveRepository leaveRepository;
+    private final TitleRepository titleRepository;
 
     public User findUser(Long userId) throws NotFoundException {
         return userRepository.findById(userId)
@@ -308,5 +310,83 @@ public class UserService {
         return userRepository.save(user);
     }
 
+    @Transactional
+    public Map<String, Object> bulkInsertUsers(List<BulkUserDTO> userList) {
+        Branch headOffice = branchRepository.findById(1L).orElse(null);
+        Map<String, Object> result = new HashMap<>();
+
+        List<String> errors = new ArrayList<>();
+        int successCount = 0;
+
+        // TO DO -> :::: Ensure that email and stuff number is a unique field.
+
+        for (BulkUserDTO dto : userList) {
+            try {
+                // Split name
+                String[] nameParts = dto.getName().trim().split("\\s+");
+                String firstName = nameParts.length > 0 ? nameParts[0] : null;
+                String lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : null;
+                String otherName = nameParts.length > 2
+                        ? String.join(" ", Arrays.copyOfRange(nameParts, 1, nameParts.length - 1))
+                        : null;
+
+                // Title / Branch / Department (null if not found)
+                Title title = titleRepository.findByNameIgnoreCase(dto.getTitle()).orElse(null);
+                Branch branch = branchRepository.findByNameIgnoreCase(dto.getDutyStation()).orElse(null);
+                Department department = null;
+                if (branch == null) {
+                    department = departmentRepository.findByNameIgnoreCase(dto.getDutyStation()).orElse(null);
+                    branch = headOffice;
+                }
+
+                // Generate password
+                String generatedPassword = PasswordGenerator.generatePassword();
+
+                // Create and save user
+                User user = User.builder()
+                        .firstName(firstName)
+                        .lastName(lastName)
+                        .otherName(otherName)
+                        .staffNumber(dto.getStaffNumber())
+                        .email(dto.getEmail())
+                        .password(passwordEncoder.encode(generatedPassword))
+                        .gender(dto.getGender())
+                        .title(title)
+                        .branch(branch)
+                        .department(department)
+                        .isEnabled(false)
+                        .blocked(false)
+                        .isAccountNonLocked(true)
+                        .build();
+
+                userRepository.save(user);
+
+                // Notify user after successful save
+                ExtractNumberFromEmailAddress cleanedEmail = new ExtractNumberFromEmailAddress(dto.getEmail());
+                emailService.sendEmailVerification(
+                        cleanedEmail.getCleanedEmail(),
+                        "Account verification",
+                        null,
+                        "Verify Your Account",
+                        "Verify Account",
+                        generatedPassword,
+                        "authentication",
+                        null, null, null, null, null
+                );
+
+                successCount++;
+
+            } catch (Exception e) {
+                errors.add("Failed for staffNumber=" + dto.getStaffNumber() + ": " + e.getMessage());
+            }
+        }
+
+        result.put("success", errors.isEmpty());
+        result.put("inserted", successCount);
+        result.put("failed", errors.size());
+        result.put("errors", errors);
+
+        return result;
+    }
 
 }

@@ -22,4 +22,6 @@ public interface TitleRepository extends JpaRepository<Title, Long> {
     @Query("SELECT t.id FROM Title t WHERE t.reportsTo.id = :titleId")
     List<Long> findSubordinateTitleIds(@Param("titleId") Long titleId);
 
+    Optional<Title> findByNameIgnoreCase(String name);
+
 }

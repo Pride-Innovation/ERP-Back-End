@@ -24,4 +24,5 @@ public class RequestSearchCriteria {
     private LocalDateTime timeOfSubmissionOfRequest;
     private List<Long> statusIds;
     private List<Long> requesterIds;
+    private String requestedBy;
 }

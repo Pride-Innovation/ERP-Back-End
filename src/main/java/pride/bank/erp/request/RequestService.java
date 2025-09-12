@@ -212,7 +212,8 @@ public class RequestService {
             String description,
             LocalDateTime timeOfSubmissionOfRequest,
             List<Long> statusIds,
-            String status
+            String status,
+            String requestedBy
     ) {
         try {
             RequestPage requestPage = RequestPage.builder()
@@ -229,6 +230,7 @@ public class RequestService {
                     .description(description)
                     .statusIds(statusIds)
                     .requesterIds(requestersList(status))
+                    .requestedBy(requestedBy)
                     .timeOfSubmissionOfRequest(timeOfSubmissionOfRequest)
                     .build();
             Page<Request> requestPageResult = requestSearchDao.findAllWithFilters(requestPage, requestSearchCriteria);

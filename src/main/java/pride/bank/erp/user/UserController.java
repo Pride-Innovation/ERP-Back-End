@@ -7,6 +7,8 @@ Managing Director
 
 package pride.bank.erp.user;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -18,10 +20,13 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import pride.bank.erp.asset.BulkAssetDTO;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
 
 import java.io.IOException;
+import java.util.List;
+import java.util.Map;
 
 import static pride.bank.erp.helper.Constants.ASCENDING_SORT_DIRECTION;
 
@@ -145,6 +150,20 @@ public class UserController {
             @RequestBody ChangePasswordDTO request
     ) {
         User response = userService.changePassword(request);
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
+    }
+
+    @PostMapping("users/bulk-insert")
+    public ResponseEntity<Map<String, Object>> bulkInsertUsers(
+            @RequestParam("users") String users
+    ) throws JsonProcessingException {
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        List<BulkUserDTO> userList = objectMapper.readValue(users,
+                objectMapper.getTypeFactory()
+                        .constructCollectionType(List.class, BulkUserDTO.class));
+
+        Map<String, Object> response = userService.bulkInsertUsers(userList);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 }
