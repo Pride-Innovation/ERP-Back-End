@@ -161,20 +161,32 @@ public class RequestService {
         Request existingRequest = findRequest(requestId);
         Status status = statusService.findOneStatus(1L); // Asset Request Created Identification
 
+        String newFilePath = null;
+
+        // === CASE 1: User uploaded a new file ===
         if (file != null && !file.isEmpty()) {
             if (existingRequest.getSignaturePath() != null) {
                 File oldFile = new File(existingRequest.getSignaturePath());
-                if (oldFile.exists()) {
-                    boolean deleted = oldFile.delete();
-                    if (!deleted) {
-                        System.err.println("Failed to delete old file: " + oldFile.getAbsolutePath());
-                    }
+                if (oldFile.exists() && !oldFile.delete()) {
+                    System.err.println("Failed to delete old file: " + oldFile.getAbsolutePath());
                 }
             }
-            String newFilePath = fileUpload.uploadFileToLocalDirectory(file);
+            newFilePath = fileUpload.uploadFileToLocalDirectory(file);
             existingRequest.setSignaturePath(newFilePath);
+
+            // === CASE 2: User explicitly wants to remove the file ===
+        } else if (body.getSignaturePath() == null && existingRequest.getSignaturePath() != null) {
+            File oldFile = new File(existingRequest.getSignaturePath());
+            if (oldFile.exists() && !oldFile.delete()) {
+                System.err.println("Failed to delete old file: " + oldFile.getAbsolutePath());
+            }
+            existingRequest.setSignaturePath(null);
+
+            // === CASE 3: User ignored the signature field ===
+            // do nothing, keep existingRequest.getSignaturePath()
         }
 
+        // Update other fields
         existingRequest.setName(body.getName());
         existingRequest.setPriority(body.getPriority());
         existingRequest.setTimeOfSubmissionOfRequest(body.getTimeOfSubmissionOfRequest());
@@ -182,13 +194,16 @@ public class RequestService {
         existingRequest.setDescription(body.getDescription());
 
         Request savedRequest = requestRepository.save(existingRequest);
-        requestCommodityRepository.deleteByRequestId(requestId);
 
+        // Replace commodities
+        requestCommodityRepository.deleteByRequestId(requestId);
         addCommoditiesToRequest(savedRequest, updatedRequestCommodities);
 
+        // Reload commodities
         List<RequestCommodity> requestCommodities = requestCommodityRepository.findByRequestId(savedRequest.getId());
         List<CommodityWithQuantityDTO> commodities = commodityWithQuantityDTO(requestCommodities);
         savedRequest.setCommodities(commodities);
+
         return savedRequest;
     }
 
