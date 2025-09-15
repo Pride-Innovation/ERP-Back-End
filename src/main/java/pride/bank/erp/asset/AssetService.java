@@ -518,8 +518,6 @@ public class AssetService {
                 DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
                 String dateReceiptString = dateReceipt.format(formatter);
 
-                System.out.println("Date Receipt String:: " + dateReceiptString);
-
                 Asset asset = Asset.builder()
                         .assetName(dto.getProductName())
                         .engravedNumber(dto.getAssetTag())

@@ -111,6 +111,7 @@ public class RequestService {
                 .status(status)
                 .requester(requester)
                 .description(body.getDescription())
+                .deleted(false)
                 .build();
 
         Request savedRequest;
@@ -207,9 +208,12 @@ public class RequestService {
         return savedRequest;
     }
 
-    public DeleteResponse deleteRequest(Long id) {
+    public DeleteResponse deleteRequest(Long id) throws NotFoundException {
         if (requestRepository.existsById(id)) {
-            requestRepository.deleteById(id);
+            Request request = findRequest(id);
+            request.setDeleted(true);
+            request.setDeletionDate(LocalDateTime.now());
+            requestRepository.save(request);
             return new DeleteResponse(Constants.DELETED_SUCCESSFULLY, true);
         } else {
             return new DeleteResponse(Constants.ENTITY_NOT_FOUND, false);
@@ -229,7 +233,8 @@ public class RequestService {
             List<Long> statusIds,
             String status,
             String requestedBy,
-            String approver
+            String approver,
+            Boolean deleted
     ) {
         try {
             RequestPage requestPage = RequestPage.builder()
@@ -248,6 +253,7 @@ public class RequestService {
                     .requesterIds(requestersList(status))
                     .requestedBy(requestedBy)
                     .approver(approver)
+                    .deleted(deleted)
                     .timeOfSubmissionOfRequest(timeOfSubmissionOfRequest)
                     .build();
             Page<Request> requestPageResult = requestSearchDao.findAllWithFilters(requestPage, requestSearchCriteria);

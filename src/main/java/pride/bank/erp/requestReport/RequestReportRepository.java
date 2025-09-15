@@ -9,5 +9,8 @@ package pride.bank.erp.requestReport;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.Optional;
+
 public interface RequestReportRepository extends JpaRepository<RequestReport, Long> {
+    Optional<RequestReport> findByRequestId(Long requestId);
 }

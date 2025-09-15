@@ -43,14 +43,12 @@ public class Request {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
     private String name;
-
     private String priority;
-
     private String description;
-
     private String signaturePath;
+    private Boolean deleted = false;
+    private LocalDateTime deletionDate;
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "status_id")

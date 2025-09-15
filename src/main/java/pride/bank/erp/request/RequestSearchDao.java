@@ -101,6 +101,10 @@ public class RequestSearchDao {
             predicates.add(requestRoot.get("requester").get("id").in(requestSearchCriteria.getRequesterIds()));
         }
 
+        if (Objects.nonNull(requestSearchCriteria.getDeleted())) {
+            predicates.add(criteriaBuilder.equal(requestRoot.get("deleted"), requestSearchCriteria.getDeleted()));
+        }
+
         if (Objects.nonNull(requestSearchCriteria.getRequestedBy())) {
             String searchName = "%" + requestSearchCriteria.getRequestedBy().toLowerCase() + "%";
 

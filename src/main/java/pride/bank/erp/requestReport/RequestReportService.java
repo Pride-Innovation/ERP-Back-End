@@ -194,4 +194,43 @@ public class RequestReportService {
         return user.getBranch() != null && user.getBranch().getId() == 1;
     }
 
+    @Transactional
+    public RequestReportDAO findRequestReportByRequestId(Long requestId) {
+        // Try to fetch the RequestReport
+        RequestReport data = requestReportRepository.findByRequestId(requestId).orElse(null);
+
+        // Handle the case when data is null (e.g., not found)
+        if (data == null) {
+            return null;
+        }
+
+        // Build the RequestReportDAO object, taking care to handle null values for nested objects
+        return RequestReportDAO
+                .builder()
+                .status(data.getStatus() != null ?
+                        Status.builder()
+                                .id(data.getStatus().getId())
+                                .status(data.getStatus().getStatus())
+                                .description(data.getStatus().getDescription())
+                                .name(data.getStatus().getName())
+                                .code(data.getStatus().getCode())
+                                .build() : null)
+                .request(data.getRequest() != null ?
+                        Request.builder()
+                                .id(data.getRequest().getId())
+                                .name(data.getRequest().getName())
+                                .priority(data.getRequest().getPriority())
+                                .description(data.getRequest().getDescription())
+                                .build() : null)
+                .approver(data.getApprover() != null ?
+                        userBuilder.builder(data.getApprover()) : null)
+                .createDate(data.getCreateDate())
+                .createdBy(data.getCreatedBy())
+                .comment(data.getComment())
+                .lastModified(data.getLastModified())
+                .lastModifiedBy(data.getLastModifiedBy())
+                .build();
+    }
+
+
 }

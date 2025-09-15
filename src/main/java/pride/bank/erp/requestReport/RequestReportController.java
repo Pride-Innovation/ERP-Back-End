@@ -10,10 +10,7 @@ package pride.bank.erp.requestReport;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.request.Request;
 import pride.bank.erp.request.RequestDTO;
@@ -32,5 +29,11 @@ public class RequestReportController {
             throws NotFoundException {
         RequestDTO response = requestReportService.approveRequest(requestReportDTO);
         return new ResponseEntity<>(response, HttpStatusCode.valueOf(201));
+    }
+
+    @GetMapping("/request-report/{requestId}")
+    public ResponseEntity<RequestReportDAO> findRequestReportByRequestId(@PathVariable Long requestId) {
+        System.out.println("Request ID::: " + requestId);
+        return ResponseEntity.ok(requestReportService.findRequestReportByRequestId(requestId));
     }
 }

@@ -26,4 +26,5 @@ public class RequestSearchCriteria {
     private List<Long> requesterIds;
     private String requestedBy;
     private String approver;
+    private Boolean deleted;
 }

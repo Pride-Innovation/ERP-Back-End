@@ -46,7 +46,8 @@ public class RequestController {
             @RequestParam(required = false) List<Long> statusIds,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String requestedBy,
-            @RequestParam(required = false) String approver
+            @RequestParam(required = false) String approver,
+            @RequestParam(required = false, defaultValue = "false") Boolean deleted
     ) {
         Page<RequestDTO> requests = requestService.fetchAllRequests(
                 pageSize,
@@ -60,7 +61,8 @@ public class RequestController {
                 statusIds,
                 status,
                 requestedBy,
-                approver
+                approver,
+                deleted
         );
         return new ResponseEntity<>(requests, HttpStatus.OK);
     }
@@ -154,8 +156,6 @@ public class RequestController {
 
     @GetMapping("/requests/{requestID}")
     public ResponseEntity<?> findRequest(@PathVariable Long requestID) {
-        System.out.println("We are in here bitch");
-
         try {
             RequestDTO response = requestService.fetchSingleRequest(requestID);
             return new ResponseEntity<>(response, HttpStatusCode.valueOf(200));
