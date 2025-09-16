@@ -35,9 +35,9 @@ public class IssuanceController {
     }
 
     @GetMapping("/issuance/{requestId}")
-    public ResponseEntity<Issuance> findByRequestId(@PathVariable Long requestId)
+    public ResponseEntity<IssuanceDAO> findByRequestId(@PathVariable Long requestId)
             throws NotFoundException {
-        Issuance response = issuanceService.findByRequestId(requestId);
+        IssuanceDAO response = issuanceService.findByRequestId(requestId);
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
 }

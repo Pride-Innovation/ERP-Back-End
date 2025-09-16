@@ -283,8 +283,32 @@ public class IssuanceService {
         );
     }
 
-    public Issuance findByRequestId(Long requestId) throws NotFoundException {
-        return issuanceRepository.findByRequestId(requestId).orElse(null);
+    public IssuanceDAO findByRequestId(Long requestId) throws NotFoundException {
+        Issuance data = issuanceRepository.findByRequestId(requestId).orElse(null);
+        if (data == null) {
+            return null;
+        }
+
+        return IssuanceDAO.builder()
+                .id(data.getId())
+                .comment(data.getComment())
+                .requester(data.getRequester() != null ?
+                        userBuilder.builder(data.getRequester()) : null)
+                .status(data.getStatus() != null ?
+                        Status.builder()
+                                .id(data.getStatus().getId())
+                                .name(data.getStatus().getName())
+                                .description(data.getStatus().getDescription())
+                                .code(data.getStatus().getCode())
+                                .status(data.getStatus().getStatus())
+                                .build() : null)
+                .issuer(data.getIssuer() != null ?
+                        userBuilder.builder(data.getIssuer()) : null)
+                .createDate(data.getCreateDate())
+                .lastModified(data.getLastModified())
+                .createdBy(data.getCreatedBy())
+                .lastModifiedBy(data.getLastModifiedBy())
+                .build();
     }
 
 
