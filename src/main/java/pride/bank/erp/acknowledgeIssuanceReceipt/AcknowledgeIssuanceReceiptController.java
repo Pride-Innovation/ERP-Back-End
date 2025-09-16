@@ -6,7 +6,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
-import pride.bank.erp.request.Request;
 import pride.bank.erp.request.RequestDTO;
 
 @RestController
@@ -25,9 +24,9 @@ public class AcknowledgeIssuanceReceiptController {
     }
 
     @GetMapping("/acknowledge-issuance/{requestId}")
-    public ResponseEntity<AcknowledgeIssuanceReceipt> findAcknowledgeIssuanceReceiptByRequestId(
+    public ResponseEntity<AcknowledgeIssuanceReceiptDAO> findAcknowledgeIssuanceReceiptByRequestId(
             @PathVariable Long requestId
-    ) throws NotFoundException {
+    ) {
         return new ResponseEntity<>(
                 acknowledgeIssuanceReceiptService.findAcknowledgeIssuanceReceiptByRequestId(requestId),
                 HttpStatus.OK

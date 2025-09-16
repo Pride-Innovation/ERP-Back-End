@@ -17,10 +17,8 @@ import pride.bank.erp.request.Request;
 import pride.bank.erp.request.RequestDTO;
 import pride.bank.erp.request.RequestRepository;
 import pride.bank.erp.request.RequestService;
-import pride.bank.erp.requestReport.RequestReportService;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
-import pride.bank.erp.user.User;
 
 @Service
 @RequiredArgsConstructor
@@ -76,7 +74,21 @@ public class AcknowledgeIssuanceReceiptService {
                 .build();
     }
 
-    public AcknowledgeIssuanceReceipt findAcknowledgeIssuanceReceiptByRequestId(Long requestId) {
-        return acknowledgeIssuanceReceiptRepository.findByRequestId(requestId).orElse(null);
+    public AcknowledgeIssuanceReceiptDAO findAcknowledgeIssuanceReceiptByRequestId(Long requestId) {
+        AcknowledgeIssuanceReceipt data = acknowledgeIssuanceReceiptRepository.findByRequestId(requestId).orElse(null);
+
+        if (data == null) {
+            return null;
+        }
+        return AcknowledgeIssuanceReceiptDAO.builder()
+                .id(data.getId())
+                .comment(data.getComment())
+                .user(data.getUser() != null ?
+                        userBuilder.builder(data.getUser()) : null)
+                .createDate(data.getCreateDate())
+                .lastModified(data.getLastModified())
+                .createdBy(data.getCreatedBy())
+                .lastModifiedBy(data.getLastModifiedBy())
+                .build();
     }
 }
