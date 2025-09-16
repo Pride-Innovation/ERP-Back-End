@@ -25,7 +25,7 @@ public class AcknowledgeRequestReceiptController {
     }
 
     @GetMapping("/acknowledge-request/{requestId}")
-    public ResponseEntity<AcknowledgeRequestReceipt> findAcknowledgeRequestReceiptByRequestId(
+    public ResponseEntity<AcknowledgeRequestReceiptDAO> findAcknowledgeRequestReceiptByRequestId(
             @PathVariable Long requestId
     ) throws NotFoundException {
         return new ResponseEntity<>(

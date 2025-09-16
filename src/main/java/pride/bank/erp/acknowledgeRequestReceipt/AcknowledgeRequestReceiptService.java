@@ -91,8 +91,21 @@ public class AcknowledgeRequestReceiptService {
                 .build();
     }
 
-    public AcknowledgeRequestReceipt findAcknowledgeRequestReceiptByRequestId(Long requestId) {
-        return acknowledgeRequestReceiptRepository.findByRequestId(requestId).orElse(null);
+    public AcknowledgeRequestReceiptDAO findAcknowledgeRequestReceiptByRequestId(Long requestId) {
+        AcknowledgeRequestReceipt data = acknowledgeRequestReceiptRepository.findByRequestId(requestId).orElse(null);
+        if (data == null) {
+            return null;
+        }
+        return AcknowledgeRequestReceiptDAO.builder()
+                .id(data.getId())
+                .comment(data.getComment())
+                .request(data.getRequest() != null ? Request.builder().build() : null)
+                .user(userBuilder.builder(data.getUser()))
+                .createDate(data.getCreateDate())
+                .lastModified(data.getLastModified())
+                .createdBy(data.getCreatedBy())
+                .lastModifiedBy(data.getLastModifiedBy())
+                .build();
     }
 
 
