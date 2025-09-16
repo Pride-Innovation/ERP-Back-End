@@ -198,16 +198,17 @@ public class RequestReportService {
 
     @Transactional
     public RequestReportDAO findRequestReportByRequestId(Long requestId) {
-        // Try to fetch the RequestReport
         List<RequestReport> details = requestReportRepository.findRequestReportsByRequestId(requestId);
-        RequestReport data = details.get(0);
 
-        // Handle the case when data is null (e.g., not found)
-        if (data == null) {
+        if (details == null || details.isEmpty()) {
             return null;
         }
 
-        // Build the RequestReportDAO object, taking care to handle null values for nested objects
+        // If the request is approved after several rejections, the approved version will the last one
+        RequestReport data = details.size() == 1
+                ? details.get(0)
+                : details.get(details.size() - 1);
+
         return RequestReportDAO
                 .builder()
                 .id(data.getId())

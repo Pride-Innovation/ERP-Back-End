@@ -33,7 +33,6 @@ public class RequestReportController {
 
     @GetMapping("/request-report/{requestId}")
     public ResponseEntity<RequestReportDAO> findRequestReportByRequestId(@PathVariable Long requestId) {
-        System.out.println("Request ID::: " + requestId);
         return ResponseEntity.ok(requestReportService.findRequestReportByRequestId(requestId));
     }
 }
