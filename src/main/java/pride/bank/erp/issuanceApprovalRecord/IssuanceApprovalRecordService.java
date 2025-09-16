@@ -8,7 +8,6 @@ Managing Director
 package pride.bank.erp.issuanceApprovalRecord;
 
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pride.bank.erp.config.CurrentUserService;
@@ -17,6 +16,7 @@ import pride.bank.erp.helper.ExtractNumberFromEmailAddress;
 import pride.bank.erp.issuance.Issuance;
 import pride.bank.erp.issuance.IssuanceRepository;
 import pride.bank.erp.issuance.IssuanceService;
+import pride.bank.erp.issuance.UserBuilder;
 import pride.bank.erp.notification.Email;
 import pride.bank.erp.request.Request;
 import pride.bank.erp.request.RequestRepository;
@@ -35,6 +35,7 @@ public class IssuanceApprovalRecordService {
     private final RequestRepository requestRepository;
     private final CurrentUserService currentUserService;
     private final Email emailService;
+    private final UserBuilder userBuilder;
 
     /**
      * Creates an approval record for an issuance and updates the issuance status to "Approved".
@@ -77,8 +78,26 @@ public class IssuanceApprovalRecordService {
         return response;
     }
 
-    public IssuanceApprovalRecord findIssuanceApprovalRecordByRequestId(Long requestId) {
-        return issuanceApprovalRecordRepository.findByRequestId(requestId).orElse(null);
+    public IssuanceApprovalRecordDAO findIssuanceApprovalRecordByRequestId(Long requestId) {
+        IssuanceApprovalRecord data = issuanceApprovalRecordRepository
+                .findByRequestId(requestId).orElse(null);
+
+        if (data == null) {
+            return null;
+        }
+
+        return IssuanceApprovalRecordDAO.builder()
+                .id(data.getId())
+                .comment(data.getComment())
+                .issuance(data.getIssuance() != null ?
+                        Issuance.builder().build() : null)
+                .user(data.getUser() != null ?
+                        userBuilder.builder(data.getUser()) : null)
+                .createDate(data.getCreateDate())
+                .lastModified(data.getLastModified())
+                .createdBy(data.getCreatedBy())
+                .lastModifiedBy(data.getLastModifiedBy())
+                .build();
     }
 
 

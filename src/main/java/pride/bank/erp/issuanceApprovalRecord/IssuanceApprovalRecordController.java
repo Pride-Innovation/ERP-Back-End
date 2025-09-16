@@ -31,9 +31,9 @@ public class IssuanceApprovalRecordController {
     }
 
     @GetMapping("/approve-issuance/{requestId}")
-    public ResponseEntity<IssuanceApprovalRecord> findIssuanceApprovalRecordByRequestId(
+    public ResponseEntity<IssuanceApprovalRecordDAO> findIssuanceApprovalRecordByRequestId(
             @PathVariable Long requestId
-    ) throws NotFoundException {
+    ) {
         return new ResponseEntity<>(
                 issuanceApprovalRecordService.findIssuanceApprovalRecordByRequestId(requestId),
                 HttpStatus.OK

@@ -26,6 +26,8 @@ import pride.bank.erp.user.User;
 import pride.bank.erp.user.UserRepository;
 import pride.bank.erp.user.UserService;
 
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 public class RequestReportService {
@@ -197,7 +199,8 @@ public class RequestReportService {
     @Transactional
     public RequestReportDAO findRequestReportByRequestId(Long requestId) {
         // Try to fetch the RequestReport
-        RequestReport data = requestReportRepository.findByRequestId(requestId).orElse(null);
+        List<RequestReport> details = requestReportRepository.findRequestReportsByRequestId(requestId);
+        RequestReport data = details.get(0);
 
         // Handle the case when data is null (e.g., not found)
         if (data == null) {
