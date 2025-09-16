@@ -207,6 +207,7 @@ public class RequestReportService {
         // Build the RequestReportDAO object, taking care to handle null values for nested objects
         return RequestReportDAO
                 .builder()
+                .id(data.getId())
                 .status(data.getStatus() != null ?
                         Status.builder()
                                 .id(data.getStatus().getId())
