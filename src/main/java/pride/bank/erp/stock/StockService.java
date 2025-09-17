@@ -72,7 +72,8 @@ public class StockService {
             String sortDirection,
             int pageNumber,
             String sortBy,
-            String lpoNumber
+            String lpoNumber,
+            Long stockStatusId
     ) {
         try {
 
@@ -85,6 +86,7 @@ public class StockService {
 
             StockSearchCriteria criteria = StockSearchCriteria.builder()
                     .lpoNumber(lpoNumber)
+                    .stockStatusId(stockStatusId)
                     .build();
 
             Page<Stock> stocks = stockSearchDao.findAllWithFilters(stockPage, criteria);

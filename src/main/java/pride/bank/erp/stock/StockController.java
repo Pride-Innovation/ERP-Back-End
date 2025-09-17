@@ -32,7 +32,8 @@ public class StockController {
             @RequestParam(required = false, defaultValue = DESCENDING_SORT_DIRECTION) String sortDirection,
             @RequestParam(required = false, defaultValue = "0") int pageNumber,
             @RequestParam(required = false, defaultValue = "id") String sortBy,
-            @RequestParam(required = false) String lpoNumber
+            @RequestParam(required = false) String lpoNumber,
+            @RequestParam(required = false) Long stockStatusId
     ) {
         try {
             Page<StockDAO> response = stockService.fetchAllStocks(
@@ -40,7 +41,8 @@ public class StockController {
                     sortDirection,
                     pageNumber,
                     sortBy,
-                    lpoNumber
+                    lpoNumber,
+                    stockStatusId
             );
             return new ResponseEntity<>(response, HttpStatus.OK);
         } catch (Exception ex) {

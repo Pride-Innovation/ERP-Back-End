@@ -9,4 +9,5 @@ import lombok.*;
 @AllArgsConstructor
 public class StockSearchCriteria {
     private String lpoNumber;
+    private Long stockStatusId;
 }

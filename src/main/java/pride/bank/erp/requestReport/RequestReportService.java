@@ -236,6 +236,4 @@ public class RequestReportService {
                 .lastModifiedBy(data.getLastModifiedBy())
                 .build();
     }
-
-
 }

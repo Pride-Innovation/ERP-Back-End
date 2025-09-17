@@ -59,6 +59,12 @@ public class StockSearchDao {
             predicates.add(criteriaBuilder.like(root.get("lpoNumber"), "%" + criteria.getLpoNumber() + "%"));
         }
 
+        if (Objects.nonNull(criteria.getStockStatusId())) {
+            predicates.add(
+                    criteriaBuilder.equal(root.get("status").get("id"), criteria.getStockStatusId())
+            );
+        }
+
         return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
     }
 
