@@ -198,6 +198,9 @@ public class StockService {
                 status = statusService.findOneStatus(10L); // Pending
             }
 
+            /* By Default, set the stock to be deleted on Creation
+             * The Stock is not disposed by default
+             */
             Stock stock = Stock
                     .builder()
                     .referenceNumber(request.getReferenceNumber())
@@ -209,6 +212,7 @@ public class StockService {
                     .grnNumber(request.getGrnNumber())
                     .status(status)
                     .canNotBeDeleted(false)
+                    .disposed(false)
                     .supplier(supplier)
                     .build();
 
@@ -579,6 +583,7 @@ public class StockService {
                         .purchaseCost(String.valueOf(stockCommodity.getPurchasePrice()))
                         .costOfTheAsset(String.valueOf(stockCommodity.getCostPrice()))
                         .dateReceipt(stock.getCreateDate().toString())
+                        .disposed(false)
                         .assetStatus(statusService.findOneStatus(9L)) // Require Update After Stocking Status ID
                         .build();
 
