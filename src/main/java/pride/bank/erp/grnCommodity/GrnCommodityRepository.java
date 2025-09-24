@@ -14,5 +14,5 @@ public interface GrnCommodityRepository extends JpaRepository<GrnCommodity, Long
     @Query("SELECT gc FROM GrnCommodity gc JOIN FETCH gc.grnReport gr JOIN FETCH gr.stock WHERE gr.stock.id = :stockId")
     Page<GrnCommodity> findByStockId(@Param("stockId") Long stockId, Pageable pageable);
 
-    void deleteByGrnReportId(Long grnReportId);
+    List<GrnCommodity> findByGrnReportId(Long id);
 }

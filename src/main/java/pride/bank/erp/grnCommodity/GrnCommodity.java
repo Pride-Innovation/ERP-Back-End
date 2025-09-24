@@ -8,6 +8,8 @@ import lombok.NoArgsConstructor;
 import pride.bank.erp.commodity.Commodity;
 import pride.bank.erp.grnReport.GrnReport;
 
+import java.time.LocalDateTime;
+
 
 @Entity
 @Data
@@ -36,4 +38,6 @@ public class GrnCommodity {
     private int totalOrderedQuantity;
     private Integer totalCostPrice;
     private Integer totalPurchasePrice;
+    private Boolean disposed = false;
+    private LocalDateTime disposalDate;
 }

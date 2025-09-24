@@ -75,7 +75,8 @@ public class StockService {
             int pageNumber,
             String sortBy,
             String lpoNumber,
-            Long stockStatusId
+            Long stockStatusId,
+            Boolean disposed
     ) {
         try {
 
@@ -89,6 +90,7 @@ public class StockService {
             StockSearchCriteria criteria = StockSearchCriteria.builder()
                     .lpoNumber(lpoNumber)
                     .stockStatusId(stockStatusId)
+                    .disposed(disposed)
                     .build();
 
             Page<Stock> stocks = stockSearchDao.findAllWithFilters(stockPage, criteria);
@@ -206,6 +208,7 @@ public class StockService {
                     .lpoNumber(request.getLpoNumber())
                     .grnNumber(request.getGrnNumber())
                     .status(status)
+                    .canNotBeDeleted(false)
                     .supplier(supplier)
                     .build();
 
@@ -674,11 +677,12 @@ public class StockService {
                 commodityDetails + "<br/>";
     }
 
+    @Transactional
     public DeleteResponse deleteStock(Long stockID) throws NotFoundException {
         Stock stock = findOneStock(stockID); // throws NotFoundException if not found
 
-        // 🔒 Check if stock is locked from deletion
-        if (stock.isCanNotBeDeleted()) {
+        // 🔒 Prevent deletion if at least one asset from this stock has been updated
+        if (Boolean.TRUE.equals(stock.isCanNotBeDeleted())) {
             return DeleteResponse.builder()
                     .success(false)
                     .message(String.format(
@@ -688,33 +692,40 @@ public class StockService {
                     .build();
         }
 
-        // Step 1: Delete GrnCommodities linked to all GRN Reports
+        // Step 1: Soft delete GrnReports and their GrnCommodities
         List<GrnReport> grnReports = grnReportRepository.findByStockId(stockID);
         for (GrnReport grnReport : grnReports) {
-            grnCommodityRepository.deleteByGrnReportId(grnReport.getId());
+            // Soft delete each GrnCommodity linked to this GrnReport
+            List<GrnCommodity> commodities = grnCommodityRepository.findByGrnReportId(grnReport.getId());
+            for (GrnCommodity commodity : commodities) {
+                commodity.setDisposed(true);
+                commodity.setDisposalDate(LocalDateTime.now());
+                grnCommodityRepository.save(commodity);
+            }
+
+            // Soft delete the GRN report
+            grnReport.setDisposed(true);
+            grnReport.setDisposalDate(LocalDateTime.now());
+            grnReportRepository.save(grnReport);
         }
 
-        // Step 2: Delete GRN Reports themselves
-        grnReportRepository.deleteAll(grnReports);
-
-        // Step 3: Soft Delete Assets associated with this stock
+        // Step 2: Soft delete assets linked to the stock
         List<Asset> assets = assetRepository.findByStockId(stockID);
-
         for (Asset asset : assets) {
             asset.setDisposed(true);
             asset.setDisposalDate(LocalDateTime.now());
             assetRepository.save(asset);
         }
-//        assetRepository.deleteAll(assets);
 
-        // Step 4: Soft Delete Stock (StockCommodities will cascade delete)
+        // Step 3: Soft delete stock
         stock.setDisposed(true);
         stock.setDisposalDate(LocalDateTime.now());
         stockRepository.save(stock);
 
         return DeleteResponse.builder()
-                .message(String.format("Stock with ID %d and its associated data deleted successfully.", stockID))
+                .message(String.format("Stock with ID %d and its associated data have been marked as deleted.", stockID))
                 .success(true)
                 .build();
     }
+
 }

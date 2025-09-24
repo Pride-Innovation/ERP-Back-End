@@ -34,7 +34,8 @@ public class StockController {
             @RequestParam(required = false, defaultValue = "0") int pageNumber,
             @RequestParam(required = false, defaultValue = "id") String sortBy,
             @RequestParam(required = false) String lpoNumber,
-            @RequestParam(required = false) Long stockStatusId
+            @RequestParam(required = false) Long stockStatusId,
+            @RequestParam(required = false, defaultValue = "false") Boolean disposed
     ) {
         try {
             Page<StockDAO> response = stockService.fetchAllStocks(
@@ -43,7 +44,8 @@ public class StockController {
                     pageNumber,
                     sortBy,
                     lpoNumber,
-                    stockStatusId
+                    stockStatusId,
+                    disposed
             );
             return new ResponseEntity<>(response, HttpStatus.OK);
         } catch (Exception ex) {
@@ -114,6 +116,7 @@ public class StockController {
     public ResponseEntity<DeleteResponse> deleteDelivery(
             @PathVariable Long stockID
     ) throws NotFoundException {
+
         DeleteResponse response = stockService.deleteStock(stockID);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }

@@ -65,6 +65,10 @@ public class StockSearchDao {
             );
         }
 
+        if (Objects.nonNull(criteria.getDisposed())) {
+            predicates.add(criteriaBuilder.equal(root.get("disposed"), criteria.getDisposed()));
+        }
+
         return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
     }
 

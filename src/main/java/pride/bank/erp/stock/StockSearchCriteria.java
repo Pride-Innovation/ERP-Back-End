@@ -10,4 +10,5 @@ import lombok.*;
 public class StockSearchCriteria {
     private String lpoNumber;
     private Long stockStatusId;
+    private Boolean disposed;
 }
