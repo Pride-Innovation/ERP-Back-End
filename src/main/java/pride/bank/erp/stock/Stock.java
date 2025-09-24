@@ -47,6 +47,9 @@ public class Stock {
     private int balanceCost;
     private String lpoNumber;
     private String grnNumber;
+    private boolean canNotBeDeleted = false;
+    private Boolean disposed = false;
+    private LocalDateTime disposalDate;
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "status_id")

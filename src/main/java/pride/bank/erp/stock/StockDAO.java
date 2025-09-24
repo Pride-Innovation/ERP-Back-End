@@ -33,4 +33,5 @@ public class StockDAO {
     private Long lastModifiedBy;
     private List<CommodityWithDetailsDao> commodities;
     private List<GrnReport> grnReports;
+    private Boolean canNotBeDeleted;
 }

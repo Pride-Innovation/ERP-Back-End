@@ -53,4 +53,6 @@ public interface AssetRepository extends JpaRepository<Asset, Long> {
     List<Asset> findAllByAssignedToIdWithTypeAndStatus(@Param("userId") Long userId);
 
     Optional<Asset> findByTagName(@Param("tagName") String tagName);
+
+    List<Asset> findByStockId(Long stockId);
 }

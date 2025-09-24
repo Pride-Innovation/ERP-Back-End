@@ -29,6 +29,8 @@ public class GrnReport {
     private Long id;
     private String name;
     private String documentPath;
+    private Boolean disposed = false;
+    private LocalDateTime disposalDate;
 
     @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(name = "stock_id", nullable = false)

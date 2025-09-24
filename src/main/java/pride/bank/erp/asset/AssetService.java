@@ -218,6 +218,13 @@ public class AssetService {
         User oldAssignedTo = asset.getAssignedTo();
         Status oldStatus = asset.getAssetStatus();
 
+        // Set Stock to not be deleted if an asset in the stock is already updated.
+        Stock stock = findStockByLPONumber(request.getLpoNumber());
+        if (!stock.isCanNotBeDeleted()) {
+            stock.setCanNotBeDeleted(true);
+            stockRepository.save(stock);
+        }
+
         /*
          * Check if the assigned user of the asset has changed.
          * This involves comparing the existing assigned user ID with the new assigned user ID.

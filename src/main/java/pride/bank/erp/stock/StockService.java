@@ -27,6 +27,7 @@ import pride.bank.erp.grnCommodity.GrnCommodity;
 import pride.bank.erp.grnCommodity.GrnCommodityRepository;
 import pride.bank.erp.grnReport.GrnReport;
 import pride.bank.erp.grnReport.GrnReportRepository;
+import pride.bank.erp.helper.DeleteResponse;
 import pride.bank.erp.helper.ExtractNumberFromEmailAddress;
 import pride.bank.erp.notification.Email;
 import pride.bank.erp.status.Status;
@@ -38,6 +39,7 @@ import pride.bank.erp.store.StoreService;
 import pride.bank.erp.supplier.Supplier;
 import pride.bank.erp.supplier.SupplierService;
 
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -159,6 +161,7 @@ public class StockService {
                         .lastModifiedBy(stock.getLastModifiedBy())
                         .commodities(stock.getCommodities())
                         .grnReports(stock.getGrnReports())
+                        .canNotBeDeleted(stock.isCanNotBeDeleted())
                         .build()).toList();
     }
 
@@ -671,4 +674,47 @@ public class StockService {
                 commodityDetails + "<br/>";
     }
 
+    public DeleteResponse deleteStock(Long stockID) throws NotFoundException {
+        Stock stock = findOneStock(stockID); // throws NotFoundException if not found
+
+        // 🔒 Check if stock is locked from deletion
+        if (stock.isCanNotBeDeleted()) {
+            return DeleteResponse.builder()
+                    .success(false)
+                    .message(String.format(
+                            "Stock with ID %d cannot be deleted because at least one of its assets has been updated.",
+                            stockID
+                    ))
+                    .build();
+        }
+
+        // Step 1: Delete GrnCommodities linked to all GRN Reports
+        List<GrnReport> grnReports = grnReportRepository.findByStockId(stockID);
+        for (GrnReport grnReport : grnReports) {
+            grnCommodityRepository.deleteByGrnReportId(grnReport.getId());
+        }
+
+        // Step 2: Delete GRN Reports themselves
+        grnReportRepository.deleteAll(grnReports);
+
+        // Step 3: Soft Delete Assets associated with this stock
+        List<Asset> assets = assetRepository.findByStockId(stockID);
+
+        for (Asset asset : assets) {
+            asset.setDisposed(true);
+            asset.setDisposalDate(LocalDateTime.now());
+            assetRepository.save(asset);
+        }
+//        assetRepository.deleteAll(assets);
+
+        // Step 4: Soft Delete Stock (StockCommodities will cascade delete)
+        stock.setDisposed(true);
+        stock.setDisposalDate(LocalDateTime.now());
+        stockRepository.save(stock);
+
+        return DeleteResponse.builder()
+                .message(String.format("Stock with ID %d and its associated data deleted successfully.", stockID))
+                .success(true)
+                .build();
+    }
 }

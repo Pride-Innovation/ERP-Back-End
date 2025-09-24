@@ -15,6 +15,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
+import pride.bank.erp.helper.DeleteResponse;
 
 import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
 
@@ -106,6 +107,14 @@ public class StockController {
                 request.getAdditionalDeliveries(),
                 request.grnNumber
         );
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
+    }
+
+    @PostMapping("/delete-stock/{stockID}")
+    public ResponseEntity<DeleteResponse> deleteDelivery(
+            @PathVariable Long stockID
+    ) throws NotFoundException {
+        DeleteResponse response = stockService.deleteStock(stockID);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 }

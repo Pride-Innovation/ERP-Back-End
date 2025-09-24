@@ -7,6 +7,7 @@ Managing Director
 
 package pride.bank.erp.helper;
 
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -14,6 +15,7 @@ import org.springframework.stereotype.Component;
 @Data
 @Component
 @NoArgsConstructor
+@Builder
 public class DeleteResponse {
     private String message;
     private boolean success;
