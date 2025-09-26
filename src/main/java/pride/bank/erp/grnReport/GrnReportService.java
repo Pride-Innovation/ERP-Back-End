@@ -30,4 +30,10 @@ public class GrnReportService {
                 () -> new NotFoundException(String.format("GRN Report with ID %s not found", id))
         );
     }
+
+    public GrnReport downloadGRN(Long grnReportId) throws NotFoundException {
+        GrnReport report = findOneGRNReport(grnReportId);
+        report.setGrnDownloaded(true);
+        return grnReportRepository.save(report);
+    }
 }

@@ -31,6 +31,7 @@ public class GrnReport {
     private String documentPath;
     private Boolean disposed = false;
     private LocalDateTime disposalDate;
+    private Boolean grnDownloaded;
 
     @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(name = "stock_id", nullable = false)

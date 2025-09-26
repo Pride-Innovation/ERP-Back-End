@@ -27,4 +27,13 @@ public class GrnReportController {
                 HttpStatus.CREATED
         );
     }
+
+    @PutMapping("/download-grn/{grnReportId}")
+    public ResponseEntity<GrnReport> downloadGRN(
+            @PathVariable Long grnReportId
+    ) throws NotFoundException {
+        return new ResponseEntity<>(
+                grnReportService.downloadGRN(grnReportId), HttpStatus.CREATED
+        );
+    }
 }
