@@ -10,12 +10,15 @@ package pride.bank.erp.stock;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
 import pride.bank.erp.helper.DeleteResponse;
+
+import java.time.LocalDateTime;
 
 import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
 
@@ -35,7 +38,14 @@ public class StockController {
             @RequestParam(required = false, defaultValue = "id") String sortBy,
             @RequestParam(required = false) String lpoNumber,
             @RequestParam(required = false) Long stockStatusId,
-            @RequestParam(required = false, defaultValue = "false") Boolean disposed
+            @RequestParam(required = false, defaultValue = "false") Boolean disposed,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+            LocalDateTime startDate,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+            LocalDateTime endDate
     ) {
         try {
             Page<StockDAO> response = stockService.fetchAllStocks(
@@ -45,7 +55,9 @@ public class StockController {
                     sortBy,
                     lpoNumber,
                     stockStatusId,
-                    disposed
+                    disposed,
+                    startDate,
+                    endDate
             );
             return new ResponseEntity<>(response, HttpStatus.OK);
         } catch (Exception ex) {

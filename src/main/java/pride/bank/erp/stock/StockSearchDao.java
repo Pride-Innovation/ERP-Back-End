@@ -69,6 +69,14 @@ public class StockSearchDao {
             predicates.add(criteriaBuilder.equal(root.get("disposed"), criteria.getDisposed()));
         }
 
+        if (Objects.nonNull(criteria.getStartDate())) {
+            predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.get("createDate"), criteria.getStartDate()));
+        }
+
+        if (Objects.nonNull(criteria.getEndDate())) {
+            predicates.add(criteriaBuilder.lessThanOrEqualTo(root.get("createDate"), criteria.getEndDate()));
+        }
+
         return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
     }
 

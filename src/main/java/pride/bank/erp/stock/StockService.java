@@ -76,7 +76,9 @@ public class StockService {
             String sortBy,
             String lpoNumber,
             Long stockStatusId,
-            Boolean disposed
+            Boolean disposed,
+            LocalDateTime startDate,
+            LocalDateTime endDate
     ) {
         try {
 
@@ -91,6 +93,8 @@ public class StockService {
                     .lpoNumber(lpoNumber)
                     .stockStatusId(stockStatusId)
                     .disposed(disposed)
+                    .startDate(startDate)
+                    .endDate(endDate)
                     .build();
 
             Page<Stock> stocks = stockSearchDao.findAllWithFilters(stockPage, criteria);
