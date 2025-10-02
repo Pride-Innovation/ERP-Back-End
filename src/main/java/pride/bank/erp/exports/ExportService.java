@@ -113,9 +113,19 @@ public class ExportService {
                 .build();
     }
 
-    public List<AssetDAO> fetchAllAssets(Long assetTypeId) {
-        List<Asset> response = assetRepository.findByAssetTypeId(assetTypeId);
-        return mapToDTOList(response);
+    public List<AssetDAO> fetchAllAssets(
+            Long assetTypeId,
+            LocalDateTime startDate,
+            LocalDateTime endDate
+    ) {
+        List<Asset> assets;
+        if (startDate != null && endDate != null) {
+            assets = assetRepository.
+                    findByAssetTypeIdAndCreateDateBetween(assetTypeId, startDate, endDate);
+        } else {
+            assets = assetRepository.findByAssetTypeId(assetTypeId);
+        }
+        return mapToDTOList(assets);
     }
 
     private List<AssetDAO> mapToDTOList(List<Asset> assets) {

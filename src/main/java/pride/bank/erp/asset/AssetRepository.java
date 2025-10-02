@@ -12,6 +12,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -57,4 +58,9 @@ public interface AssetRepository extends JpaRepository<Asset, Long> {
     List<Asset> findByStockId(Long stockId);
 
     List<Asset> findByAssetTypeId(@Param("assetTypeId") Long assetTypeId);
+
+    List<Asset> findByAssetTypeIdAndCreateDateBetween(
+            @Param("assetTypeId") Long assetTypeId,
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate);
 }

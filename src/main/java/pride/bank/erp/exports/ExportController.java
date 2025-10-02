@@ -39,8 +39,19 @@ public class ExportController {
 
     @GetMapping("/export/assets")
     public ResponseEntity<List<AssetDAO>> fetchAllAssets(
-            @RequestParam Long assetTypeId
+            @RequestParam Long assetTypeId,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+            LocalDateTime startDate,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+            LocalDateTime endDate
     ) {
-        return ResponseEntity.ok(exportService.fetchAllAssets(assetTypeId));
+        return ResponseEntity.ok(exportService.fetchAllAssets(
+                assetTypeId,
+                startDate,
+                endDate
+        ));
     }
 }
