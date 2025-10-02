@@ -8,6 +8,10 @@ package pride.bank.erp.exports;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import pride.bank.erp.asset.Asset;
+import pride.bank.erp.asset.AssetDAO;
+import pride.bank.erp.asset.AssetRepository;
+import pride.bank.erp.asset.AssetService;
 import pride.bank.erp.branch.Branch;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.stock.CommodityWithDetailsDao;
@@ -28,6 +32,8 @@ import java.util.stream.Collectors;
 public class ExportService {
     private final StockRepository stockRepository;
     private final StockCommodityRepository stockCommodityRepository;
+    private final AssetRepository assetRepository;
+    private final AssetService assetService;
 
     public List<StockDAO> fetchAllStocks(
             LocalDateTime startDate,
@@ -105,6 +111,15 @@ public class ExportService {
                 .grnReports(stock.getGrnReports())
                 .canNotBeDeleted(stock.isCanNotBeDeleted())
                 .build();
+    }
+
+    public List<AssetDAO> fetchAllAssets(Long assetTypeId) {
+        List<Asset> response = assetRepository.findByAssetTypeId(assetTypeId);
+        return mapToDTOList(response);
+    }
+
+    private List<AssetDAO> mapToDTOList(List<Asset> assets) {
+        return assets.stream().map(assetService::buildAssetDao).toList();
     }
 
 }

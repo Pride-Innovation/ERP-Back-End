@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import pride.bank.erp.asset.AssetDAO;
 import pride.bank.erp.helper.Constants;
 import pride.bank.erp.stock.StockDAO;
 
@@ -34,5 +35,12 @@ public class ExportController {
                 startDate,
                 endDate
         ));
+    }
+
+    @GetMapping("/export/assets")
+    public ResponseEntity<List<AssetDAO>> fetchAllAssets(
+            @RequestParam Long assetTypeId
+    ) {
+        return ResponseEntity.ok(exportService.fetchAllAssets(assetTypeId));
     }
 }
