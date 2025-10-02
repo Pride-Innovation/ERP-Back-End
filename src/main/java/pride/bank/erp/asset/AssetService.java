@@ -79,7 +79,9 @@ public class AssetService {
             Boolean disposed,
             String model,
             String assignedTo,
-            String location
+            String location,
+            LocalDateTime startDate,
+            LocalDateTime endDate
     ) {
 
         try {
@@ -99,6 +101,8 @@ public class AssetService {
                     .commodityId(commodityId)
                     .disposed(disposed)
                     .model(model)
+                    .startDate(startDate)
+                    .endDate(endDate)
                     .assignedTo(assignedTo)
                     .location(location)
                     .build();

@@ -115,6 +115,14 @@ public class AssetSearchDao {
             predicates.add(criteriaBuilder.like(assetRoot.get("model"), "%" + assetSearchCriteria.getModel() + "%"));
         }
 
+        if (Objects.nonNull(assetSearchCriteria.getStartDate())) {
+            predicates.add(criteriaBuilder.greaterThanOrEqualTo(assetRoot.get("createDate"), assetSearchCriteria.getStartDate()));
+        }
+
+        if (Objects.nonNull(assetSearchCriteria.getEndDate())) {
+            predicates.add(criteriaBuilder.lessThanOrEqualTo(assetRoot.get("createDate"), assetSearchCriteria.getEndDate()));
+        }
+
         if (Objects.nonNull(assetSearchCriteria.getAssignedTo())) {
             String searchName = "%" + assetSearchCriteria.getAssignedTo().toLowerCase() + "%";
 

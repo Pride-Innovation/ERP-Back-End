@@ -9,6 +9,8 @@ package pride.bank.erp.asset;
 
 import lombok.*;
 
+import java.time.LocalDateTime;
+
 @Setter
 @Getter
 @Builder
@@ -25,4 +27,6 @@ public class AssetSearchCriteria {
     private String model;
     private String assignedTo;
     private String location;
+    private LocalDateTime startDate;
+    private LocalDateTime endDate;
 }

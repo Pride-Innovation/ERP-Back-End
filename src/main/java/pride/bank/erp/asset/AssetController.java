@@ -11,6 +11,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -20,6 +21,7 @@ import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
 
 import java.io.IOException;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -46,7 +48,14 @@ public class AssetController {
             @RequestParam(required = false, defaultValue = "false") Boolean disposed,
             @RequestParam(required = false) String model,
             @RequestParam(required = false) String assignedTo, // Name of the assigned to user, can first name, last name or other name
-            @RequestParam(required = false) String location
+            @RequestParam(required = false) String location,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+            LocalDateTime startDate,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+            LocalDateTime endDate
     ) {
         Page<AssetDAO> response = assetService.fetchAllAssets(
                 pageSize,
@@ -62,7 +71,9 @@ public class AssetController {
                 disposed,
                 model,
                 assignedTo,
-                location
+                location,
+                startDate,
+                endDate
         );
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
