@@ -24,7 +24,9 @@ import pride.bank.erp.commodity.Commodity;
 import pride.bank.erp.commodity.CommodityService;
 import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.exception.NotFoundException;
+import pride.bank.erp.helper.ExtractNumberFromEmailAddress;
 import pride.bank.erp.helper.FileUpload;
+import pride.bank.erp.notification.Email;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
 import pride.bank.erp.stock.Stock;
@@ -64,6 +66,7 @@ public class AssetService {
     private final AssetAssignmentHistoryRepository assetAssignmentHistoryRepository;
     private final CurrentUserService currentUserService;
     private final FileUpload fileUpload;
+    private final Email email;
 
     public Page<AssetDAO> fetchAllAssets(
             int pageSize,
@@ -474,14 +477,22 @@ public class AssetService {
     public AssetDAO reassignAsset(Long assetID, ReassignAsset reassignAsset)
             throws NotFoundException {
         Asset asset = findOne(assetID);
-        Long previousUserId = asset.getAssignedTo().getId();
+
+        Long previousUserId = null;
+        if (asset.getAssignedTo() != null) {
+            previousUserId = asset.getAssignedTo().getId();
+        }
+
         User user = userService.findUser(reassignAsset.assignedTo());
         asset.setAssignedTo(user);
         asset.setBranch(user.getBranch());
 
         AssetDAO data = buildAssetDao(assetRepository.save(asset));
         updateAssetAssignmentHistory(asset, user);
-        addEndDateForPreviousAssignedTo(assetID, previousUserId);
+        if (previousUserId != null) {
+            addEndDateForPreviousAssignedTo(assetID, previousUserId);
+        }
+        notifyUserAfterAssignment(user, asset);
         return data;
     }
 
@@ -584,6 +595,24 @@ public class AssetService {
 
         record.setEndDate(LocalDateTime.now());
         assetAssignmentHistoryRepository.save(record);
+    }
+
+    private void notifyUserAfterAssignment(User user, Asset asset) {
+        ExtractNumberFromEmailAddress cleanedEmail = new ExtractNumberFromEmailAddress(user.getEmail());
+        email.sendEmailVerification(
+                cleanedEmail.getCleanedEmail(),
+                "Account Verification",
+                user.getFirstName(),
+                "Notification",
+                "Asset Notification",
+                asset.getAssetName(),
+                "notification",
+                null,
+                null,
+                null,
+                null,
+                null
+        );
     }
 
 }

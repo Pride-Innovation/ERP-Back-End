@@ -88,6 +88,8 @@ public class Email {
                 htmlContent = getStockEmailContent(stock, headerText, buttonText, password);
             } else if ("leave".equalsIgnoreCase(type)) {
                 htmlContent = getLeaveEmailContent(token, headerText, buttonText, password, startDate, endDate, reason);
+            } else if ("notification".equalsIgnoreCase(type)) {
+                htmlContent = getNotificationContent(token, password);
             } else {
                 logger.error("Invalid email type: {}", type);
                 return false;
@@ -344,6 +346,46 @@ public class Email {
                 stock.getBranch().getName(),
                 viewStockLink,
                 buttonText
+        );
+    }
+
+    private String getNotificationContent(
+            String username,
+            String assetName
+    ) {
+        return String.format(
+                """
+                         <html>
+                           <body>
+                             <div style="font-family: 'Segoe UI', sans-serif; background-color: #f4f8fb; padding: 30px;">
+                               <div style="max-width: 700px; margin: auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.08);">
+                                 <div style="padding: 30px;">
+                                   <div style="text-align:center;">
+                                     <img src="cid:logoImage" alt="Pride Bank Logo" style="max-width: 220px; height: auto;" />
+                                   </div>
+                                   <h3 style="color: #05544B; margin-top: 30px;">You’ve been assigned a new Asset</h3>
+                                   <p style="font-size: 16px; color: #333;">Dear <strong>%s</strong>,</p>
+                                   <p style="font-size: 15px; line-height: 1.6;">
+                                     This is to inform you that asset <strong>%s</strong> has officially been assigned to you
+                                   </p>
+                                   <p>Thank you for your continued support and commitment.</p>
+                                   <p style="margin-top: 30px;">Regards,<br/>Admin Department<br/>Pride Bank</p>
+                                   <p style="font-size: 12px; color: #777; margin-top: 30px;">
+                                     DO NOT REPLY TO THIS EMAIL. THIS IS AN AUTOMATED NOTIFICATION FROM THE PRIDE BANK HR SYSTEM.
+                                   </p>
+                                 </div>
+                                 <div style="background-color: #f1f1f1; text-align: center; padding: 15px; font-size: 12px; color: #999;">
+                                   Pride Bank, Plot 6-9, Victoria Office Park; Bukoto, Kampala, Uganda<br />
+                                   Call or WhatsApp: +256 754 346930<br />
+                                   &copy; 2025 Pride Bank. All rights reserved.
+                                 </div>
+                               </div>
+                             </div>
+                           </body>
+                         </html>
+                        \s""",
+                username,
+                assetName
         );
     }
 
