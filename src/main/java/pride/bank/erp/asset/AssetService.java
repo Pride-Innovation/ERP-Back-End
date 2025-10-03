@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import pride.bank.erp.assetAssignmentHostory.AssetAssignmentHistory;
+import pride.bank.erp.assetAssignmentHostory.AssetAssignmentHistoryDTO;
 import pride.bank.erp.assetAssignmentHostory.AssetAssignmentHistoryRepository;
 import pride.bank.erp.assetType.AssetType;
 import pride.bank.erp.assetType.AssetTypeService;
@@ -64,6 +65,7 @@ public class AssetService {
     private final AssetAssignmentHistoryRepository assetAssignmentHistoryRepository;
     private final CurrentUserService currentUserService;
     private final FileUpload fileUpload;
+//    private final AssetAssignmentHistoryService assetAssignmentHistoryService;
 
     public Page<AssetDAO> fetchAllAssets(
             int pageSize,
@@ -476,7 +478,10 @@ public class AssetService {
         User user = userService.findUser(reassignAsset.assignedTo());
         asset.setAssignedTo(user);
         asset.setBranch(user.getBranch());
-        return buildAssetDao(assetRepository.save(asset));
+
+        AssetDAO data = buildAssetDao(assetRepository.save(asset));
+        updateAssetAssignmentHistory(asset, user);
+        return data;
     }
 
     public AssetDAO uploadAssetImage(MultipartFile file, Long assetID)
@@ -551,4 +556,22 @@ public class AssetService {
         }
         return data;
     }
+
+    private void updateAssetAssignmentHistory(
+            Asset asset,
+            User user
+    ) {
+        AssetAssignmentHistory assetAssignmentHistory = AssetAssignmentHistory
+                .builder()
+                .asset(asset)
+                .endDate(null)
+                .startDate(LocalDateTime.now())
+                .statusBefore(asset.getAssetStatus())
+                .statusAfter(null)
+                .user(user)
+                .build();
+
+        assetAssignmentHistoryRepository.save(assetAssignmentHistory);
+    }
+
 }
