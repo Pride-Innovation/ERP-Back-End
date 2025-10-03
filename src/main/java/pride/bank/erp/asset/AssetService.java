@@ -15,7 +15,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import pride.bank.erp.assetAssignmentHostory.AssetAssignmentHistory;
-import pride.bank.erp.assetAssignmentHostory.AssetAssignmentHistoryDTO;
 import pride.bank.erp.assetAssignmentHostory.AssetAssignmentHistoryRepository;
 import pride.bank.erp.assetType.AssetType;
 import pride.bank.erp.assetType.AssetTypeService;
@@ -65,7 +64,6 @@ public class AssetService {
     private final AssetAssignmentHistoryRepository assetAssignmentHistoryRepository;
     private final CurrentUserService currentUserService;
     private final FileUpload fileUpload;
-//    private final AssetAssignmentHistoryService assetAssignmentHistoryService;
 
     public Page<AssetDAO> fetchAllAssets(
             int pageSize,
@@ -475,12 +473,14 @@ public class AssetService {
     public AssetDAO reassignAsset(Long assetID, ReassignAsset reassignAsset)
             throws NotFoundException {
         Asset asset = findOne(assetID);
+        Long previousUserId = asset.getAssignedTo().getId();
         User user = userService.findUser(reassignAsset.assignedTo());
         asset.setAssignedTo(user);
         asset.setBranch(user.getBranch());
 
         AssetDAO data = buildAssetDao(assetRepository.save(asset));
         updateAssetAssignmentHistory(asset, user);
+        addEndDateForPreviousAssignedTo(assetID, previousUserId);
         return data;
     }
 
@@ -572,6 +572,17 @@ public class AssetService {
                 .build();
 
         assetAssignmentHistoryRepository.save(assetAssignmentHistory);
+    }
+
+    @Transactional
+    private void addEndDateForPreviousAssignedTo(Long assetId, Long userId) {
+        AssetAssignmentHistory record = assetAssignmentHistoryRepository
+                .findByUserIdAndAssetId(userId, assetId).orElse(null);
+
+        assert record != null;
+
+        record.setEndDate(LocalDateTime.now());
+        assetAssignmentHistoryRepository.save(record);
     }
 
 }

@@ -7,7 +7,6 @@ Managing Director
 
 package pride.bank.erp.assetAssignmentHostory;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
