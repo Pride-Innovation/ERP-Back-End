@@ -58,4 +58,5 @@ public class AssetDAO {
     private LocalDateTime lastModified;
     private Long createdBy;
     private Long lastModifiedBy;
+    private String lastRepairedBy;
 }

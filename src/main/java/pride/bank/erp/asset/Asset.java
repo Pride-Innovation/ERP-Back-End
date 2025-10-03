@@ -63,6 +63,7 @@ public class Asset {
     private String image;
     private Boolean disposed = false;
     private LocalDateTime disposalDate;
+    private String lastRepairedBy;
 
     @Column(unique = true)
     private String tagName;

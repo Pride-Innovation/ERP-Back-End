@@ -347,6 +347,7 @@ public class AssetService {
                 .assetDepreciationRate(asset.getAssetDepreciationRate())
                 .description(asset.getDescription())
                 .image(asset.getImage())
+                .lastRepairedBy(asset.getLastRepairedBy())
 
                 // Map nested references as simple DTOs or just their IDs and names to avoid recursion
                 .supplier(asset.getSupplier() != null ?

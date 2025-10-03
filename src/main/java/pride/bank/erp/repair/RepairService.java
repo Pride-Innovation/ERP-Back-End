@@ -50,6 +50,7 @@ public class RepairService {
         final long REPAIR_STATUS_ID = 13L;
         Status repairStatus = statusService.findOneStatus(REPAIR_STATUS_ID);
         asset.setAssetStatus(repairStatus);
+        asset.setLastRepairedBy(technician);
         assetRepository.save(asset);
 
         List<String> documentPaths = new ArrayList<>();
