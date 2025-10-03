@@ -599,13 +599,14 @@ public class AssetService {
 
     private void notifyUserAfterAssignment(User user, Asset asset) {
         ExtractNumberFromEmailAddress cleanedEmail = new ExtractNumberFromEmailAddress(user.getEmail());
+        String assetName = asset.getAssetName() + " " + "(" + asset.getEngravedNumber() + ")";
         email.sendEmailVerification(
                 cleanedEmail.getCleanedEmail(),
                 "Account Verification",
                 user.getFirstName(),
                 "Notification",
                 "Asset Notification",
-                asset.getAssetName(),
+                assetName,
                 "notification",
                 null,
                 null,
