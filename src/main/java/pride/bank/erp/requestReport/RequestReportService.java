@@ -168,7 +168,7 @@ public class RequestReportService {
 
         boolean emailStatus = emailService.sendEmailVerification(
                 cleanedEmail.getCleanedEmail(),
-                String.format("Stores Request ID: %s", request.getId()),
+                String.format("Action Required – Approved Request Pending Processing (Request ID# %s )", request.getId()),
                 null,
                 requesterName,
                 "View Request",
