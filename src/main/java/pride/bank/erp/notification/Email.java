@@ -219,8 +219,8 @@ public class Email {
         // FIXED: Total row with proper white text on colored background
         String totalRow = String.format(
                 "<tr style='background: linear-gradient(135deg, %s 0%%, %s 100%%);'>" +
-                        "<td style='padding: 18px 24px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; color: #ffffff; border: none;' colspan='3'>Total Quantity</td>" +
-                        "<td style='padding: 18px 24px; font-weight: 700; font-size: 20px; color: #ffffff; border: none;'>%d</td>" +
+                        "<td style='padding: 18px 24px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; color: #01607A; border: none;' colspan='3'>Total Quantity</td>" +
+                        "<td style='padding: 18px 24px; font-weight: 700; font-size: 20px; color: #01607A; border: none;'>%d</td>" +
                         "</tr>",
                 TEAL_PRIMARY, TEAL_SECONDARY, totalQuantity
         );
@@ -243,7 +243,7 @@ public class Email {
                         // Header Section - FIXED title visibility
                         "<div style='background: linear-gradient(135deg, %s 0%%, %s 100%%); padding: 50px 40px; text-align: center;'>" +
                         "<img src='cid:logoImage' alt='Pride Bank Logo' style='max-width: 300px; height: auto; filter: brightness(0) invert(1); margin-bottom: 25px;' />" +
-                        "<h1 style='color: #f8f9fa; margin: 0; font-size: 32px; font-weight: 400; letter-spacing: 1px; text-shadow: 0 2px 4px rgba(0,0,0,0.4);'>Store Request Notification</h1>" +
+                        "<h1 style='color: #01607A; margin: 0; font-size: 32px; font-weight: 400; letter-spacing: 1px; text-shadow: 0 2px 4px rgba(0,0,0,0.4);'>Store Request Notification</h1>" +
                         "<div style='width: 80px; height: 4px; background: %s; margin: 20px auto; border-radius: 2px;'></div>" +
                         "</div>" +
 
@@ -273,7 +273,7 @@ public class Email {
                         // Call to Action - FIXED button text visibility
                         "<div style='text-align: center; margin: 50px 0; background-color: #ffffff;'>" +
                         "<p style='color: #4a5568; font-size: 16px; margin-bottom: 30px; font-weight: 500;'>To review and take action on this request, click the button below:</p>" +
-                        "<a href='%s' style='display: inline-block; padding: 20px 45px; color: #ffffff; background: linear-gradient(135deg, %s 0%%, %s 100%%); text-decoration: none; border-radius: 50px; font-weight: 700; font-size: 16px; letter-spacing: 0.5px; text-transform: uppercase; box-shadow: 0 12px 35px rgba(5,84,75,0.4); transition: all 0.3s ease;'>%s</a>" +
+                        "<a href='%s' style='display: inline-block; padding: 20px 45px; color: #01607A; background: linear-gradient(135deg, %s 0%%, %s 100%%); text-decoration: none; border-radius: 50px; font-weight: 700; font-size: 16px; letter-spacing: 0.5px; text-transform: uppercase; box-shadow: 0 12px 35px rgba(5,84,75,0.4); transition: all 0.3s ease;'>%s</a>" +
                         "</div>" +
 
                         // Disclaimer
