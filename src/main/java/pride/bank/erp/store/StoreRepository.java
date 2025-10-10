@@ -56,4 +56,6 @@ public interface StoreRepository extends JpaRepository<Store, Long> {
             """)
     List<CommoditySummary> getStationeryCommoditiesByCurrentMonthByBranch(@Param("branchId") Long branchId);
 
+    Optional<Store> findByBranchIdAndCommodityId(Long branchId, Long commodityId);
+
 }

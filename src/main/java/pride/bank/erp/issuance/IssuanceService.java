@@ -8,7 +8,7 @@ Managing Director
 package pride.bank.erp.issuance;
 
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,6 +31,8 @@ import pride.bank.erp.request.RequestService;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
 import pride.bank.erp.stock.CommodityWithDetailsDao;
+import pride.bank.erp.store.Store;
+import pride.bank.erp.store.StoreRepository;
 import pride.bank.erp.store.StoreService;
 import pride.bank.erp.user.User;
 import pride.bank.erp.user.UserRepository;
@@ -39,10 +41,18 @@ import pride.bank.erp.user.UserService;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.logging.Logger;
+
+import static java.lang.String.format;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class IssuanceService {
+    private static final Logger logger = Logger.getLogger(IssuanceService.class.getName());
+    private static final Long HEAD_OFFICE_ID = 1L;
+
     private final UserService userService;
     private final IssuanceRepository issuanceRepository;
     private final StatusService statusService;
@@ -58,67 +68,253 @@ public class IssuanceService {
     private final Email emailService;
     private final UserRepository userRepository;
     private final UserBuilder userBuilder;
+    private final StoreRepository storeRepository;
 
     @Transactional
-    public IssuanceDAO issueCommodities(IssuanceDTO request)
-            throws NotFoundException {
+    public IssuanceDAO issueCommodities(IssuanceDTO request) throws NotFoundException {
         User requester = userService.findUser(request.getRequester());
         Status status = statusService.findOneStatus(5L);
         Request requestDetails = requestService.findRequest(request.getRequestId());
+        User currentUser = currentUserService.getCurrentUser();
+        Long issuerBranchId = currentUser.getBranch().getId();
+        Long requesterBranchId = requester.getBranch().getId();
 
+        logger.info("Processing issuance request from branch " + issuerBranchId +
+                " for user in branch " + requesterBranchId);
 
-        updateAssetAssignedToStatusAndStatus(request.getAssets(), requester);
+        // Handle asset assignments if present
+        if (request.getAssets() != null && !request.getAssets().isEmpty()) {
+            updateAssetAssignedToStatusAndStatus(request.getAssets(), requester);
+        }
 
-        /*
-            TO DO
-            Send Email to Requester to acknowledge Asset Reception!!
-            Change th status of the request to issue!
-            NB: Probably add a tab for issued Request in the Tab.
-         */
+        // Process commodities if present
+        if (request.getCommodities() != null && !request.getCommodities().isEmpty()) {
 
-        Issuance issuance = Issuance
-                .builder()
+            // Check if the request contains mixed item types and validate according to business rules
+            validateRequestItemTypes(request.getCommodities(), requesterBranchId);
+
+            // CASE 1: Branch issuing to regular users (only stationery allowed)
+            if (!Objects.equals(issuerBranchId, HEAD_OFFICE_ID)) {
+                logger.info("Branch issuing items to user - branch ID: " + issuerBranchId);
+
+                // Ensure that all items being issued are stationery
+                ensureThatAllItemsAreStationery(request.getCommodities());
+
+                // Validate that items are in branch store
+                validateCommoditiesInStore(request.getCommodities(), issuerBranchId);
+
+                // Reduce items from branch store
+                reduceCommoditiesFromStore(request.getCommodities(), issuerBranchId);
+            }
+            // CASE 2: Head Office issuing items
+            else {
+                logger.info("Head office issuing items - requester is BOM: " +
+                        isBranchOperationManager(requester));
+
+                // If head office is issuing to a BOM, add to branch stock
+                if (isBranchOperationManager(requester) && !Objects.equals(requesterBranchId, HEAD_OFFICE_ID)) {
+                    logger.info("Processing BOM request for branch: " + requesterBranchId);
+
+                    // First validate items are available at head office
+                    validateCommoditiesInStore(request.getCommodities(), HEAD_OFFICE_ID);
+
+                    // Convert DTOs to the format needed by store service
+                    List<CommodityWithDetailsDao> commoditiesWithDetails =
+                            commodityWithDetailsDao(request.getCommodities());
+
+                    // Add to requester's branch (for BOM)
+                    storeService.addCommoditiesToStore(commoditiesWithDetails, requesterBranchId);
+
+                    // Reduce from head office
+                    storeService.reduceCommoditiesFromStore(commoditiesWithDetails, HEAD_OFFICE_ID);
+                }
+                // Head office issuing directly to users (any type of item)
+                else {
+                    logger.info("Head office issuing directly to user");
+
+                    // Validate items are available at head office
+                    validateCommoditiesInStore(request.getCommodities(), HEAD_OFFICE_ID);
+
+                    // Reduce from head office
+                    List<CommodityWithDetailsDao> commoditiesWithDetails =
+                            commodityWithDetailsDao(request.getCommodities());
+                    storeService.reduceCommoditiesFromStore(commoditiesWithDetails, HEAD_OFFICE_ID);
+                }
+            }
+        }
+
+        // Create and save the issuance record
+        Issuance issuance = Issuance.builder()
                 .status(status)
                 .requester(requester)
                 .comment(request.getComment())
                 .request(requestDetails)
-                .issuer(currentUserService.getCurrentUser())
+                .issuer(currentUser)
                 .build();
+
         Issuance savedIssuance = issuanceRepository.save(issuance);
-        addIssuedCommodities(savedIssuance, request.getCommodities());
-        updateBranchStockLevel(request.getCommodities());
+        logger.info("Created issuance record with ID: " + savedIssuance.getId());
+
+        // Add issued commodities record if commodities exist
+        if (request.getCommodities() != null && !request.getCommodities().isEmpty()) {
+            addIssuedCommodities(savedIssuance, request.getCommodities());
+        }
+
+        // Update request status
         updateRequestStatus(request);
 
-        /*
-         * Update Asset Assignment History
-         * Add Active to working or damaged.
-         */
-
+        // Send notification
         notifyIndividual(
                 request.getComment() != null ? request.getComment() : "Please approve this issued request",
                 requestDetails
         );
 
-        return IssuanceDAO
-                .builder()
-                .id(issuance.getId())
-                .comment(issuance.getComment())
-                .requester(issuance.getRequester() != null ?
-                        userBuilder.builder(issuance.getRequester()) : null)
-                .status(issuance.getStatus() != null ?
-                        Status.builder()
-                                .id(issuance.getStatus().getId())
-                                .code(issuance.getStatus().getCode())
-                                .name(issuance.getStatus().getName())
-                                .description(issuance.getStatus().getDescription())
-                                .status(issuance.getStatus().getStatus())
-                                .build() : null)
-                .request(issuance.getRequest() != null ?
-                        Request.builder().build() : null)
-                .build();
+        return buildIssuanceResponse(savedIssuance);
     }
 
 
+    /**
+     * Validates that the request follows the business rules regarding item types:
+     * - Head office users can request any combination of items
+     * - Branch users cannot mix stationery and non-stationery items in a single request
+     */
+    private void validateRequestItemTypes(List<IssuanceCommodityDTO> commodities, Long requesterBranchId)
+            throws NotFoundException {
+
+        // If requester is from head office, no restrictions on mixed items
+        if (Objects.equals(requesterBranchId, HEAD_OFFICE_ID)) {
+            return;
+        }
+
+        boolean hasStationery = false;
+        boolean hasNonStationery = false;
+
+        for (IssuanceCommodityDTO dto : commodities) {
+            Commodity commodity = commodityService.findCommodity(dto.getCommodityId());
+
+            if (isStationery(commodity)) {
+                hasStationery = true;
+            } else {
+                hasNonStationery = true;
+            }
+
+            // If we found both types in a branch user's request, throw an exception
+            if (hasStationery && hasNonStationery) {
+                throw new IllegalArgumentException(
+                        "Branch users cannot request stationery and non-stationery items in the same request. " +
+                                "Please create separate requests for different item types."
+                );
+            }
+        }
+    }
+
+    /**
+     * Checks if a commodity is of type Stationery
+     *
+     * @param commodity The commodity to check
+     * @return true if the commodity is stationery, false otherwise
+     */
+    private boolean isStationery(Commodity commodity) {
+        return commodity != null &&
+                commodity.getAssetType() != null &&
+                "Stationery".equalsIgnoreCase(commodity.getAssetType().getName());
+    }
+
+    /**
+     * Check if a user is a Branch Operation Manager
+     *
+     * @param user The user to check
+     * @return true if the user is a BOM, false otherwise
+     */
+    private boolean isBranchOperationManager(User user) {
+        return user != null &&
+                user.getTitle() != null &&
+                user.getTitle().getName() != null &&
+                user.getTitle().getName().contains("Branch Operation Manager");
+    }
+
+    /**
+     * Ensures that all commodities in the list are stationery items
+     *
+     * @param commodities The list of commodities to check
+     * @throws NotFoundException        If a commodity is not found
+     * @throws IllegalArgumentException If any commodity is not stationery
+     */
+    private void ensureThatAllItemsAreStationery(List<IssuanceCommodityDTO> commodities)
+            throws NotFoundException {
+
+        for (IssuanceCommodityDTO dto : commodities) {
+            Commodity commodity = commodityService.findCommodity(dto.getCommodityId());
+            if (!isStationery(commodity)) {
+                throw new IllegalArgumentException(String.format(
+                        "Commodity '%s' is not Stationery. Only Stationery items can be issued from branch stores.",
+                        commodity.getName()));
+            }
+        }
+        logger.info("All items verified as stationery");
+    }
+
+    /**
+     * Validates that all commodities are available in the specified branch store
+     *
+     * @param commodities The commodities to validate
+     * @param branchId    The branch ID to check
+     * @throws NotFoundException If a commodity is not found in the store
+     */
+    @Transactional(readOnly = true)
+    private void validateCommoditiesInStore(List<IssuanceCommodityDTO> commodities, Long branchId)
+            throws NotFoundException {
+
+        for (IssuanceCommodityDTO dto : commodities) {
+            Commodity commodity = commodityService.findCommodity(dto.getCommodityId());
+
+            Store store = storeRepository.findByBranchIdAndCommodityId(branchId, commodity.getId())
+                    .orElseThrow(() -> new NotFoundException(
+                            String.format("Commodity '%s' not found in store for branch ID %d",
+                                    commodity.getName(), branchId)));
+
+            if (store.getQuantity() < dto.getQuantity()) {
+                throw new NotFoundException(String.format(
+                        "Insufficient stock for commodity '%s'. Available: %d, Requested: %d",
+                        commodity.getName(), store.getQuantity(), dto.getQuantity()));
+            }
+        }
+        logger.info("All commodities verified as available in branch " + branchId);
+    }
+
+    /**
+     * Reduces the quantity of commodities in the specified branch store
+     *
+     * @param commodities The commodities to reduce
+     * @param branchId    The branch ID
+     * @throws NotFoundException If a commodity is not found
+     */
+    @Transactional
+    private void reduceCommoditiesFromStore(List<IssuanceCommodityDTO> commodities, Long branchId)
+            throws NotFoundException {
+
+        for (IssuanceCommodityDTO dto : commodities) {
+            Commodity commodity = commodityService.findCommodity(dto.getCommodityId());
+
+            Store store = storeRepository.findByBranchIdAndCommodityId(branchId, commodity.getId())
+                    .orElseThrow(() -> new IllegalStateException(String.format(
+                            "Unexpected error: Store record for commodity '%s' not found during stock reduction.",
+                            commodity.getName())));
+
+            int updatedQuantity = store.getQuantity() - dto.getQuantity();
+            store.setQuantity(updatedQuantity);
+            storeRepository.save(store);
+        }
+        logger.info("Stock quantities reduced in branch " + branchId);
+    }
+
+    /**
+     * Creates issued commodity records for the issuance
+     *
+     * @param issuance    The issuance record
+     * @param commodities The commodities that were issued
+     * @throws NotFoundException If a commodity is not found
+     */
     @Transactional
     private void addIssuedCommodities(Issuance issuance, List<IssuanceCommodityDTO> commodities)
             throws NotFoundException {
@@ -132,31 +328,16 @@ public class IssuanceService {
                     .build();
             issuedCommodityRepository.save(stockCommodity);
         }
+        logger.info("Added " + commodities.size() + " issued commodities to issuance record");
     }
 
-    @Transactional
-    private void updateBranchStockLevel(List<IssuanceCommodityDTO> issuanceCommodityDTOS)
-            throws NotFoundException {
-        List<CommodityWithDetailsDao> commodities = commodityWithDetailsDao(issuanceCommodityDTOS);
-        /*
-            TO DO...
-            add commodities to branch store only if the issuance is from head office to another.
-            Otherwise, just reduce the quantity from the head office store.
-
-            NB: implement the part where an item is issued to branch and then to an individual.
-            NB: Branch stores are only updated if the asset is stationary, IT equipment are issued to the users directly.
-            When a branch user makes a request, the request will be approved by supervisor and will be visible to BOM.
-            BOM will make a request to head office, this request will be approved by BOM supervisor.
-            Once admin receives this request, it will be approved and store updated (stationery items).
-            Then BOM will issue request of the officer.
-            NB: Email the BOM after issuance or the requester after issuing a request
-         */
-
-        storeService.addCommoditiesToStore(commodities, 2L);
-        storeService.reduceCommoditiesFromStore(commodities, 1L);
-    }
-
-
+    /**
+     * Converts IssuanceCommodityDTO objects to CommodityWithDetailsDao objects
+     *
+     * @param issuanceCommodityDTOS The DTOs to convert
+     * @return A list of CommodityWithDetailsDao objects
+     * @throws NotFoundException If a commodity is not found
+     */
     private List<CommodityWithDetailsDao> commodityWithDetailsDao(List<IssuanceCommodityDTO> issuanceCommodityDTOS)
             throws NotFoundException {
         List<CommodityWithDetailsDao> commoditiesWithDetails = new ArrayList<>();
@@ -174,6 +355,12 @@ public class IssuanceService {
         return commoditiesWithDetails;
     }
 
+    /**
+     * Gets the last issued commodity for the specified commodity ID
+     *
+     * @param commodityId The commodity ID
+     * @return The last issued commodity, or null if none exists
+     */
     public IssuedCommodity getLastIssuedCommodity(Long commodityId) {
         List<IssuedCommodity> result = issuedCommodityRepository.findLastIssuedCommodityByCommodityId(
                 commodityId,
@@ -186,19 +373,11 @@ public class IssuanceService {
     }
 
     /**
-     * Updates the assignment and status of a list of assets to a specified user.
-     * <p>
-     * The method performs the following:
-     * - Retrieves the "assigned" status (ID 4) from the status service.
-     * - For each asset in the list, it fetches the current asset data.
-     * - Checks if the asset is already assigned to the specified user with the assigned status; if so, it skips updating that asset.
-     * - If the asset's assigned user differs from the specified user, it calls the method to track the asset assignment history.
-     * - Updates the asset's assigned user and status to the new values.
-     * - Saves the updated asset back to the repository.
+     * Updates the assignment and status of assets for a user
      *
-     * @param assets the list of assets to be updated
-     * @param user   the user to whom the assets will be assigned
-     * @throws NotFoundException if the assigned status is not found or if any asset does not exist
+     * @param assets The assets to update
+     * @param user   The user to assign the assets to
+     * @throws NotFoundException If an asset or status is not found
      */
     @Transactional
     private void updateAssetAssignedToStatusAndStatus(List<IssueAssetsDTO> assets, User user) throws NotFoundException {
@@ -226,30 +405,32 @@ public class IssuanceService {
 
             assetRepository.save(asset);
         }
+        logger.info("Updated asset assignments for " + assets.size() + " assets");
     }
 
+    /**
+     * Updates the status of a request
+     *
+     * @param request The request information
+     * @throws NotFoundException If the request is not found
+     */
     @Transactional
     private void updateRequestStatus(IssuanceDTO request)
             throws NotFoundException {
         Request requestDetails = requestService.findRequest(request.getRequestId());
-        Status status = statusService.findOneStatus(5L); // Get The  Request Issued for Approval Status and assign to Request
+        Status status = statusService.findOneStatus(5L); // Get The Request Issued for Approval Status
         requestDetails.setStatus(status);
         requestRepository.save(requestDetails);
+        logger.info("Updated status for request ID: " + request.getRequestId());
     }
 
     /**
-     * Tracks the reassignment history of an asset whenever its assigned user changes.
-     * <p>
-     * This method performs the following steps:
-     * - Finds the currently active assignment history record for the given asset (where endDate is null).
-     * - If such a record exists, it sets its endDate to the current time and updates its statusAfter field.
-     * - Creates a new assignment history record representing the new assignment with the current time as startDate,
-     * along with the status before and after the assignment.
+     * Tracks the assignment history of an asset
      *
-     * @param asset        the asset being reassigned
-     * @param newUser      the new user to whom the asset is assigned
-     * @param statusBefore the status of the asset before reassignment
-     * @param statusAfter  the status of the asset after reassignment
+     * @param asset        The asset being assigned
+     * @param newUser      The new user
+     * @param statusBefore The status before assignment
+     * @param statusAfter  The status after assignment
      */
     @Transactional
     private void trackAssetAssignmentHistory(Asset asset, User newUser, Status statusBefore, Status statusAfter) {
@@ -273,45 +454,76 @@ public class IssuanceService {
                 .build();
 
         assetAssignmentHistoryRepository.save(newHistory);
-        assetAssignmentHistoryRepository.save(newHistory);
     }
 
+    /**
+     * Finds an issuance by ID
+     *
+     * @param id The issuance ID
+     * @return The issuance
+     * @throws NotFoundException If the issuance is not found
+     */
     public Issuance findOne(Long id)
             throws NotFoundException {
         return issuanceRepository.findById(id).orElseThrow(
-                () -> new NotFoundException(String.format("Issuance with Id %s is not found", id))
+                () -> new NotFoundException(format("Issuance with Id %s is not found", id))
         );
     }
 
+    /**
+     * Finds an issuance by request ID
+     *
+     * @param requestId The request ID
+     * @return The issuance DAO, or null if not found
+     * @throws NotFoundException If there's an error finding the issuance
+     */
     public IssuanceDAO findByRequestId(Long requestId) throws NotFoundException {
         Issuance data = issuanceRepository.findByRequestId(requestId).orElse(null);
         if (data == null) {
             return null;
         }
 
+        return buildIssuanceResponse(data);
+    }
+
+    /**
+     * Builds an IssuanceDAO response from an Issuance entity
+     *
+     * @param issuance The issuance entity
+     * @return The issuance DAO
+     */
+    private IssuanceDAO buildIssuanceResponse(Issuance issuance) {
         return IssuanceDAO.builder()
-                .id(data.getId())
-                .comment(data.getComment())
-                .requester(data.getRequester() != null ?
-                        userBuilder.builder(data.getRequester()) : null)
-                .status(data.getStatus() != null ?
+                .id(issuance.getId())
+                .comment(issuance.getComment())
+                .requester(issuance.getRequester() != null ?
+                        userBuilder.builder(issuance.getRequester()) : null)
+                .status(issuance.getStatus() != null ?
                         Status.builder()
-                                .id(data.getStatus().getId())
-                                .name(data.getStatus().getName())
-                                .description(data.getStatus().getDescription())
-                                .code(data.getStatus().getCode())
-                                .status(data.getStatus().getStatus())
+                                .id(issuance.getStatus().getId())
+                                .name(issuance.getStatus().getName())
+                                .description(issuance.getStatus().getDescription())
+                                .code(issuance.getStatus().getCode())
+                                .status(issuance.getStatus().getStatus())
                                 .build() : null)
-                .issuer(data.getIssuer() != null ?
-                        userBuilder.builder(data.getIssuer()) : null)
-                .createDate(data.getCreateDate())
-                .lastModified(data.getLastModified())
-                .createdBy(data.getCreatedBy())
-                .lastModifiedBy(data.getLastModifiedBy())
+                .issuer(issuance.getIssuer() != null ?
+                        userBuilder.builder(issuance.getIssuer()) : null)
+                .request(issuance.getRequest() != null ?
+                        Request.builder().id(issuance.getRequest().getId()).build() : null)
+                .createDate(issuance.getCreateDate())
+                .lastModified(issuance.getLastModified())
+                .createdBy(issuance.getCreatedBy())
+                .lastModifiedBy(issuance.getLastModifiedBy())
                 .build();
     }
 
-
+    /**
+     * Notifies an individual about an issuance
+     *
+     * @param comment The comment to include
+     * @param request The request details
+     * @throws NotFoundException If the admin manager is not found
+     */
     private void notifyIndividual(
             String comment,
             Request request
@@ -320,7 +532,7 @@ public class IssuanceService {
 
         emailService.sendEmailVerification(
                 cleanedEmail.getCleanedEmail(), // This must be Admin Manager Email
-                String.format("Stores Request ID: %s", request.getId()),
+                format("Stores Request ID: %s", request.getId()),
                 null,
                 "Manager",
                 "View Request",
@@ -332,10 +544,16 @@ public class IssuanceService {
                 null,
                 null
         );
+        logger.info("Notification sent to admin manager for request ID: " + request.getId());
     }
 
+    /**
+     * Gets the admin manager
+     *
+     * @return The admin manager user
+     * @throws NotFoundException If the admin manager is not found
+     */
     private User getAdminManager() throws NotFoundException {
-
         User currentUser = currentUserService.getCurrentUser();
 
         Long supervisorTitleId = currentUser.getTitle().getReportsTo().getId();
@@ -346,6 +564,4 @@ public class IssuanceService {
         }
         return supervisors.get(0);
     }
-
 }
-
