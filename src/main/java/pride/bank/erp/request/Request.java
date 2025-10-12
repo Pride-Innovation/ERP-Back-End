@@ -49,6 +49,7 @@ public class Request {
     private String signaturePath;
     private Boolean deleted = false;
     private LocalDateTime deletionDate;
+    private Boolean isBranchStationery; // Tracks branch stationery requests.
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "status_id")

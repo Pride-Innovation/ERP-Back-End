@@ -84,7 +84,7 @@ public class RequestService {
      * @throws BusinessRuleException If business rules are violated
      */
     @Transactional
-    public Request createRequest(
+    public RequestDTO createRequest(
             Request body,
             MultipartFile file,
             List<RequestCommodityDTO> requestCommoditiesRequest
@@ -138,7 +138,8 @@ public class RequestService {
         savedRequest.setEmailMessage(emailStatus);
 
         log.info("Request created successfully with ID: {}", savedRequest.getId());
-        return savedRequest;
+        RequestCommodityReports data = generateRequestReportsAndCommodities(savedRequest);
+        return buildDetailedRequestDTO(savedRequest, data.getCommodities(), data.getReports());
     }
 
     /**
@@ -154,7 +155,7 @@ public class RequestService {
      * @throws ValidationException If updated data is invalid
      */
     @Transactional
-    public Request updateRequest(
+    public RequestDTO updateRequest(
             Long requestId,
             Request body,
             MultipartFile file,
@@ -209,7 +210,8 @@ public class RequestService {
         savedRequest.setCommodities(commodities);
 
         log.info("Request updated successfully with ID: {}", savedRequest.getId());
-        return savedRequest;
+        RequestCommodityReports data = generateRequestReportsAndCommodities(savedRequest);
+        return buildDetailedRequestDTO(savedRequest, data.getCommodities(), data.getReports());
     }
 
     /**
@@ -332,6 +334,46 @@ public class RequestService {
     }
 
     /**
+     * Generates and aggregates request-related data, including its commodities and reports.
+     * <p>
+     * This method performs the following:
+     * <ul>
+     *   <li>Retrieves all commodities linked to the given request.</li>
+     *   <li>Converts these commodities into DTOs containing quantity details.</li>
+     *   <li>Retrieves all reports associated with the request.</li>
+     *   <li>Maps the reports into data access objects (DAOs) for transfer and response building.</li>
+     * </ul>
+     *
+     * @param request The {@link Request} entity for which reports and commodities are to be generated.
+     * @return A {@link RequestCommodityReports} object containing the list of commodities and reports.
+     */
+    private RequestCommodityReports generateRequestReportsAndCommodities(Request request) {
+        // Fetch all commodities associated with the given request
+        List<RequestCommodity> requestCommodities = requestCommodityRepository.findByRequestId(request.getId());
+
+        // Convert fetched commodities into DTOs that include quantity and related details
+        List<CommodityWithQuantityDTO> commodities = commodityWithQuantityDTO(requestCommodities);
+
+        // Attach the commodity details to the request entity for context consistency
+        request.setCommodities(commodities);
+
+        // Fetch all reports linked to this request from the repository
+        List<RequestReport> reports = requestCommodityRepository.findReportByRequestId(request.getId());
+
+        // Transform each report entity into a DAO representation suitable for external use
+        List<RequestReportDAO> requestReportDAOS = reports.stream()
+                .map(this::buildObject)
+                .toList();
+
+        // Build and return the aggregated response object containing both commodities and reports
+        return RequestCommodityReports.builder()
+                .commodities(commodities)
+                .reports(requestReportDAOS)
+                .build();
+    }
+
+
+    /**
      * Fetches a single request with full details including commodities and reports
      *
      * @param requestId The request ID
@@ -343,15 +385,8 @@ public class RequestService {
         log.debug("Fetching detailed request with ID: {}", requestId);
 
         Request request = findRequest(requestId);
-
-        List<RequestCommodity> requestCommodities = requestCommodityRepository.findByRequestId(requestId);
-        List<CommodityWithQuantityDTO> commodities = commodityWithQuantityDTO(requestCommodities);
-        request.setCommodities(commodities);
-
-        List<RequestReport> reports = requestCommodityRepository.findReportByRequestId(requestId);
-        List<RequestReportDAO> requestReportDAOS = reports.stream().map(this::buildObject).toList();
-
-        return buildDetailedRequestDTO(request, commodities, requestReportDAOS);
+        RequestCommodityReports data = generateRequestReportsAndCommodities(request);
+        return buildDetailedRequestDTO(request, data.getCommodities(), data.getReports());
     }
 
     /**

@@ -93,7 +93,7 @@ public class RequestController {
                 .build();
 
         try {
-            Request savedRequest = requestService.createRequest(request, file, commodityList);
+            RequestDTO savedRequest = requestService.createRequest(request, file, commodityList);
             return ResponseEntity.status(HttpStatus.CREATED).body(savedRequest);
         } catch (BadRequestException | IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
@@ -134,7 +134,7 @@ public class RequestController {
                 .description(description)
                 .build();
         try {
-            Request updatedRequest = requestService.updateRequest(id, request, file, commodityList);
+            RequestDTO updatedRequest = requestService.updateRequest(id, request, file, commodityList);
             return ResponseEntity.ok(updatedRequest);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
