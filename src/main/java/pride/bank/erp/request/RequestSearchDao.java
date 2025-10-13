@@ -102,6 +102,14 @@ public class RequestSearchDao {
             predicates.add(criteriaBuilder.equal(requestRoot.get("deleted"), requestSearchCriteria.getDeleted()));
         }
 
+        if (Objects.nonNull(requestSearchCriteria.getStartDate())) {
+            predicates.add(criteriaBuilder.greaterThanOrEqualTo(requestRoot.get("createDate"), requestSearchCriteria.getStartDate()));
+        }
+
+        if (Objects.nonNull(requestSearchCriteria.getEndDate())) {
+            predicates.add(criteriaBuilder.lessThanOrEqualTo(requestRoot.get("createDate"), requestSearchCriteria.getEndDate()));
+        }
+
         // Ensure that Admin can review non stationery requests of branches
         if (Objects.nonNull(requestSearchCriteria.getIsBranchNonStationery())) {
             Expression<Long> branchIdPath = requestRoot.get("requester").get("branch").get("id");

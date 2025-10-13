@@ -315,7 +315,9 @@ public class RequestService {
             String status,
             String requestedBy,
             String approver,
-            Boolean deleted
+            Boolean deleted,
+            LocalDateTime startDate,
+            LocalDateTime endDate
     ) {
         try {
             log.debug("Fetching requests with filters - page: {}, status: {}", pageNumber, status);
@@ -340,6 +342,8 @@ public class RequestService {
                     .approver(approver)
                     .deleted(deleted)
                     .timeOfSubmissionOfRequest(timeOfSubmissionOfRequest)
+                    .startDate(startDate)
+                    .endDate(endDate)
                     .build();
 
             Page<Request> requestPageResult = requestSearchDao.findAllWithFilters(requestPage, requestSearchCriteria);

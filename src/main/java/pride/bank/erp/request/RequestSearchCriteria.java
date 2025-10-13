@@ -29,4 +29,6 @@ public class RequestSearchCriteria {
     private Boolean deleted;
     private Boolean isBranchStationery;
     private Boolean isBranchNonStationery;
+    private LocalDateTime startDate;
+    private LocalDateTime endDate;
 }

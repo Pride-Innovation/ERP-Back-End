@@ -10,6 +10,7 @@ package pride.bank.erp.request;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
@@ -47,7 +48,14 @@ public class RequestController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String requestedBy,
             @RequestParam(required = false) String approver,
-            @RequestParam(required = false, defaultValue = "false") Boolean deleted
+            @RequestParam(required = false, defaultValue = "false") Boolean deleted,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+            LocalDateTime startDate,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+            LocalDateTime endDate
     ) {
         Page<RequestDTO> requests = requestService.fetchAllRequests(
                 pageSize,
@@ -62,7 +70,9 @@ public class RequestController {
                 status,
                 requestedBy,
                 approver,
-                deleted
+                deleted,
+                startDate,
+                endDate
         );
         return new ResponseEntity<>(requests, HttpStatus.OK);
     }
