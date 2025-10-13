@@ -27,4 +27,6 @@ public class RequestSearchCriteria {
     private String requestedBy;
     private String approver;
     private Boolean deleted;
+    private Boolean isBranchStationery;
+    private Boolean isBranchNonStationery;
 }

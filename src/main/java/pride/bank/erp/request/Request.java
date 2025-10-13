@@ -50,6 +50,7 @@ public class Request {
     private Boolean deleted = false;
     private LocalDateTime deletionDate;
     private Boolean isBranchStationery; // Tracks branch stationery requests.
+    private Boolean isBranchNonStationery; // Tracks branch non stationery requests.
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "status_id")

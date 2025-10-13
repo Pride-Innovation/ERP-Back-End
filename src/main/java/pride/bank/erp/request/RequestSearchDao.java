@@ -9,10 +9,7 @@ package pride.bank.erp.request;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.TypedQuery;
-import jakarta.persistence.criteria.CriteriaBuilder;
-import jakarta.persistence.criteria.CriteriaQuery;
-import jakarta.persistence.criteria.Predicate;
-import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.*;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Repository;
 
@@ -103,6 +100,38 @@ public class RequestSearchDao {
 
         if (Objects.nonNull(requestSearchCriteria.getDeleted())) {
             predicates.add(criteriaBuilder.equal(requestRoot.get("deleted"), requestSearchCriteria.getDeleted()));
+        }
+
+        // Ensure that Admin can review non stationery requests of branches
+        if (Objects.nonNull(requestSearchCriteria.getIsBranchNonStationery())) {
+            Expression<Long> branchIdPath = requestRoot.get("requester").get("branch").get("id");
+
+            Predicate isHeadOffice = criteriaBuilder.equal(branchIdPath, 1L);
+
+            Predicate isBranchNonStationery = criteriaBuilder.equal(
+                    requestRoot.get("isBranchNonStationery"),
+                    requestSearchCriteria.getIsBranchNonStationery()
+            );
+
+            predicates.add(criteriaBuilder.or(isHeadOffice, isBranchNonStationery));
+        }
+
+        // Ensure that BOM can review stationery requests of their branches
+        if (Objects.nonNull(requestSearchCriteria.getIsBranchStationery())) {
+            Expression<Long> branchIdPath = requestRoot.get("requester").get("branch").get("id");
+
+            Predicate isHeadOffice = criteriaBuilder.equal(branchIdPath, 1L);
+
+            Predicate isBranchStationery = criteriaBuilder.equal(
+                    requestRoot.get("isBranchStationery"),
+                    requestSearchCriteria.getIsBranchStationery()
+            );
+
+
+            // If it's Head Office, ignore the filter by always returning true (i.e., include it)
+            // If it's not Head Office, apply the filter
+            predicates.add(criteriaBuilder.or(isHeadOffice, isBranchStationery)
+            );
         }
 
         if (Objects.nonNull(requestSearchCriteria.getRequestedBy())) {

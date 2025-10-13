@@ -105,9 +105,19 @@ public class RequestService {
 
         log.info("Request from user at branch ID: {}, isHeadOfficeUser: {}", requesterBranchId, isHeadOfficeUser);
 
+        // Track Branch Stationery and Non stationery request
+        boolean isBranchStationeryRequest = false;
+        boolean isBranchNonStationeryRequest = false;
+
         // Enforce business rules for mixed item types
         if (!isHeadOfficeUser) {
             validateNoMixedItemTypesForBranchUser(requestCommoditiesRequest);
+            isBranchStationeryRequest = containsStationeryItems(requestCommoditiesRequest);
+
+            // Check if the Branch Request is Not Stationery request
+            if (!containsStationeryItems(requestCommoditiesRequest)) {
+                isBranchNonStationeryRequest = true;
+            }
         }
 
         // Handle file upload
@@ -117,7 +127,14 @@ public class RequestService {
         Status status = getInitialRequestStatus();
 
         // Create and save the request
-        Request request = buildInitialRequest(body, filePath, status, requester, containsStationeryItems(requestCommoditiesRequest));
+        Request request = buildInitialRequest(
+                body,
+                filePath,
+                status,
+                requester,
+                isBranchStationeryRequest,
+                isBranchNonStationeryRequest
+        );
         Request savedRequest = saveRequest(request);
 
         // Find and assign supervisor
@@ -318,6 +335,8 @@ public class RequestService {
                     .statusIds(statusIds)
                     .requesterIds(requestersList(status))
                     .requestedBy(requestedBy)
+                    .isBranchStationery(canSeeBranchStationaryRequests())
+                    .isBranchNonStationery(canSeeBranchNonStationaryRequests())
                     .approver(approver)
                     .deleted(deleted)
                     .timeOfSubmissionOfRequest(timeOfSubmissionOfRequest)
@@ -653,7 +672,14 @@ public class RequestService {
     /**
      * Builds initial request object
      */
-    private Request buildInitialRequest(Request body, String filePath, Status status, User requester, boolean isBranchStationeryRequest) {
+    private Request buildInitialRequest(
+            Request body,
+            String filePath,
+            Status status,
+            User requester,
+            boolean isBranchStationeryRequest,
+            boolean isBranchNonStationeryRequest
+    ) {
 
         return Request.builder()
                 .name(body.getName())
@@ -664,6 +690,7 @@ public class RequestService {
                 .requester(requester)
                 .description(body.getDescription())
                 .isBranchStationery(isBranchStationeryRequest)
+                .isBranchNonStationery(isBranchNonStationeryRequest)
                 .deleted(false)
                 .build();
     }
@@ -852,12 +879,16 @@ public class RequestService {
 
             case "ADMIN_OFFICER" -> {
                 if (pendingIssuedOrDashboard) {
+                    /*
                     List<Long> headOfficeUserIds = userRepository.findUserIdsFromHeadOffice();
                     List<Long> bomIds = userRepository.findAllBranchOperationsManagerIds();
                     Set<Long> allowedUserIds = new HashSet<>();
                     allowedUserIds.addAll(headOfficeUserIds);
                     allowedUserIds.addAll(bomIds);
-                    yield new ArrayList<>(allowedUserIds);
+                    yield new ArrayList<>(allowedUserIds)
+                     */
+                    // Ensure that all users requests are visible to the Admin Officer
+                    yield Collections.emptyList();
 
                 } else if ("CREATED".equalsIgnoreCase(status) || "REJECTED".equalsIgnoreCase(status)) {
                     yield List.of(currentUserService.getCurrentUser().getId());
@@ -891,6 +922,36 @@ public class RequestService {
 
         log.debug("Returning {} user IDs for requesters list", result.size());
         return result;
+    }
+
+    /**
+     * Determines if the current user can see branch non-stationery requests.
+     *
+     * @return true if they can see them, false if they cannot, or null if not applicable.
+     */
+    private Boolean canSeeBranchNonStationaryRequests() {
+        String userRole = determineUserRole();
+
+        return switch (userRole) {
+            case "ADMIN_OFFICER", "ADMIN_MANAGER" -> true;
+            default -> null; // For all other roles, visibility doesn't apply
+        };
+    }
+
+    /**
+     * Determines if the current user can see branch stationery requests.
+     *
+     * @return - true if the user should see stationery requests from branches,
+     * - false if explicitly denied,
+     * - null if visibility does not apply for the role.
+     */
+    private Boolean canSeeBranchStationaryRequests() {
+        String userRole = determineUserRole();
+
+        if (userRole.equals("BOM")) {
+            return true;
+        }
+        return null; // Role is undefined or empty — cannot determine visibility
     }
 
     /**
