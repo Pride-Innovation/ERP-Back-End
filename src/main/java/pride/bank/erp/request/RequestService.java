@@ -117,7 +117,7 @@ public class RequestService {
         Status status = getInitialRequestStatus();
 
         // Create and save the request
-        Request request = buildInitialRequest(body, filePath, status, requester);
+        Request request = buildInitialRequest(body, filePath, status, requester, containsStationeryItems(requestCommoditiesRequest));
         Request savedRequest = saveRequest(request);
 
         // Find and assign supervisor
@@ -141,6 +141,34 @@ public class RequestService {
         RequestCommodityReports data = generateRequestReportsAndCommodities(savedRequest);
         return buildDetailedRequestDTO(savedRequest, data.getCommodities(), data.getReports());
     }
+
+
+    /**
+     * Checks if any commodity in the request is a stationery item
+     *
+     * @param commodities List of commodities in the request
+     * @return true if at least one item is stationary, false otherwise
+     */
+    public boolean containsStationeryItems(List<RequestCommodityDTO> commodities) {
+        if (commodities == null || commodities.isEmpty()) {
+            return false;
+        }
+
+        for (RequestCommodityDTO dto : commodities) {
+            try {
+                Commodity commodity = commodityService.findCommodity(dto.getCommodityId());
+                if (commodity != null && commodity.getAssetType() != null &&
+                        STATIONERY_TYPE.equalsIgnoreCase(commodity.getAssetType().getName())) {
+                    return true;
+                }
+            } catch (Exception e) {
+                // Log error but continue checking other commodities
+            }
+        }
+
+        return false;
+    }
+
 
     /**
      * Updates an existing request with new data and commodities.
@@ -625,7 +653,8 @@ public class RequestService {
     /**
      * Builds initial request object
      */
-    private Request buildInitialRequest(Request body, String filePath, Status status, User requester) {
+    private Request buildInitialRequest(Request body, String filePath, Status status, User requester, boolean isBranchStationeryRequest) {
+
         return Request.builder()
                 .name(body.getName())
                 .priority(body.getPriority())
@@ -634,6 +663,7 @@ public class RequestService {
                 .status(status)
                 .requester(requester)
                 .description(body.getDescription())
+                .isBranchStationery(isBranchStationeryRequest)
                 .deleted(false)
                 .build();
     }
@@ -967,6 +997,7 @@ public class RequestService {
                                 .code(request.getStatus().getCode())
                                 .build() : null)
                 .timeOfSubmissionOfRequest(request.getTimeOfSubmissionOfRequest())
+                .isBranchStationery(request.getIsBranchStationery())
                 .createdBy(request.getCreatedBy())
                 .createDate(request.getCreateDate())
                 .lastModified(request.getLastModified())

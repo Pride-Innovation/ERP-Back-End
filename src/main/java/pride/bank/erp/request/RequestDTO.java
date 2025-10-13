@@ -41,4 +41,5 @@ public class RequestDTO {
     private User requester;
     private Set<RequestCommodity> requestCommodities;
     private User currentApprover;
+    private Boolean isBranchStationery;
 }
