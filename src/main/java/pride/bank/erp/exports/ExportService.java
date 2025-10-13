@@ -13,6 +13,10 @@ import pride.bank.erp.asset.AssetDAO;
 import pride.bank.erp.asset.AssetRepository;
 import pride.bank.erp.asset.AssetService;
 import pride.bank.erp.branch.Branch;
+import pride.bank.erp.request.Request;
+import pride.bank.erp.request.RequestDTO;
+import pride.bank.erp.request.RequestRepository;
+import pride.bank.erp.request.RequestService;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.stock.CommodityWithDetailsDao;
 import pride.bank.erp.stock.Stock;
@@ -34,6 +38,8 @@ public class ExportService {
     private final StockCommodityRepository stockCommodityRepository;
     private final AssetRepository assetRepository;
     private final AssetService assetService;
+    private final RequestRepository requestRepository;
+    private final RequestService requestService;
 
     public List<StockDAO> fetchAllStocks(
             LocalDateTime startDate,
@@ -132,4 +138,12 @@ public class ExportService {
         return assets.stream().map(assetService::buildAssetDao).toList();
     }
 
+    public List<RequestDTO> fetchAllRequests(
+            List<Long> statusIds,
+            LocalDateTime startDate,
+            LocalDateTime endDate
+    ) {
+        List<Request> data = requestRepository.findRequestsByStatusIds(statusIds);
+        return requestService.convertToRequestDTOList(data);
+    }
 }

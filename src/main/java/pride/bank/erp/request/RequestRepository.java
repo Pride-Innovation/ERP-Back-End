@@ -40,4 +40,7 @@ public interface RequestRepository extends JpaRepository<Request, Long> {
             @Param("branchId") Long branchId
     );
 
+    @Query("SELECT r FROM Request r WHERE r.status.id IN :statusIds")
+    List<Request> findRequestsByStatusIds(@Param("statusIds") List<Long> statusIds);
+
 }

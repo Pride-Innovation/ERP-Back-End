@@ -964,7 +964,7 @@ public class RequestService {
     /**
      * Converts a list of Request entities to DTOs
      */
-    private List<RequestDTO> convertToRequestDTOList(List<Request> requests) {
+    public List<RequestDTO> convertToRequestDTOList(List<Request> requests) {
         return requests.stream().map(request -> RequestDTO.builder()
                 .id(request.getId())
                 .name(request.getName())

@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import pride.bank.erp.asset.AssetDAO;
 import pride.bank.erp.helper.Constants;
+import pride.bank.erp.request.RequestDTO;
 import pride.bank.erp.stock.StockDAO;
 
 import java.time.LocalDateTime;
@@ -53,5 +54,24 @@ public class ExportController {
                 startDate,
                 endDate
         ));
+    }
+
+    @GetMapping("/export/request")
+    public ResponseEntity<List<RequestDTO>> fetchAllRequests(
+            @RequestParam List<Long> statusIds,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+            LocalDateTime startDate,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+            LocalDateTime endDate
+    ) {
+        List<RequestDTO> response = exportService.fetchAllRequests(
+                statusIds,
+                startDate,
+                endDate
+        );
+        return ResponseEntity.ok(response);
     }
 }
