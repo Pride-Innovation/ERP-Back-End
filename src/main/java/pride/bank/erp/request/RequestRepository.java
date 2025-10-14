@@ -12,6 +12,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Repository
@@ -42,5 +43,12 @@ public interface RequestRepository extends JpaRepository<Request, Long> {
 
     @Query("SELECT r FROM Request r WHERE r.status.id IN :statusIds")
     List<Request> findRequestsByStatusIds(@Param("statusIds") List<Long> statusIds);
+
+    @Query("SELECT r FROM Request r WHERE r.status.id IN :statusIds AND r.createDate BETWEEN :startDate AND :endDate")
+    List<Request> findRequestsByStatusIdsAndDateRange(
+            @Param("statusIds") List<Long> statusIds,
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate
+    );
 
 }

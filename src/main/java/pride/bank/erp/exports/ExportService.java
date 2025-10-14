@@ -143,7 +143,12 @@ public class ExportService {
             LocalDateTime startDate,
             LocalDateTime endDate
     ) {
-        List<Request> data = requestRepository.findRequestsByStatusIds(statusIds);
-        return requestService.convertToRequestDTOList(data);
+        List<Request> requests;
+        if (startDate != null && endDate != null) {
+            requests = requestRepository.findRequestsByStatusIdsAndDateRange(statusIds, startDate, endDate);
+        } else {
+            requests = requestRepository.findRequestsByStatusIds(statusIds);
+        }
+        return requestService.convertToRequestDTOList(requests);
     }
 }
