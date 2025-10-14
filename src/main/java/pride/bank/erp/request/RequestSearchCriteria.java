@@ -31,4 +31,6 @@ public class RequestSearchCriteria {
     private Boolean isBranchNonStationery;
     private LocalDateTime startDate;
     private LocalDateTime endDate;
+    private Long currentUserId;
+    private Boolean isAdmin;
 }

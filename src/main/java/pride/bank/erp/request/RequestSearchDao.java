@@ -178,6 +178,31 @@ public class RequestSearchDao {
             predicates.add(criteriaBuilder.or(firstNameMatch, lastNameMatch, otherNameMatch));
         }
 
+        // Filter Admin data for the requests listing
+
+        if (Boolean.TRUE.equals(requestSearchCriteria.getIsAdmin()) &&
+                Objects.nonNull(requestSearchCriteria.getCurrentUserId())) {
+
+            Path<Long> requesterIdPath = requestRoot.get("requester").get("id");
+            Path<String> statusNamePath = requestRoot.get("status").get("status"); // Adjust if field is different
+
+            Predicate ownRequests = criteriaBuilder.equal(requesterIdPath, requestSearchCriteria.getCurrentUserId());
+
+            // Exclude specific statuses for other users
+            Predicate notOwnRequests = criteriaBuilder.notEqual(requesterIdPath, requestSearchCriteria.getCurrentUserId());
+            Predicate statusNotRequestCreated = criteriaBuilder.notEqual(statusNamePath, "requestCreated");
+            Predicate statusNotRequestRejected = criteriaBuilder.notEqual(statusNamePath, "requestRejected");
+
+            Predicate otherUsersValidStatuses = criteriaBuilder.and(
+                    notOwnRequests,
+                    statusNotRequestCreated,
+                    statusNotRequestRejected
+            );
+
+            // Combine own requests and filtered other users' requests
+            predicates.add(criteriaBuilder.or(ownRequests, otherUsersValidStatuses));
+        }
+
 
         return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
     }

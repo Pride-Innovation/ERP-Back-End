@@ -344,6 +344,8 @@ public class RequestService {
                     .timeOfSubmissionOfRequest(timeOfSubmissionOfRequest)
                     .startDate(startDate)
                     .endDate(endDate)
+                    .currentUserId(currentUserService.getCurrentUser().getId())
+                    .isAdmin(determineIfUserIsAdmin())
                     .build();
 
             Page<Request> requestPageResult = requestSearchDao.findAllWithFilters(requestPage, requestSearchCriteria);
@@ -894,7 +896,11 @@ public class RequestService {
                     // Ensure that all users requests are visible to the Admin Officer
                     yield Collections.emptyList();
 
-                } else if ("CREATED".equalsIgnoreCase(status) || "REJECTED".equalsIgnoreCase(status)) {
+                } else if ("CREATED".equalsIgnoreCase(status)) {
+
+//                    yield List.of(currentUserService.getCurrentUser().getId());
+                    yield Collections.emptyList();
+                } else if ("REJECTED".equalsIgnoreCase(status)) {
                     yield List.of(currentUserService.getCurrentUser().getId());
                 } else {
                     yield List.of(currentUserService.getCurrentUser().getId());
@@ -956,6 +962,11 @@ public class RequestService {
             return true;
         }
         return null; // Role is undefined or empty — cannot determine visibility
+    }
+
+    private boolean determineIfUserIsAdmin() {
+        String userRole = determineUserRole();
+        return userRole.equals("ADMIN_OFFICER");
     }
 
     /**
