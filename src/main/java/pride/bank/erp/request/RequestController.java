@@ -57,6 +57,7 @@ public class RequestController {
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
             LocalDateTime endDate
     ) {
+        System.out.println("Request information!!!");
         Page<RequestDTO> requests = requestService.fetchAllRequests(
                 pageSize,
                 sortDirection,

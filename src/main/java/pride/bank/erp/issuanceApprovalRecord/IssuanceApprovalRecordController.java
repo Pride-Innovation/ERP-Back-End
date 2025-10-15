@@ -13,7 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
-import pride.bank.erp.request.Request;
+import pride.bank.erp.request.RequestDTO;
 
 @RestController
 @RequestMapping(Constants.GENERAL_ROUTE)
@@ -22,10 +22,10 @@ public class IssuanceApprovalRecordController {
     private final IssuanceApprovalRecordService issuanceApprovalRecordService;
 
     @PostMapping("/approve-issuance")
-    public ResponseEntity<Request> createIssuanceApprovalRecord(
+    public ResponseEntity<RequestDTO> createIssuanceApprovalRecord(
             @RequestBody IssuanceApprovalRecordDTO request
     ) throws NotFoundException {
-        Request response = issuanceApprovalRecordService
+        RequestDTO response = issuanceApprovalRecordService
                 .createIssuanceApprovalRecord(request);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }

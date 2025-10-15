@@ -19,6 +19,7 @@ import pride.bank.erp.issuance.IssuanceService;
 import pride.bank.erp.issuance.UserBuilder;
 import pride.bank.erp.notification.Email;
 import pride.bank.erp.request.Request;
+import pride.bank.erp.request.RequestDTO;
 import pride.bank.erp.request.RequestRepository;
 import pride.bank.erp.request.RequestService;
 import pride.bank.erp.status.Status;
@@ -45,7 +46,7 @@ public class IssuanceApprovalRecordService {
      * @throws NotFoundException if the referenced issuance or status is not found
      */
     @Transactional
-    public Request createIssuanceApprovalRecord(IssuanceApprovalRecordDTO issuanceApprovalRecordDTO)
+    public RequestDTO createIssuanceApprovalRecord(IssuanceApprovalRecordDTO issuanceApprovalRecordDTO)
             throws NotFoundException {
 
         Issuance issuance = issuanceService.findOne(issuanceApprovalRecordDTO.getIssuanceId());
@@ -75,7 +76,32 @@ public class IssuanceApprovalRecordService {
                 request.getRequester().getFirstName()
         );
 
-        return response;
+        return RequestDTO
+                .builder()
+                .id(response.getId())
+                .name(response.getName())
+                .priority(response.getPriority())
+                .commodities(response.getCommodities())
+                .description(response.getDescription())
+                .signaturePath(response.getSignaturePath())
+                .status(response.getStatus() != null ?
+                        Status.builder()
+                                .id(response.getStatus().getId())
+                                .name(response.getStatus().getName())
+                                .description(response.getStatus().getDescription())
+                                .status(response.getStatus().getStatus())
+                                .code(response.getStatus().getCode())
+                                .build() : null)
+                .timeOfSubmissionOfRequest(response.getTimeOfSubmissionOfRequest())
+                .createDate(response.getCreateDate())
+                .lastModified(response.getLastModified())
+                .createdBy(response.getCreatedBy())
+                .lastModifiedBy(response.getLastModifiedBy())
+                .requester(response.getRequester() != null ?
+                        userBuilder.builder(response.getRequester()) : null)
+                .currentApprover(response.getCurrentApprover() != null ?
+                        userBuilder.builder(response.getCurrentApprover()) : null)
+                .build();
     }
 
     public IssuanceApprovalRecordDAO findIssuanceApprovalRecordByRequestId(Long requestId) {
