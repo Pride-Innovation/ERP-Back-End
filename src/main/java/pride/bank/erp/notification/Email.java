@@ -156,7 +156,7 @@ public class Email {
                         // Header Section - FIXED
                         "<div style='background: linear-gradient(135deg, %s 0%%, %s 100%%); padding: 50px 30px; text-align: center;'>" +
                         "<img src='cid:logoImage' alt='Pride Bank Logo' style='max-width: 280px; height: auto; filter: brightness(0) invert(1); margin-bottom: 20px;' />" +
-                        "<h1 style='color: #ffffff; margin: 0; font-size: 24px; font-weight: 400; letter-spacing: 0.5px; text-shadow: 0 2px 4px rgba(0,0,0,0.2);'>Account Verification</h1>" +
+                        "<h1 style='color: #01607A; margin: 0; font-size: 24px; font-weight: 400; letter-spacing: 0.5px; text-shadow: 0 2px 4px rgba(0,0,0,0.2);'>Account Verification</h1>" +
                         "<div style='width: 60px; height: 3px; background: %s; margin: 20px auto; border-radius: 2px;'></div>" +
                         "</div>" +
 
@@ -169,7 +169,7 @@ public class Email {
 
                         // CTA Button - FIXED
                         "<div style='text-align: center; margin: 40px 0;'>" +
-                        "<a href='%s' style='display: inline-block; padding: 18px 40px; color: #ffffff; background: linear-gradient(135deg, %s 0%%, %s 100%%); text-decoration: none; border-radius: 50px; font-weight: 600; font-size: 16px; letter-spacing: 0.5px; text-transform: uppercase; box-shadow: 0 10px 30px rgba(5,84,75,0.3); transition: all 0.3s ease;'>%s</a>" +
+                        "<a href='%s' style='display: inline-block; padding: 18px 40px; color: #01607A; background: linear-gradient(135deg, %s 0%%, %s 100%%); text-decoration: none; border-radius: 50px; font-weight: 600; font-size: 16px; letter-spacing: 0.5px; text-transform: uppercase; box-shadow: 0 10px 30px rgba(5,84,75,0.3); transition: all 0.3s ease;'>%s</a>" +
                         "</div>" +
 
                         // Token Expiration
