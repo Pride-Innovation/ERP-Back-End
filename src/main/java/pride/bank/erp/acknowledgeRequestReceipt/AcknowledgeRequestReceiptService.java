@@ -8,7 +8,6 @@ Managing Director
 package pride.bank.erp.acknowledgeRequestReceipt;
 
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pride.bank.erp.config.CurrentUserService;
@@ -22,7 +21,6 @@ import pride.bank.erp.request.RequestRepository;
 import pride.bank.erp.request.RequestService;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
-import pride.bank.erp.user.User;
 
 @Service
 @RequiredArgsConstructor

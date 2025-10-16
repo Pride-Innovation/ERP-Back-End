@@ -794,7 +794,7 @@ public class RequestService {
 
             boolean emailStatus = emailService.sendEmailVerification(
                     cleanedEmail.getCleanedEmail(),
-                    String.format("Stores Request ID: %s", request.getId()),
+                    String.format("Action Required – Request Pending Processing: ( #%s )", request.getId()),
                     null,
                     supervisor.getLastName(),
                     "View Request",

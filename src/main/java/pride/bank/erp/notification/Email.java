@@ -51,6 +51,7 @@ public class Email {
     private static final String TEAL_SECONDARY = "#0a6b5d";
     private static final String GOLD_PRIMARY = "#BC892C";
     private static final String GOLD_SECONDARY = "#d4a545";
+    private static final String assetViewPath = "assets-mgt/asset-request/view";
 
     /**
      * Sends an email with an optional password.
@@ -212,6 +213,7 @@ public class Email {
      * Generates the HTML content for request emails.
      * FIXED: All white text visibility issues
      */
+
     private String getRequestEmailContent(Request request, String approver, String buttonText, String comment) {
         StringBuilder tableRows = getStringBuilder(request);
         int totalQuantity = getTotalQuantity(request);
@@ -225,7 +227,9 @@ public class Email {
                 TEAL_PRIMARY, TEAL_SECONDARY, totalQuantity
         );
 
-        String viewRequestLink = String.format("%s/%s", verificationUrl, request.getId());
+        String requesterInfoSection = getRequesterInfoSection(request);
+
+        String viewRequestLink = String.format("%s/%s/%s", verificationUrl, assetViewPath, request.getId());
         String text = getString(request, comment);
 
         return String.format(
@@ -240,21 +244,21 @@ public class Email {
                         "<div style='background: linear-gradient(135deg, #e8f5f3 0%%, #f9f2e7 100%%); min-height: 100vh; padding: 40px 20px;'>" +
                         "<div style='max-width: 900px; margin: 0 auto; background: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 25px 50px rgba(0,0,0,0.15);'>" +
 
-                        // Header Section - FIXED title visibility
+                        // Header Section
                         "<div style='background: linear-gradient(135deg, %s 0%%, %s 100%%); padding: 50px 40px; text-align: center;'>" +
                         "<img src='cid:logoImage' alt='Pride Bank Logo' style='max-width: 300px; height: auto; filter: brightness(0) invert(1); margin-bottom: 25px;' />" +
                         "<h1 style='color: #01607A; margin: 0; font-size: 32px; font-weight: 400; letter-spacing: 1px; text-shadow: 0 2px 4px rgba(0,0,0,0.4);'>Store Request Notification</h1>" +
                         "<div style='width: 80px; height: 4px; background: %s; margin: 20px auto; border-radius: 2px;'></div>" +
                         "</div>" +
 
-                        // Content Section - FIXED
+                        // Content Section
                         "<div style='padding: 50px 40px; background-color: #ffffff;'>" +
                         "<h2 style='color: %s; margin: 0 0 15px 0; font-size: 28px; font-weight: 600;'>Dear %s,</h2>" +
                         "<div style='width: 60px; height: 3px; background: %s; margin-bottom: 35px;'></div>" +
 
                         "%s" +
 
-                        // Modern Table - FIXED headers visibility
+                        // Modern Table
                         "<div style='margin: 40px 0; overflow: hidden; border-radius: 16px; box-shadow: 0 8px 32px rgba(5,84,75,0.15); background: #ffffff;'>" +
                         "<table style='width: 100%%; border-collapse: collapse; background: #ffffff;'>" +
                         "<thead>" +
@@ -270,7 +274,10 @@ public class Email {
                         "</table>" +
                         "</div>" +
 
-                        // Call to Action - FIXED button text visibility
+                        // NEW: Requester info section
+                        "%s" +
+
+                        // Call to Action
                         "<div style='text-align: center; margin: 50px 0; background-color: #ffffff;'>" +
                         "<p style='color: #4a5568; font-size: 16px; margin-bottom: 30px; font-weight: 500;'>To review and take action on this request, click the button below:</p>" +
                         "<a href='%s' style='display: inline-block; padding: 20px 45px; color: #01607A; background: linear-gradient(135deg, %s 0%%, %s 100%%); text-decoration: none; border-radius: 50px; font-weight: 700; font-size: 16px; letter-spacing: 0.5px; text-transform: uppercase; box-shadow: 0 12px 35px rgba(5,84,75,0.4); transition: all 0.3s ease;'>%s</a>" +
@@ -291,7 +298,7 @@ public class Email {
                         "</div>" +
                         "</body>" +
                         "</html>",
-                // Arguments in correct order (20 total):
+                // Arguments in correct order (now 21 total with the new section):
                 TEAL_PRIMARY, TEAL_SECONDARY,              // 1,2: Header background gradient
                 GOLD_PRIMARY,                              // 3: Header underline
                 TEAL_PRIMARY, approver,                    // 4,5: Dear section
@@ -300,10 +307,36 @@ public class Email {
                 TEAL_PRIMARY,                              // 8: Table header background
                 TEAL_PRIMARY, TEAL_PRIMARY, TEAL_PRIMARY, TEAL_PRIMARY, // 9,10,11,12: Individual th backgrounds
                 tableRows, totalRow,                       // 13,14: Table content
-                viewRequestLink,                           // 15: Button link
-                TEAL_PRIMARY, TEAL_SECONDARY, buttonText,  // 16,17,18: Button styling and text
-                GOLD_PRIMARY,                              // 19: Disclaimer border
-                GOLD_PRIMARY                               // 20: Disclaimer text color
+                requesterInfoSection,                      // 15: NEW: Requester info section
+                viewRequestLink,                           // 16: Button link
+                TEAL_PRIMARY, TEAL_SECONDARY, buttonText,  // 17,18,19: Button styling and text
+                GOLD_PRIMARY,                              // 20: Disclaimer border
+                GOLD_PRIMARY                               // 21: Disclaimer text color
+        );
+    }
+
+    private static String getRequesterInfoSection(Request request) {
+        String requesterName = String.format("%s %s",
+                request.getRequester().getFirstName(),
+                request.getRequester().getLastName());
+        String branchName = request.getRequester().getBranch().getName();
+
+        return String.format(
+                "<div style='margin: 30px 0; padding: 20px; background: #f8fafc; border-left: 4px solid %s; border-radius: 0 8px 8px 0;'>" +
+                        "<div style='display: flex; flex-wrap: wrap;'>" +
+                        "<div style='flex: 1; min-width: 200px; margin-bottom: 10px;'>" +
+                        "<p style='margin: 0; color: #64748b; font-size: 14px;'>Requested By:</p>" +
+                        "<p style='margin: 5px 0 0; color: %s; font-weight: 600; font-size: 16px;'>%s</p>" +
+                        "</div>" +
+                        "<div style='flex: 1; min-width: 200px;'>" +
+                        "<p style='margin: 0; color: #64748b; font-size: 14px;'>Duty Station:</p>" +
+                        "<p style='margin: 5px 0 0; color: %s; font-weight: 600; font-size: 16px;'>%s</p>" +
+                        "</div>" +
+                        "</div>" +
+                        "</div>",
+                GOLD_PRIMARY,
+                TEAL_PRIMARY, requesterName,
+                TEAL_PRIMARY, branchName
         );
     }
 
@@ -311,8 +344,12 @@ public class Email {
         String requester = format("%s %s", request.getRequester().getFirstName(), request.getRequester().getLastName());
 
         return comment != null
-                ? format("<div style='background: linear-gradient(135deg, #f0fff4 0%%, #e6fffa 100%%); border-left: 6px solid %s; padding: 25px; margin: 30px 0; border-radius: 0 12px 12px 0; box-shadow: 0 4px 15px rgba(5,84,75,0.1);'><p style='margin: 0; color: #2d3748; font-size: 16px; line-height: 1.7; font-style: italic;'>%s</p></div>", TEAL_PRIMARY, comment)
-                : format("<p style='color: #4a5568; font-size: 17px; line-height: 1.8; margin: 30px 0;'>A new store request has been initiated by <strong style='color: %s; font-weight: 600;'>%s</strong> for the following item(s):</p>", TEAL_PRIMARY, requester);
+                ? format("<div style='background: linear-gradient(135deg, #f0fff4 0%%, #e6fffa 100%%); border-left: 6px solid %s; padding: 25px; margin: 30px 0; " +
+                "border-radius: 0 12px 12px 0; box-shadow: 0 4px 15px rgba(5,84,75,0.1);'><p style='margin: 0; color: #2d3748; font-size: 16px; line-height: 1.7; " +
+                "font-style: italic;'>%s</p></div>", TEAL_PRIMARY, comment)
+                : format("<p style='color: #4a5568; font-size: 17px; line-height: 1.8; margin: 30px 0;'>Please be informed that the following request has been " +
+                "<strong style='color: %s; font-weight: 600;'> initiated </strong> by <strong style='color: %s; font-weight: 600;'>%s</strong> for the following item(s) " +
+                "and is <strong style='color: %s; font-weight: 600;'>awaiting your action</strong> :</p>", TEAL_PRIMARY, TEAL_PRIMARY, requester, TEAL_PRIMARY);
     }
 
 
