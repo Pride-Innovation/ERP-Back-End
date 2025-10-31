@@ -28,6 +28,7 @@ import pride.bank.erp.notification.Email;
 import pride.bank.erp.request.Request;
 import pride.bank.erp.request.RequestRepository;
 import pride.bank.erp.request.RequestService;
+import pride.bank.erp.role.Role;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
 import pride.bank.erp.stock.CommodityWithDetailsDao;
@@ -528,15 +529,17 @@ public class IssuanceService {
             String comment,
             Request request
     ) throws NotFoundException {
+
         ExtractNumberFromEmailAddress cleanedEmail = new ExtractNumberFromEmailAddress(getAdminManager().getEmail());
+        String msg = "Please review this issuance request for your approval.";
 
         emailService.sendEmailVerification(
-                cleanedEmail.getCleanedEmail(), // This must be Admin Manager Email
+                cleanedEmail.getCleanedEmail(), // This must be Admin Manager Email or Branch Manager Email
                 format("Stores Request ID: %s", request.getId()),
                 null,
-                "Manager",
+                getAdminManager().getFirstName(),
                 "View Request",
-                comment,
+                msg,
                 "requests",
                 request,
                 null,
@@ -556,8 +559,16 @@ public class IssuanceService {
     private User getAdminManager() throws NotFoundException {
         User currentUser = currentUserService.getCurrentUser();
 
+        Role role = currentUser.getTitle().getRole();
         Long supervisorTitleId = currentUser.getTitle().getReportsTo().getId();
-        List<User> supervisors = userRepository.findByTitleId(supervisorTitleId);
+
+        List<User> supervisors;
+
+        if (Objects.equals(role.getName(), "Branch Operations Manager")) {
+            supervisors = userRepository.findByTitleIdAndBranchId(supervisorTitleId, currentUser.getBranch().getId());
+        } else {
+            supervisors = userRepository.findByTitleId(supervisorTitleId);
+        }
 
         if (supervisors.isEmpty()) {
             throw new NotFoundException("No supervisor found for title ID: " + supervisorTitleId);
