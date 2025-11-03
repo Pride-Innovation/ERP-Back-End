@@ -98,7 +98,7 @@ public class IssuanceService {
             if (!Objects.equals(issuerBranchId, HEAD_OFFICE_ID)) {
                 logger.info("Branch issuing items to user - branch ID: " + issuerBranchId);
 
-                // Ensure that all items being issued are stationery
+                // Ensure that all items being issued are stationary
                 ensureThatAllItemsAreStationery(request.getCommodities());
 
                 // Validate that items are in branch store
@@ -213,7 +213,7 @@ public class IssuanceService {
      * Checks if a commodity is of type Stationery
      *
      * @param commodity The commodity to check
-     * @return true if the commodity is stationery, false otherwise
+     * @return true if the commodity is stationary, false otherwise
      */
     private boolean isStationery(Commodity commodity) {
         return commodity != null &&
@@ -235,7 +235,7 @@ public class IssuanceService {
     }
 
     /**
-     * Ensures that all commodities in the list are stationery items
+     * Ensures that all commodities in the list are stationary items
      *
      * @param commodities The list of commodities to check
      * @throws NotFoundException        If a commodity is not found

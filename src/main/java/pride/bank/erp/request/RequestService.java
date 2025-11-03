@@ -176,6 +176,7 @@ public class RequestService {
                 Commodity commodity = commodityService.findCommodity(dto.getCommodityId());
                 if (commodity != null && commodity.getAssetType() != null &&
                         STATIONERY_TYPE.equalsIgnoreCase(commodity.getAssetType().getName())) {
+                    System.out.println("contains Stationery");
                     return true;
                 }
             } catch (Exception e) {

@@ -8,12 +8,14 @@ Managing Director
 package pride.bank.erp.requestCommodity;
 
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
+@Builder
 public class RequestCommodityDTO {
     private int quantity;
     private Long commodityId;

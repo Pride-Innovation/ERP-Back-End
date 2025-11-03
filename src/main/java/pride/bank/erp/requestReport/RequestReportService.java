@@ -20,6 +20,9 @@ import pride.bank.erp.request.Request;
 import pride.bank.erp.request.RequestDTO;
 import pride.bank.erp.request.RequestRepository;
 import pride.bank.erp.request.RequestService;
+import pride.bank.erp.requestCommodity.RequestCommodity;
+import pride.bank.erp.requestCommodity.RequestCommodityDTO;
+import pride.bank.erp.requestCommodity.RequestCommodityRepository;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
 import pride.bank.erp.user.User;
@@ -27,6 +30,7 @@ import pride.bank.erp.user.UserRepository;
 import pride.bank.erp.user.UserService;
 
 import java.util.List;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -39,6 +43,7 @@ public class RequestReportService {
     private final Email emailService;
     private final UserRepository userRepository;
     private final UserBuilder userBuilder;
+    private final RequestCommodityRepository requestCommodityRepository;
 
     @Value("${application.admin.email}")
     private String adminEmailAddress;
@@ -106,6 +111,10 @@ public class RequestReportService {
         String statusName = status.getStatus();
         User requester = request.getRequester();
 
+        // Track Branch Stationery and Non stationery request
+        boolean isBranchStationeryRequest = false;
+        boolean isBranchNonStationeryRequest = false;
+
         if ("requestRejected".equalsIgnoreCase(statusName)) {
             setRequestPosition(request, request.getRequester());
             return notifyIndividual(
@@ -124,8 +133,18 @@ public class RequestReportService {
                     requester.getFirstName()
             );
 
+            List<RequestCommodity> requestCommodities = requestCommodityRepository.findByRequestId(request.getId());
+            List<RequestCommodityDTO> commodities = requestCommodities.stream().map(this::requestCommodityDtoBuilder).toList();
+
+            isBranchStationeryRequest = requestService.containsStationeryItems(commodities);
+            System.out.printf("Branch Request::: %s", isBranchStationeryRequest);
+            if (!requestService.containsStationeryItems(commodities)) {
+                System.out.println("Should not be here");
+                isBranchNonStationeryRequest = true;
+            }
+
             if (isHeadOffice(requester)) {
-                // Notify Admin if from Head Office
+                System.out.println("Head Office Request");
                 User admin = userRepository.findByEmail(adminEmailAddress)
                         .orElseThrow(() -> new IllegalStateException("Admin user not found for email: " + adminEmailAddress));
 
@@ -136,9 +155,24 @@ public class RequestReportService {
                         request,
                         "Admin"
                 );
-            } else {
+            } else if (!isHeadOffice(requester) && isBranchNonStationeryRequest) {
+                System.out.println("Branch Asset Request");
+                User admin = userRepository.findByEmail(adminEmailAddress)
+                        .orElseThrow(() -> new IllegalStateException("Admin user not found for email: " + adminEmailAddress));
+
+                setRequestPosition(request, admin);
+                return notifyIndividual(
+                        admin.getEmail(),
+                        comment,
+                        request,
+                        "Admin"
+                );
+            } else if (!isHeadOffice(requester) && isBranchStationeryRequest) {
                 // Notify Branch Operations Manager
                 User branchOpsManager = requester.getBranch().getBranchOperationsManager();
+                System.out.printf("Branch Name::: %s", requester.getBranch().getName());
+                System.out.printf("Branch Manager Name:: %s", branchOpsManager.getFirstName());
+
                 if (branchOpsManager == null) {
                     throw new NotFoundException("Branch Operations Manager not assigned for branch: "
                             + requester.getBranch().getName());
@@ -157,6 +191,15 @@ public class RequestReportService {
         return null;
     }
 
+
+    private RequestCommodityDTO requestCommodityDtoBuilder(RequestCommodity requestCommodity) {
+
+        return RequestCommodityDTO
+                .builder()
+                .quantity(requestCommodity.getQuantity())
+                .commodityId(requestCommodity.getId())
+                .build();
+    }
 
     private String notifyIndividual(
             String email,
