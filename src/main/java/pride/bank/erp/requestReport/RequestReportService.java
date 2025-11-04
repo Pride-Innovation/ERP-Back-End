@@ -170,8 +170,6 @@ public class RequestReportService {
             } else if (!isHeadOffice(requester) && isBranchStationeryRequest) {
                 // Notify Branch Operations Manager
                 User branchOpsManager = requester.getBranch().getBranchOperationsManager();
-                System.out.printf("Branch Name::: %s", requester.getBranch().getName());
-                System.out.printf("Branch Manager Name:: %s", branchOpsManager.getFirstName());
 
                 if (branchOpsManager == null) {
                     throw new NotFoundException("Branch Operations Manager not assigned for branch: "
@@ -197,7 +195,7 @@ public class RequestReportService {
         return RequestCommodityDTO
                 .builder()
                 .quantity(requestCommodity.getQuantity())
-                .commodityId(requestCommodity.getId())
+                .commodityId(requestCommodity.getCommodity().getId())
                 .build();
     }
 
