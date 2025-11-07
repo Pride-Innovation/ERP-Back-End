@@ -457,7 +457,7 @@ public class AssetService {
     }
 
     public Asset findAssetByTagName(String tagName) throws NotFoundException {
-        return assetRepository.findByTagName(tagName)
+        return assetRepository.findByEngravedNumber(tagName)
                 .orElseThrow(
                         () -> new NotFoundException(String
                                 .format("Asset with Tag Number: %s is not found", tagName))

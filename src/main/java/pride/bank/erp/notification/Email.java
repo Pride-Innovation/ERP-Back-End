@@ -132,11 +132,11 @@ public class Email {
         String passwordSection = password != null
                 ? format(
                 "<div style='background: linear-gradient(135deg, %s 0%%, %s 100%%); border-radius: 12px; padding: 20px; margin: 25px 0; text-align: center;'>" +
-                        "<h3 style='color: #ffffff; margin: 0 0 10px 0; font-size: 18px;'>Temporary Password</h3>" +
+                        "<h3 style='color: #004A4A; margin: 0 0 10px 0; font-size: 18px;'>Temporary Password</h3>" +
                         "<div style='background: rgba(255,255,255,0.2); border-radius: 8px; padding: 15px; font-family: monospace;'>" +
-                        "<span style='color: #ffffff; font-size: 20px; font-weight: bold; letter-spacing: 2px;'>%s</span>" +
+                        "<span style='color: #BC892C; font-size: 20px; font-weight: bold; letter-spacing: 2px;'>%s</span>" +
                         "</div>" +
-                        "<p style='color: #ffffff; margin: 10px 0 0 0; font-size: 13px; opacity: 0.9;'>Please change this password after your first login</p>" +
+                        "<p style='color: #000000; margin: 10px 0 0 0; font-size: 13px; opacity: 0.9;'>Please change this password after your first login</p>" +
                         "</div>",
                 GOLD_PRIMARY, GOLD_SECONDARY, password
         )

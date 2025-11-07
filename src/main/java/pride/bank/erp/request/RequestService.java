@@ -879,6 +879,7 @@ public class RequestService {
         String userRole = determineUserRole();
         log.debug("Determining requesters list for role: {} and status: {}", userRole, status);
 
+        System.out.println("We are finally here:: " + status + userRole);
         List<Long> result = switch (userRole) {
             case "OFFICER" -> List.of(currentUserService.getCurrentUser().getId());
 
@@ -919,10 +920,10 @@ public class RequestService {
             }
 
             case "BOM" -> {
-                if (pendingIssuedOrDashboard) {
+                if (pendingIssuedOrDashboard || "CREATED".equalsIgnoreCase(status)) {
                     Long currentBranchId = currentUserService.getCurrentUser().getBranch().getId();
                     yield userRepository.findUserIdsByBranchId(currentBranchId);
-                } else if ("CREATED".equalsIgnoreCase(status) || "REJECTED".equalsIgnoreCase(status)) {
+                } else if ("REJECTED".equalsIgnoreCase(status)) {
                     yield List.of(currentUserService.getCurrentUser().getId());
                 } else {
                     yield List.of(currentUserService.getCurrentUser().getId());

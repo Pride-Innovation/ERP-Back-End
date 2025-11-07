@@ -55,6 +55,8 @@ public interface AssetRepository extends JpaRepository<Asset, Long> {
 
     Optional<Asset> findByTagName(@Param("tagName") String tagName);
 
+    Optional<Asset> findByEngravedNumber(@Param("tagName") String tagName);
+
     List<Asset> findByStockId(Long stockId);
 
     List<Asset> findByAssetTypeId(@Param("assetTypeId") Long assetTypeId);
