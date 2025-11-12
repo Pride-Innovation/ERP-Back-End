@@ -4,6 +4,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import pride.bank.erp.branch.Branch;
+import pride.bank.erp.branch.BranchService;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
 import pride.bank.erp.helper.DeleteResponse;
@@ -15,6 +17,7 @@ import pride.bank.erp.user.UserService;
 public class DepartmentService {
     private final DepartmentRepository departmentRepository;
     private final UserService userService;
+    private final BranchService branchService;
 
     public Page<Department> fetchAllDepartments(Pageable pageable) {
         return departmentRepository.findAll(pageable);
@@ -28,10 +31,13 @@ public class DepartmentService {
     public Department createDepartment(DepartmentDTO request)
             throws NotFoundException {
         User headOfDepartment = userService.findUser(request.getHeadOfDepartment());
+        Branch branch = branchService.findBranch(request.getBranch());
         Department department = Department
                 .builder()
                 .name(request.getName())
                 .headOfDepartment(headOfDepartment)
+                .branch(branch)
+                .managersGroupEmail(request.getManagersGroupEmail())
                 .build();
         return departmentRepository.save(department);
     }
@@ -40,10 +46,12 @@ public class DepartmentService {
             throws NotFoundException {
         User headOfDepartment = userService.findUser(request.getHeadOfDepartment());
         Department department = findOneDepartment(id);
+        Branch branch = branchService.findBranch(request.getBranch());
 
         department.setHeadOfDepartment(headOfDepartment);
         department.setName(request.getName());
-
+        department.setBranch(branch);
+        department.setManagersGroupEmail(request.getManagersGroupEmail());
         return departmentRepository.save(department);
     }
 

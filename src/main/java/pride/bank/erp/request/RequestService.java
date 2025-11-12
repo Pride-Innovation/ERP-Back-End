@@ -834,12 +834,14 @@ public class RequestService {
         }
 
         Role role = currentUser.getTitle().getRole();
+        System.out.println("Current User Role::: " + role.getName());
         return switch (role.getName()) {
             case "Officer" -> "OFFICER";
             case "Manager" -> "MANAGER";
             case "Admin Officer" -> "ADMIN_OFFICER";
             case "Admin Manager" -> "ADMIN_MANAGER";
             case "Branch Operations Manager" -> "BOM";
+            case "Branch Manager" -> "BM";
             default -> "";
         };
     }
@@ -919,10 +921,24 @@ public class RequestService {
                 }
             }
 
-            case "BOM" -> {
+            case "BOM", "BM" -> {
                 if (pendingIssuedOrDashboard || "CREATED".equalsIgnoreCase(status)) {
+                    /*
+                    List<Long> headOfficeUserIds = userRepository.findUserIdsFromHeadOffice();
+                    List<Long> bomIds = userRepository.findAllBranchOperationsManagerIds();
+                    Set<Long> allowedUserIds = new HashSet<>();
+                    allowedUserIds.addAll(headOfficeUserIds);
+                    allowedUserIds.addAll(bomIds);
+                    yield new ArrayList<>(allowedUserIds)
+                     */
                     Long currentBranchId = currentUserService.getCurrentUser().getBranch().getId();
+//                    yield userRepository.findUserIdsByBranchId(currentBranchId);
+
+                    List<Long> branchUsers = userRepository.findUserIdsByBranchId(currentBranchId);
+                    List<Long> subordinates = getManagerAndSubordinateUserIds();
+
                     yield userRepository.findUserIdsByBranchId(currentBranchId);
+
                 } else if ("REJECTED".equalsIgnoreCase(status)) {
                     yield List.of(currentUserService.getCurrentUser().getId());
                 } else {

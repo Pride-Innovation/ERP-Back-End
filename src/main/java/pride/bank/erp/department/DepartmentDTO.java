@@ -11,4 +11,5 @@ public class DepartmentDTO {
     private String name;
     private Long headOfDepartment;
     private Long branch;
+    private String managersGroupEmail;
 }
