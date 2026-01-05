@@ -150,8 +150,20 @@ public class RequestService {
         List<CommodityWithQuantityDTO> commodities = commodityWithQuantityDTO(requestCommodities);
         savedRequest.setCommodities(commodities);
 
+        String emailStatus;
+
         // Notify supervisor
-        String emailStatus = notifySupervisor(supervisor, savedRequest);
+        if (!supervisor.isBlocked() || supervisor.isAccountNonLocked()) {
+            emailStatus = notifySupervisor(supervisor.getEmail(), savedRequest, supervisor.getFirstName());
+            notifySupervisor(supervisor.getDepartment().getManagersGroupEmail(), savedRequest, "Team");
+            // Notify the managers Group
+        } else {
+            emailStatus = notifySupervisor(
+                    supervisor.getDepartment().getManagersGroupEmail(),
+                    savedRequest,
+                    "Managers");
+        }
+        // Notify Managers Group
         savedRequest.setEmailMessage(emailStatus);
 
         log.info("Request created successfully with ID: {}", savedRequest.getId());
@@ -789,15 +801,15 @@ public class RequestService {
     /**
      * Notifies the supervisor about a new request
      */
-    private String notifySupervisor(User supervisor, Request request) {
+    private String notifySupervisor(String email, Request request, String name) {
         try {
-            ExtractNumberFromEmailAddress cleanedEmail = new ExtractNumberFromEmailAddress(supervisor.getEmail());
+            ExtractNumberFromEmailAddress cleanedEmail = new ExtractNumberFromEmailAddress(email);
 
             boolean emailStatus = emailService.sendEmailVerification(
                     cleanedEmail.getCleanedEmail(),
                     String.format("Action Required – Request Pending Processing: ( #%s )", request.getId()),
                     null,
-                    supervisor.getLastName(),
+                    name,
                     "View Request",
                     null,
                     "requests",
@@ -809,13 +821,13 @@ public class RequestService {
             );
 
             if (!emailStatus) {
-                log.warn("Failed to send notification to supervisor: {}", supervisor.getEmail());
-                return String.format("Request approval notification not sent to %s", supervisor.getEmail());
+                log.warn("Failed to send notification to supervisor: {}", email);
+                return String.format("Request approval notification not sent to %s", email);
             }
 
             log.info("Notification sent to supervisor: {} for request ID: {}",
-                    supervisor.getEmail(), request.getId());
-            return String.format("Request approval notification has been sent to %s", supervisor.getEmail());
+                    email, request.getId());
+            return String.format("Request approval notification has been sent to %s", email);
 
         } catch (Exception ex) {
             log.error("Error sending notification: {}", ex.getMessage());
@@ -930,12 +942,12 @@ public class RequestService {
                     allowedUserIds.addAll(headOfficeUserIds);
                     allowedUserIds.addAll(bomIds);
                     yield new ArrayList<>(allowedUserIds)
-                     */
-                    Long currentBranchId = currentUserService.getCurrentUser().getBranch().getId();
-//                    yield userRepository.findUserIdsByBranchId(currentBranchId);
+                    yield userRepository.findUserIdsByBranchId(currentBranchId);
 
                     List<Long> branchUsers = userRepository.findUserIdsByBranchId(currentBranchId);
                     List<Long> subordinates = getManagerAndSubordinateUserIds();
+                */
+                    Long currentBranchId = currentUserService.getCurrentUser().getBranch().getId();
 
                     yield userRepository.findUserIdsByBranchId(currentBranchId);
 
