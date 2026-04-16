@@ -8,6 +8,7 @@ Managing Director
 package pride.bank.erp.notification;
 
 import jakarta.mail.internet.MimeMessage;
+import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -114,8 +115,11 @@ public class Email {
     }
 
     /**
-     * Generates the HTML content for authentication emails.
-     * FIXED: White text visibility issues
+     * Generates the HTML content for authentication emails (account creation & password reset).
+     * The {@code reason} parameter is dual-purpose:
+     * - "reset"        → generates a password-reset link
+     * - any other text → treated as the recipient's full name for a personalised greeting
+     * - null           → generic greeting, standard verify link
      */
     private String getAuthenticationEmailContent(
             String token,
@@ -125,68 +129,119 @@ public class Email {
             String password,
             String reason
     ) {
-        String verifyLink = Objects.equals(reason, "reset") ?
-                format("%s/reset-password?token=%s", verificationUrl, token)
-                : format("%s/verify?token=%s", verificationUrl, token);
+        boolean isReset = Objects.equals(reason, "reset");
 
-        String passwordSection = password != null
+        String verifyLink = (token != null)
+                ? (isReset
+                ? format("%s/reset-password?token=%s", verificationUrl, token)
+                : format("%s/verify?token=%s", verificationUrl, token))
+                : "#";
+
+        // Personalised greeting: use reason as name when it's not a control keyword
+        String greeting = getString(reason, isReset);
+
+        // Password card — shown only for new-account emails
+        String passwordSection = (password != null)
                 ? format(
-                "<div style='background: linear-gradient(135deg, %s 0%%, %s 100%%); border-radius: 12px; padding: 20px; margin: 25px 0; text-align: center;'>" +
-                        "<h3 style='color: #004A4A; margin: 0 0 10px 0; font-size: 18px;'>Temporary Password</h3>" +
-                        "<div style='background: rgba(255,255,255,0.2); border-radius: 8px; padding: 15px; font-family: monospace;'>" +
-                        "<span style='color: #BC892C; font-size: 20px; font-weight: bold; letter-spacing: 2px;'>%s</span>" +
-                        "</div>" +
-                        "<p style='color: #000000; margin: 10px 0 0 0; font-size: 13px; opacity: 0.9;'>Please change this password after your first login</p>" +
+                "<div style='border: 2px solid %s; border-radius: 14px; overflow: hidden; margin: 28px 0;'>" +
+                        "  <div style='background: %s; padding: 12px 20px;'>" +
+                        "    <p style='margin: 0; color: #ffffff; font-size: 13px; font-weight: 700; " +
+                        "       letter-spacing: 1px; text-transform: uppercase;'>&#128274; Temporary Password</p>" +
+                        "  </div>" +
+                        "  <div style='background: #fafafa; padding: 20px; text-align: center;'>" +
+                        "    <code style='display: inline-block; font-family: \"Courier New\", Courier, monospace; " +
+                        "         font-size: 22px; font-weight: 700; color: %s; background: #ffffff; " +
+                        "         border: 1.5px dashed %s; border-radius: 8px; padding: 10px 24px; " +
+                        "         letter-spacing: 4px;'>%s</code>" +
+                        "    <p style='color: #718096; font-size: 13px; margin: 14px 0 0 0;'>" +
+                        "      &#9888; You will be prompted to change this password upon your first login.</p>" +
+                        "  </div>" +
                         "</div>",
-                GOLD_PRIMARY, GOLD_SECONDARY, password
-        )
+                TEAL_PRIMARY, TEAL_PRIMARY, TEAL_PRIMARY, GOLD_PRIMARY, password)
+                : "";
+
+        // Security / link-expiry notice
+        String expirySection = (expirationTime != null)
+                ? format(
+                "<div style='background: #f0faf9; border-left: 5px solid %s; border-radius: 0 10px 10px 0; " +
+                        "     padding: 16px 20px; margin: 24px 0;'>" +
+                        "  <p style='margin: 0; color: #2d3748; font-size: 14px; line-height: 1.6;'>" +
+                        "    <strong style='color: %s;'>&#9200; Link expires on:</strong>&nbsp; %s</p>" +
+                        "  <p style='margin: 6px 0 0 0; color: #718096; font-size: 13px;'>" +
+                        "    If the link has expired, please contact your system administrator to resend the verification.</p>" +
+                        "</div>",
+                TEAL_PRIMARY, TEAL_PRIMARY, expirationTime)
                 : "";
 
         return format(
                 "<!DOCTYPE html>" +
                         "<html lang='en'>" +
                         "<head>" +
-                        "<meta charset='UTF-8'>" +
-                        "<meta name='viewport' content='width=device-width, initial-scale=1.0'>" +
-                        "<title>%s</title>" +
+                        "  <meta charset='UTF-8'>" +
+                        "  <meta name='viewport' content='width=device-width, initial-scale=1.0'>" +
+                        "  <title>%s — Pride Bank</title>" +
                         "</head>" +
-                        "<body style='margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif; background-color: #f0f4f8;'>" +
-                        "<div style='background: linear-gradient(135deg, #e8f5f3 0%%, #f9f2e7 100%%); min-height: 100vh; padding: 40px 20px;'>" +
-                        "<div style='max-width: 650px; margin: 0 auto; background: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 25px 50px rgba(0,0,0,0.1);'>" +
+                        "<body style='margin:0; padding:0; font-family:-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, " +
+                        "     \"Helvetica Neue\", Arial, sans-serif; background-color:#f0f4f8;'>" +
 
-                        // Header Section - FIXED
-                        "<div style='background: linear-gradient(135deg, %s 0%%, %s 100%%); padding: 50px 30px; text-align: center;'>" +
-                        "<img src='cid:logoImage' alt='Pride Bank Logo' style='max-width: 280px; height: auto; filter: brightness(0) invert(1); margin-bottom: 20px;' />" +
-                        "<h1 style='color: #01607A; margin: 0; font-size: 24px; font-weight: 400; letter-spacing: 0.5px; text-shadow: 0 2px 4px rgba(0,0,0,0.2);'>Account Verification</h1>" +
-                        "<div style='width: 60px; height: 3px; background: %s; margin: 20px auto; border-radius: 2px;'></div>" +
+                        "<div style='background: linear-gradient(135deg, #e8f5f3 0%%, #f0f7ff 100%%); " +
+                        "     min-height: 100vh; padding: 40px 16px;'>" +
+                        "<div style='max-width: 620px; margin: 0 auto; background: #ffffff; border-radius: 20px; " +
+                        "     overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.10);'>" +
+
+                        // ── Header ──────────────────────────────────────────────────────
+                        // background-color is the solid fallback for email clients (e.g. Outlook) that
+                        // do not support CSS linear-gradient; background-image adds the gradient for
+                        // clients that do support it, without overriding the fallback color.
+                        "<div style='background-color: " + TEAL_PRIMARY + "; background-image: linear-gradient(135deg, %s 0%%, %s 100%%); padding: 44px 32px; text-align: center;'>" +
+                        "  <img src='cid:logoImage' alt='Pride Bank Limited' " +
+                        "       style='max-width: 260px; height: auto; filter: brightness(0) invert(1); margin-bottom: 24px;' />" +
+                        "  <div style='display: inline-block; background: rgba(255,255,255,0.15); " +
+                        "       border: 1px solid rgba(255,255,255,0.35); border-radius: 50px; " +
+                        "       padding: 6px 20px; margin-bottom: 16px;'>" +
+                        "    <span style='color: #ffffff; font-size: 12px; font-weight: 700; " +
+                        "          letter-spacing: 2px; text-transform: uppercase;'>Employee Portal</span>" +
+                        "  </div>" +
+                        "  <h1 style='color: #ffffff; margin: 0; font-size: 26px; font-weight: 600; " +
+                        "       letter-spacing: 0.3px; text-shadow: 0 2px 4px rgba(0,0,0,0.4);'>%s</h1>" +
+                        "  <div style='width: 48px; height: 3px; background: %s; margin: 18px auto 0; border-radius: 2px;'></div>" +
                         "</div>" +
 
-                        // Content Section - FIXED
-                        "<div style='padding: 50px 40px; background-color: #ffffff;'>" +
-                        "<h2 style='color: %s; margin: 0 0 15px 0; font-size: 26px; font-weight: 600;'>%s</h2>" +
-                        "<div style='width: 50px; height: 3px; background: %s; margin-bottom: 30px;'></div>" +
+                        // ── Body ────────────────────────────────────────────────────────
+                        "<div style='padding: 44px 40px; background: #ffffff;'>" +
 
-                        "<p style='color: #4a5568; font-size: 16px; line-height: 1.7; margin: 25px 0;'>Click the button below to <span style='text-transform: lowercase; color: %s; font-weight: 600;'>%s</span>:</p>" +
-
-                        // CTA Button - FIXED
-                        "<div style='text-align: center; margin: 40px 0;'>" +
-                        "<a href='%s' style='display: inline-block; padding: 18px 40px; color: #01607A; background: linear-gradient(135deg, %s 0%%, %s 100%%); text-decoration: none; border-radius: 50px; font-weight: 600; font-size: 16px; letter-spacing: 0.5px; text-transform: uppercase; box-shadow: 0 10px 30px rgba(5,84,75,0.3); transition: all 0.3s ease;'>%s</a>" +
-                        "</div>" +
-
-                        // Token Expiration
-                        "<div style='background: #f7fafc; border-left: 4px solid %s; border-radius: 0 8px 8px 0; padding: 20px; margin: 30px 0;'>" +
-                        "<p style='margin: 0; color: #4a5568; font-size: 15px;'><strong style='color: %s;'>⏰ Valid Until:</strong> %s</p>" +
-                        "</div>" +
-
+                        // Greeting & intro
                         "%s" +
 
-                        // Disclaimer
-                        "<div style='background: #fff5f5; border: 1px solid #fed7d7; border-radius: 12px; padding: 20px; margin-top: 40px;'>" +
-                        "<p style='color: #742a2a; font-size: 14px; margin: 0; line-height: 1.5;'>" +
-                        "<strong>🔒 Security Notice:</strong> If you did not request this verification, please ignore this email and contact our support team immediately." +
-                        "</p>" +
+                        // CTA button
+                        "<div style='text-align: center; margin: 36px 0;'>" +
+                        "  <a href='%s' style='display: inline-block; padding: 16px 40px; " +
+                        "     color: #ffffff; background-color: " + TEAL_PRIMARY + "; background-image: linear-gradient(135deg, %s 0%%, %s 100%%); " +
+                        "       text-decoration: none; border-radius: 50px; font-weight: 700; font-size: 15px; " +
+                        "       letter-spacing: 0.5px; text-transform: uppercase; " +
+                        "       box-shadow: 0 8px 24px rgba(5,84,75,0.35);'>%s</a>" +
+                        "  <p style='color: #a0aec0; font-size: 12px; margin: 14px 0 0 0;'>" +
+                        "    Button not working? <a href='%s' style='color: %s; word-break: break-all;'>Click here</a>" +
+                        "  </p>" +
                         "</div>" +
+
+                        // Expiry notice
+                        "%s" +
+
+                        // Temporary password
+                        "%s" +
+
+                        // Security disclaimer
+                        "<div style='background: #fff8f8; border: 1px solid #fecaca; border-radius: 12px; " +
+                        "     padding: 18px 20px; margin-top: 36px;'>" +
+                        "  <p style='color: #7f1d1d; font-size: 13px; margin: 0; line-height: 1.6;'>" +
+                        "    <strong>&#128274; Security Notice:</strong> If you did not expect this email, " +
+                        "    please disregard it and notify your IT department immediately. " +
+                        "    Do not share your temporary password with anyone." +
+                        "  </p>" +
                         "</div>" +
+
+                        "</div>" +   // end body
 
                         // Footer
                         getEmailFooter() +
@@ -195,18 +250,34 @@ public class Email {
                         "</div>" +
                         "</body>" +
                         "</html>",
-                headerText,
-                TEAL_PRIMARY, TEAL_SECONDARY,
-                GOLD_PRIMARY,
-                TEAL_PRIMARY, headerText,
-                GOLD_PRIMARY,
-                TEAL_PRIMARY, headerText,
-                verifyLink,
-                TEAL_PRIMARY, TEAL_SECONDARY, buttonText,
-                GOLD_PRIMARY,
-                TEAL_PRIMARY, expirationTime,
-                passwordSection
+
+                // format arguments
+                headerText,                         // <title>
+                TEAL_PRIMARY, TEAL_SECONDARY,       // header gradient
+                headerText,                         // h1 text
+                GOLD_PRIMARY,                       // h1 underline
+                greeting,                           // personalised greeting + intro
+                verifyLink,                         // CTA href
+                TEAL_PRIMARY, TEAL_SECONDARY,       // CTA gradient
+                buttonText,                         // CTA label
+                verifyLink, TEAL_PRIMARY,           // fallback link
+                expirySection,                      // expiry block
+                passwordSection                     // password card
         );
+    }
+
+    private static @NonNull String getString(String reason, boolean isReset) {
+        String recipientName = (!isReset && reason != null && !reason.isBlank()) ? reason : null;
+        return recipientName != null
+                ? format(
+                "<p style='color: #2d3748; font-size: 18px; font-weight: 500; margin: 0 0 8px 0;'>" +
+                        "Dear <strong style='color: %s;'>%s</strong>,</p>" +
+                        "<p style='color: #4a5568; font-size: 15px; line-height: 1.7; margin: 0 0 28px 0;'>" +
+                        "Welcome to Pride Bank. Your employee account has been created and is ready for activation. " +
+                        "Please review your credentials below and verify your account to get started.</p>",
+                TEAL_PRIMARY, recipientName)
+                : "<p style='color: #4a5568; font-size: 15px; line-height: 1.7; margin: 0 0 28px 0;'>" +
+                "Please follow the instructions below to proceed.</p>";
     }
 
     /**
@@ -220,9 +291,9 @@ public class Email {
 
         // FIXED: Total row with proper white text on colored background
         String totalRow = String.format(
-                "<tr style='background: linear-gradient(135deg, %s 0%%, %s 100%%);'>" +
-                        "<td style='padding: 18px 24px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; color: #01607A; border: none;' colspan='3'>Total Quantity</td>" +
-                        "<td style='padding: 18px 24px; font-weight: 700; font-size: 20px; color: #01607A; border: none;'>%d</td>" +
+                "<tr style='background-color: " + TEAL_PRIMARY + "; background-image: linear-gradient(135deg, %s 0%%, %s 100%%);'>" +
+                        "<td style='padding: 18px 24px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; color: #ffffff; border: none;' colspan='3'>Total Quantity</td>" +
+                        "<td style='padding: 18px 24px; font-weight: 700; font-size: 20px; color: #ffffff; border: none;'>%d</td>" +
                         "</tr>",
                 TEAL_PRIMARY, TEAL_SECONDARY, totalQuantity
         );
@@ -247,7 +318,7 @@ public class Email {
                         // Header Section
                         "<div style='background: linear-gradient(135deg, %s 0%%, %s 100%%); padding: 50px 40px; text-align: center;'>" +
                         "<img src='cid:logoImage' alt='Pride Bank Logo' style='max-width: 300px; height: auto; filter: brightness(0) invert(1); margin-bottom: 25px;' />" +
-                        "<h1 style='color: #01607A; margin: 0; font-size: 32px; font-weight: 400; letter-spacing: 1px; text-shadow: 0 2px 4px rgba(0,0,0,0.4);'>Store Request Notification</h1>" +
+                        "<h1 style='color: #ffffff; margin: 0; font-size: 32px; font-weight: 400; letter-spacing: 1px; text-shadow: 0 2px 4px rgba(0,0,0,0.4);'>Store Request Notification</h1>" +
                         "<div style='width: 80px; height: 4px; background: %s; margin: 20px auto; border-radius: 2px;'></div>" +
                         "</div>" +
 
@@ -280,7 +351,7 @@ public class Email {
                         // Call to Action
                         "<div style='text-align: center; margin: 50px 0; background-color: #ffffff;'>" +
                         "<p style='color: #4a5568; font-size: 16px; margin-bottom: 30px; font-weight: 500;'>To review and take action on this request, click the button below:</p>" +
-                        "<a href='%s' style='display: inline-block; padding: 20px 45px; color: #01607A; background: linear-gradient(135deg, %s 0%%, %s 100%%); text-decoration: none; border-radius: 50px; font-weight: 700; font-size: 16px; letter-spacing: 0.5px; text-transform: uppercase; box-shadow: 0 12px 35px rgba(5,84,75,0.4); transition: all 0.3s ease;'>%s</a>" +
+                        "<a href='%s' style='display: inline-block; padding: 20px 45px; color: #ffffff; background-color: " + TEAL_PRIMARY + "; background-image: linear-gradient(135deg, %s 0%%, %s 100%%); text-decoration: none; border-radius: 50px; font-weight: 700; font-size: 16px; letter-spacing: 0.5px; text-transform: uppercase; box-shadow: 0 12px 35px rgba(5,84,75,0.4); transition: all 0.3s ease;'>%s</a>" +
                         "</div>" +
 
                         // Disclaimer
@@ -419,7 +490,7 @@ public class Email {
                         // Header - FIXED
                         "<div style='background: linear-gradient(135deg, %s 0%%, %s 100%%); padding: 50px 30px; text-align: center;'>" +
                         "<img src='cid:logoImage' alt='Pride Bank Logo' style='max-width: 280px; height: auto; filter: brightness(0) invert(1); margin-bottom: 20px;' />" +
-                        "<h1 style='color: #01607A; margin: 0; font-size: 28px; font-weight: 400; letter-spacing: 0.5px; text-shadow: 0 2px 4px rgba(0,0,0,0.2);'>Stock Notification</h1>" +
+                        "<h1 style='color: #ffffff; margin: 0; font-size: 28px; font-weight: 400; letter-spacing: 0.5px; text-shadow: 0 2px 4px rgba(0,0,0,0.2);'>Stock Notification</h1>" +
                         "<div style='width: 60px; height: 3px; background: %s; margin: 20px auto; border-radius: 2px;'></div>" +
                         "</div>" +
 
@@ -454,7 +525,7 @@ public class Email {
 
                         // CTA Button - FIXED
                         "<div style='text-align: center; margin: 40px 0;'>" +
-                        "<a href='%s' style='display: inline-block; padding: 18px 40px; color: #01607A; background: linear-gradient(135deg, %s 0%%, %s 100%%); text-decoration: none; border-radius: 50px; font-weight: 600; font-size: 16px; letter-spacing: 0.5px; text-transform: uppercase; box-shadow: 0 10px 30px rgba(5,84,75,0.3);'>%s</a>" +
+                        "<a href='%s' style='display: inline-block; padding: 18px 40px; color: #ffffff; background-color: " + TEAL_PRIMARY + "; background-image: linear-gradient(135deg, %s 0%%, %s 100%%); text-decoration: none; border-radius: 50px; font-weight: 600; font-size: 16px; letter-spacing: 0.5px; text-transform: uppercase; box-shadow: 0 10px 30px rgba(5,84,75,0.3);'>%s</a>" +
                         "</div>" +
 
                         "<div style='text-align: center; margin-top: 30px;'>" +
