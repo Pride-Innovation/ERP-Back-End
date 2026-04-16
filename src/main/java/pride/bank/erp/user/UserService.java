@@ -25,6 +25,7 @@ import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.config.JwtService;
 import pride.bank.erp.department.Department;
 import pride.bank.erp.department.DepartmentRepository;
+import pride.bank.erp.exception.BadRequestException;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.ExtractNumberFromEmailAddress;
 import pride.bank.erp.helper.FileUpload;
@@ -38,7 +39,6 @@ import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.*;
 
-import static java.lang.String.format;
 import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
 
 
@@ -67,15 +67,28 @@ public class UserService {
     @Transactional
     public UserResponse saveUser(UserDTO user)
             throws NotFoundException {
+
+        // Duplicate checks with descriptive errors
+        if (userRepository.existsByEmail(user.getEmail())) {
+            throw new BadRequestException("An account with the email address '" + user.getEmail() + "' already exists.");
+        }
+        if (userRepository.existsByStaffNumber(user.getStaffNumber())) {
+            throw new BadRequestException("An account with staff number '" + user.getStaffNumber() + "' already exists.");
+        }
+
         Title title = titleService.findTitle(user.getTitle());
-        Optional<Branch> branch = branchRepository.findById(user.getBranch());
-        assert branch.isPresent();
+        Branch branch = branchRepository.findById(user.getBranch())
+                .orElseThrow(() -> new NotFoundException("Duty Station / Branch with ID " + user.getBranch() + " not found."));
 
         Department department = null;
-
         if (user.getDepartment() != null) {
             department = departmentRepository.findById(user.getDepartment()).orElse(null);
         }
+
+        // Default availability to 'present' when not supplied
+        String availability = (user.getAvailability() != null && !user.getAvailability().isBlank())
+                ? user.getAvailability()
+                : "present";
 
         String generatedPassword = PasswordGenerator.generatePassword();
 
@@ -84,10 +97,10 @@ public class UserService {
                 .lastName(user.getLastName())
                 .email(user.getEmail())
                 .gender(user.getGender())
-                .availability(user.getAvailability())
+                .availability(availability)
                 .staffNumber(user.getStaffNumber())
                 .title(title)
-                .branch(branch.get())
+                .branch(branch)
                 .department(department)
                 .isEnabled(false)
                 .blocked(false)
@@ -97,26 +110,27 @@ public class UserService {
 
         String token = jwtService.generateToken(newUser);
         ExtractNumberFromEmailAddress cleanedEmail = new ExtractNumberFromEmailAddress(newUser.getEmail());
+        String recipientFullName = user.getFirstName() + " " + user.getLastName();
 
         boolean emailSent = emailService
                 .sendEmailVerification(
                         cleanedEmail.getCleanedEmail(),
-                        "Account verification",
+                        "Welcome to Pride Bank — Verify Your Account",
                         token,
-                        "Verify Your Account",
-                        "Verify Account",
+                        "Account Verification",
+                        "Verify My Account",
                         generatedPassword,
                         "authentication",
                         null,
                         null,
                         null,
                         null,
-                        null
+                        recipientFullName          // passed via the reason parameter
                 );
 
         if (!emailSent) {
             Response emailResponse = new Response("failed",
-                    "Failed to send verification email to " + newUser.getEmail());
+                    "Failed to send verification email to " + newUser.getEmail() + ". Please contact the system administrator.");
             return UserResponse
                     .builder()
                     .response(emailResponse)
@@ -126,7 +140,7 @@ public class UserService {
 
         User savedUser = userRepository.save(newUser);
         Response emailResponse = new Response("success",
-                "Verification email has been sent to " + savedUser.getEmail());
+                "Account created successfully. A verification email has been sent to " + savedUser.getEmail() + ".");
         return UserResponse
                 .builder()
                 .response(emailResponse)
@@ -141,11 +155,18 @@ public class UserService {
         User user = findUser(userId);
         Title title = titleService.findTitle(request.getTitle());
 
-        Optional<Branch> branch = branchRepository.findById(request.getBranch());
-        assert branch.isPresent();
+        // Duplicate checks excluding the current user's own values
+        if (userRepository.existsByEmailAndIdNot(request.getEmail(), userId)) {
+            throw new BadRequestException("An account with the email address '" + request.getEmail() + "' already exists.");
+        }
+        if (userRepository.existsByStaffNumberAndIdNot(request.getStaffNumber(), userId)) {
+            throw new BadRequestException("An account with staff number '" + request.getStaffNumber() + "' already exists.");
+        }
+
+        Branch branch = branchRepository.findById(request.getBranch())
+                .orElseThrow(() -> new NotFoundException("Duty Station / Branch with ID " + request.getBranch() + " not found."));
 
         Department department = null;
-
         if (request.getDepartment() != null) {
             department = departmentRepository.findById(request.getDepartment()).orElse(null);
         }
@@ -162,7 +183,7 @@ public class UserService {
         user.setAccountNonLocked(request.isAccountNonLocked());
         user.setEmail(request.getEmail());
         user.setBlocked(request.isBlocked());
-        user.setBranch(branch.get());
+        user.setBranch(branch);
 
         return userRepository.save(user);
     }
@@ -183,6 +204,7 @@ public class UserService {
         return userRepository.save(user);
     }
 
+    @Transactional
     public User unblockUser(Long userID) throws NotFoundException {
         User user = findUser(userID);
         user.setAccountNonLocked(true);
@@ -195,7 +217,7 @@ public class UserService {
     }
 
     @Transactional
-    private void checkIfUserIsReturningFromLeave(User user) {
+    protected void checkIfUserIsReturningFromLeave(User user) {
         LocalDateTime now = LocalDateTime.now();
 
         Optional<Leave> leaveOpt = leaveRepository.findActiveLeaveEndedByUser(user.getId(), now);
@@ -351,6 +373,7 @@ public class UserService {
                         .email(dto.getEmail())
                         .password(passwordEncoder.encode(generatedPassword))
                         .gender(dto.getGender())
+                        .availability("present")
                         .title(title)
                         .branch(branch)
                         .department(department)
@@ -362,16 +385,17 @@ public class UserService {
                 userRepository.save(user);
 
                 // Notify user after successful save
+                String recipientFullName = firstName + (lastName != null ? " " + lastName : "");
                 ExtractNumberFromEmailAddress cleanedEmail = new ExtractNumberFromEmailAddress(dto.getEmail());
                 emailService.sendEmailVerification(
                         cleanedEmail.getCleanedEmail(),
-                        "Account verification",
+                        "Welcome to Pride Bank — Verify Your Account",
                         null,
-                        "Verify Your Account",
-                        "Verify Account",
+                        "Account Verification",
+                        "Verify My Account",
                         generatedPassword,
                         "authentication",
-                        null, null, null, null, null
+                        null, null, null, null, recipientFullName
                 );
 
                 successCount++;
