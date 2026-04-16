@@ -14,6 +14,8 @@ import pride.bank.erp.helper.Constants;
 @NoArgsConstructor
 public class UserDTO {
     private String availability;
+
+    @NotNull(message = "Duty Station / Branch is required")
     private Long branch;
 
     @Email(message = Constants.EMAIL_VALIDATOR)
@@ -38,7 +40,10 @@ public class UserDTO {
     @NotBlank(message = Constants.BLANK_FIELD_VALIDATOR)
     @NotNull(message = Constants.NULL_FIELD_VALIDATOR)
     private String staffNumber;
+
+    @NotNull(message = "Title is required")
     private Long title;
+
     private Long department;
     private boolean isEnabled;
     private boolean isAccountNonLocked;
