@@ -22,6 +22,14 @@ import java.util.Optional;
 public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByEmail(String email);
 
+    boolean existsByEmail(String email);
+
+    boolean existsByStaffNumber(String staffNumber);
+
+    boolean existsByEmailAndIdNot(String email, Long id);
+
+    boolean existsByStaffNumberAndIdNot(String staffNumber, Long id);
+
     List<User> findByTitleId(Long tileId);
 
     @Query("SELECT u.id FROM User u WHERE u.title.id IN :titleIds")
