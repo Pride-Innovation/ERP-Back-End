@@ -21,6 +21,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import pride.bank.erp.exception.AccountBlockedException;
 import pride.bank.erp.exception.NotFoundException;
 
 import java.io.IOException;
@@ -149,7 +150,18 @@ public class ApplicationExceptionHandler {
     public ProblemDetail handleBadCredentialsException(Exception ex) {
         ProblemDetail errorDetail = ProblemDetail
                 .forStatusAndDetail(HttpStatus.UNAUTHORIZED, ex.getMessage());
+        errorDetail.setProperty("errorCode", "INVALID_CREDENTIALS");
         errorDetail.setProperty("access_denied_reason", "Invalid Email or Password");
+        return errorDetail;
+    }
+
+    @ExceptionHandler(AccountBlockedException.class)
+    @ResponseStatus(HttpStatus.UNAUTHORIZED)
+    public ProblemDetail handleAccountBlockedException(AccountBlockedException ex) {
+        ProblemDetail errorDetail = ProblemDetail
+                .forStatusAndDetail(HttpStatus.UNAUTHORIZED, ex.getMessage());
+        errorDetail.setProperty("errorCode", "ACCOUNT_BLOCKED");
+        errorDetail.setProperty("access_denied_reason", ex.getMessage());
         return errorDetail;
     }
 
@@ -157,7 +169,8 @@ public class ApplicationExceptionHandler {
     @ResponseStatus(HttpStatus.UNAUTHORIZED)
     public ProblemDetail handleDisabledException(DisabledException ex) {
         ProblemDetail errorDetail = ProblemDetail
-                .forStatusAndDetail(HttpStatus.UNAUTHORIZED, "User account is disabled, Please contact Admin");
+                .forStatusAndDetail(HttpStatus.UNAUTHORIZED, "Your account has been disabled. Please contact your admin.");
+        errorDetail.setProperty("errorCode", "ACCOUNT_DISABLED");
         errorDetail.setProperty("access_denied_reason", "Account Disabled. Please contact Admin");
         return errorDetail;
     }
@@ -166,7 +179,8 @@ public class ApplicationExceptionHandler {
     @ResponseStatus(HttpStatus.UNAUTHORIZED)
     public ProblemDetail handleLockedException(LockedException ex) {
         ProblemDetail errorDetail = ProblemDetail
-                .forStatusAndDetail(HttpStatus.UNAUTHORIZED, "User account is locked");
+                .forStatusAndDetail(HttpStatus.UNAUTHORIZED, ex.getMessage());
+        errorDetail.setProperty("errorCode", "ACCOUNT_LOCKED");
         errorDetail.setProperty("access_denied_reason", "Account Locked. Please verify your email.");
         return errorDetail;
     }
