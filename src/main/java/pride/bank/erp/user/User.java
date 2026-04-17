@@ -64,6 +64,7 @@ public class User implements UserDetails {
     private String profileImage;
     private boolean blocked;
     private boolean isActing;
+    private int failedLoginAttempts = 0;
 
     @CreatedDate
     @Column(updatable = false)
