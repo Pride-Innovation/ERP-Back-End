@@ -191,8 +191,13 @@ public class UserService {
     public User deleteUser(Long userId) throws NotFoundException {
         User user = findUser(userId);
         user.setEnabled(false);
-        user.setAccountNonLocked(false);
+        return userRepository.save(user);
+    }
+
+    public User blockUser(Long userId) throws NotFoundException {
+        User user = findUser(userId);
         user.setBlocked(true);
+        user.setAccountNonLocked(false);
         return userRepository.save(user);
     }
 
@@ -209,10 +214,15 @@ public class UserService {
         User user = findUser(userID);
         user.setAccountNonLocked(true);
         user.setBlocked(false);
+        user.setFailedLoginAttempts(0);
+        return userRepository.save(user);
+    }
 
-        // Manage Leave if user returning from leave
+    @Transactional
+    public User returnUserFromLeave(Long userId) throws NotFoundException {
+        User user = findUser(userId);
+        user.setEnabled(true);
         checkIfUserIsReturningFromLeave(user);
-
         return userRepository.save(user);
     }
 
@@ -220,7 +230,11 @@ public class UserService {
     protected void checkIfUserIsReturningFromLeave(User user) {
         LocalDateTime now = LocalDateTime.now();
 
-        Optional<Leave> leaveOpt = leaveRepository.findActiveLeaveEndedByUser(user.getId(), now);
+        // For scheduled returns: find a leave that has ended; for manual returns: find any active leave
+        Optional<Leave> leaveOpt = leaveRepository.findActiveLeaveByUser(user.getId());
+        if (leaveOpt.isEmpty()) {
+            leaveOpt = leaveRepository.findActiveLeaveEndedByUser(user.getId(), now);
+        }
 
         if (leaveOpt.isPresent()) {
             Leave leave = leaveOpt.get();
