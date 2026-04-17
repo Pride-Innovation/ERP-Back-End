@@ -11,6 +11,8 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.time.LocalDateTime;
+
 @Getter
 @Setter
 @Builder
@@ -25,4 +27,8 @@ public class UserSearchCriteria {
     private String name;
     private String staffNumber;
     private String title;
+    /** Inclusive lower bound on createDate */
+    private LocalDateTime createdAtFrom;
+    /** Inclusive upper bound on createDate */
+    private LocalDateTime createdAtTo;
 }
