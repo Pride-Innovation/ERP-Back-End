@@ -238,40 +238,29 @@ public class UserService {
     }
 
     public Page<User> fetchUsers(
-            int pageSize,
-            String sortDirection,
-            int pageNumber,
-            String sortBy,
-            String firstName,
-            String lastName,
-            String email,
-            String phone,
-            Boolean blocked,
-            Boolean isEnabled,
-            Boolean isAccountNonLocked,
-            String name,
-            String staffNumber,
-            String title
+            UserQueryParams params
     ) {
         try {
             UserPage userPage = UserPage.builder()
-                    .pageSize(pageSize)
-                    .sortDirection(determineSortDirection(sortDirection))
-                    .sortBy(sortBy)
-                    .pageNumber(pageNumber)
+                    .pageSize(params.getPageSize())
+                    .sortDirection(determineSortDirection(params.getSortDirection()))
+                    .sortBy(params.getSortBy())
+                    .pageNumber(params.getPageNumber())
                     .build();
             UserSearchCriteria userSearchCriteria = UserSearchCriteria
                     .builder()
-                    .firstName(firstName)
-                    .lastName(lastName)
-                    .email(email)
-                    .phone(phone)
-                    .blocked(blocked)
-                    .isAccountNonLocked(isAccountNonLocked)
-                    .isEnabled(isEnabled)
-                    .name(name)
-                    .staffNumber(staffNumber)
-                    .title(title)
+                    .firstName(params.getFirstName())
+                    .lastName(params.getLastName())
+                    .email(params.getEmail())
+                    .phone(params.getPhone())
+                    .blocked(params.getBlocked())
+                    .isAccountNonLocked(params.getIsAccountNonLocked())
+                    .isEnabled(params.getIsEnabled())
+                    .name(params.getName())
+                    .staffNumber(params.getStaffNumber())
+                    .title(params.getTitle())
+                    .createdAtFrom(params.getCreatedAtFrom())
+                    .createdAtTo(params.getCreatedAtTo())
                     .build();
             return userSearchDao.findAllWithFilters(userPage, userSearchCriteria);
         } catch (Exception e) {
