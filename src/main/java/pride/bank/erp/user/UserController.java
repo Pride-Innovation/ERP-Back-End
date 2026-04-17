@@ -10,7 +10,7 @@ package pride.bank.erp.user;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -20,7 +20,6 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import pride.bank.erp.asset.BulkAssetDTO;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
 
@@ -28,49 +27,16 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
-import static pride.bank.erp.helper.Constants.ASCENDING_SORT_DIRECTION;
-
 
 @RestController
 @RequestMapping(Constants.GENERAL_ROUTE)
+@RequiredArgsConstructor
 public class UserController {
-    @Autowired
-    private UserService userService;
+    private final UserService userService;
 
     @GetMapping("/users")
-    public ResponseEntity<Page<User>> getAllUsers(
-            @RequestParam(required = false, defaultValue = "10") int pageSize,
-            @RequestParam(required = false, defaultValue = ASCENDING_SORT_DIRECTION) String sortDirection,
-            @RequestParam(required = false, defaultValue = "0") int pageNumber,
-            @RequestParam(required = false, defaultValue = "id") String sortBy,
-            @RequestParam(required = false) String firstName,
-            @RequestParam(required = false) String lastName,
-            @RequestParam(required = false) String email,
-            @RequestParam(required = false) String phone,
-            @RequestParam(required = false) String address,
-            @RequestParam(required = false) Boolean blocked,
-            @RequestParam(required = false) Boolean isEnabled,
-            @RequestParam(required = false) Boolean isAccountNonLocked,
-            @RequestParam(required = false) String name,
-            @RequestParam(required = false) String staffNumber,
-            @RequestParam(required = false) String title
-    ) {
-        Page<User> users = userService.fetchUsers(
-                pageSize,
-                sortDirection,
-                pageNumber,
-                sortBy,
-                firstName,
-                lastName,
-                email,
-                phone,
-                blocked,
-                isEnabled,
-                isAccountNonLocked,
-                name,
-                staffNumber,
-                title
-        );
+    public ResponseEntity<Page<User>> getAllUsers(UserQueryParams params) {
+        Page<User> users = userService.fetchUsers(params);
         return new ResponseEntity<>(users, HttpStatus.OK);
     }
 
