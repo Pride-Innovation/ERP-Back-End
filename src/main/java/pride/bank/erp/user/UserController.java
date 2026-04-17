@@ -83,6 +83,20 @@ public class UserController {
         return new ResponseEntity<>(response, HttpStatusCode.valueOf(201));
     }
 
+    @PostMapping("/users/{userID}/block")
+    public ResponseEntity<User> blockUser(@PathVariable Long userID)
+            throws NotFoundException {
+        User response = userService.blockUser(userID);
+        return new ResponseEntity<>(response, HttpStatusCode.valueOf(201));
+    }
+
+    @PostMapping("/users/{userID}/return-from-leave")
+    public ResponseEntity<User> returnUserFromLeave(@PathVariable Long userID)
+            throws NotFoundException {
+        User response = userService.returnUserFromLeave(userID);
+        return new ResponseEntity<>(response, HttpStatusCode.valueOf(201));
+    }
+
     @GetMapping("/users/search")
     public ResponseEntity<Page<User>> searchUserByEmailNameStaffNumber(
             @RequestParam String text,
