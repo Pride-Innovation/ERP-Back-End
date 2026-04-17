@@ -6,6 +6,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -16,4 +17,14 @@ public interface LeaveRepository extends JpaRepository<Leave, Long> {
             "AND l.active = true " +
             "AND l.endDate <= :now")
     Optional<Leave> findActiveLeaveEndedByUser(@Param("userId") Long userId, @Param("now") LocalDateTime now);
+
+    @Query("SELECT l FROM leave_request l " +
+            "WHERE l.onLeaveUser.id = :userId " +
+            "AND l.active = true")
+    Optional<Leave> findActiveLeaveByUser(@Param("userId") Long userId);
+
+    @Query("SELECT l FROM leave_request l " +
+            "WHERE l.active = true " +
+            "AND l.endDate <= :now")
+    List<Leave> findAllActiveLeavesEnded(@Param("now") LocalDateTime now);
 }
