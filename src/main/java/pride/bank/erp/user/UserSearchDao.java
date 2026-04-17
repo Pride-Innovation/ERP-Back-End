@@ -16,6 +16,7 @@ import jakarta.persistence.criteria.Root;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -123,6 +124,19 @@ public class UserSearchDao {
 
         if (Objects.nonNull(userSearchCriteria.getTitle())) {
             predicates.add(criteriaBuilder.like(userRoot.get("title").get("name"), "%" + userSearchCriteria.getTitle() + "%"));
+        }
+
+        // Date range filter on createDate
+        if (Objects.nonNull(userSearchCriteria.getCreatedAtFrom())) {
+            predicates.add(criteriaBuilder.greaterThanOrEqualTo(
+                    userRoot.<LocalDateTime>get("createDate"),
+                    userSearchCriteria.getCreatedAtFrom()));
+        }
+
+        if (Objects.nonNull(userSearchCriteria.getCreatedAtTo())) {
+            predicates.add(criteriaBuilder.lessThanOrEqualTo(
+                    userRoot.<LocalDateTime>get("createDate"),
+                    userSearchCriteria.getCreatedAtTo()));
         }
 
         return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
