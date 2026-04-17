@@ -16,6 +16,7 @@ import org.springframework.security.authentication.*;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import pride.bank.erp.config.JwtService;
+import pride.bank.erp.exception.AccountBlockedException;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.ExtractNumberFromEmailAddress;
 import pride.bank.erp.helper.PasswordGenerator;
@@ -91,16 +92,33 @@ public class AuthenticationService {
             throw new DisabledException("Account is disabled. Please contact Admin");
         }
 
+        if (user.isBlocked()) {
+            throw new AccountBlockedException("Your account has been blocked. Please contact your admin.");
+        }
+
         if (!user.isAccountNonLocked()) {
             throw new LockedException("Account is locked. Please verify your email.");
         }
 
-        if (user.isBlocked()) {
-            throw new LockedException("Account is blocked. Please Contact your Admin.");
+        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+            int attempts = user.getFailedLoginAttempts() + 1;
+            user.setFailedLoginAttempts(attempts);
+            if (attempts >= 3) {
+                user.setBlocked(true);
+                user.setAccountNonLocked(false);
+                user.setFailedLoginAttempts(0);
+                userRepository.save(user);
+                throw new AccountBlockedException("Your account has been blocked after multiple failed login attempts. Please contact your admin.");
+            }
+            userRepository.save(user);
+            int remaining = 3 - attempts;
+            throw new BadCredentialsException("Invalid email or password. " + remaining + " attempt(s) remaining before account lockout.");
         }
 
-        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-            throw new BadCredentialsException("Invalid username or password");
+        // Reset failed login counter on successful login
+        if (user.getFailedLoginAttempts() > 0) {
+            user.setFailedLoginAttempts(0);
+            userRepository.save(user);
         }
 
         authenticationManager.authenticate(
