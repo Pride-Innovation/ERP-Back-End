@@ -100,8 +100,7 @@ public class LeaveService {
      * Disables a user account who is going on leave.
      */
     private void deactivateUser(User user) {
-        user.setAccountNonLocked(false);
-        user.setBlocked(true);
+        user.setEnabled(false);
         userRepository.save(user);
     }
 
