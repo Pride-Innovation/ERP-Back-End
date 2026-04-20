@@ -8,7 +8,6 @@ Managing Director
 package pride.bank.erp.config;
 
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.domain.AuditorAware;
@@ -26,7 +25,6 @@ import pride.bank.erp.user.UserRepository;
 @Configuration
 @RequiredArgsConstructor
 public class ApplicationConfig {
-    @Autowired
     private final UserRepository userRepository;
 
     @Bean
