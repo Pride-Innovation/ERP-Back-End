@@ -49,6 +49,7 @@ public class Role {
     @NotNull(message = Constants.NULL_FIELD_VALIDATOR)
     @NotBlank(message = Constants.BLANK_FIELD_VALIDATOR)
     private String name;
+    private String description;
 
     @CreatedDate
     @Column(nullable = false, updatable = false)
