@@ -33,6 +33,7 @@ public class Branch {
     private String name;
     private String telephone;
     private String email;
+    private String shortCode;
 
     @OneToMany(mappedBy = "branch", cascade = CascadeType.PERSIST)
     @JsonIgnore
