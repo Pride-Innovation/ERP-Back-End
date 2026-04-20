@@ -10,6 +10,8 @@ package pride.bank.erp.config;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
@@ -43,6 +45,7 @@ import static pride.bank.erp.helper.Constants.*;
 @Component
 @RequiredArgsConstructor
 public class DataInitializer {
+    private static final Logger log = LoggerFactory.getLogger(DataInitializer.class);
     private final PermissionRepository permissionRepository;
     private final RoleRepository roleRepository;
     private final UserRepository userRepository;
@@ -53,6 +56,8 @@ public class DataInitializer {
     private final AssetTypeRepository assetTypeRepository;
     private final TitleRepository titleRepository;
     private final BranchRepository branchRepository;
+    private final RoleSeeder roleSeeder;
+    private final TitleSeeder titleSeeder;
 
     @Value("${application.super.admin.email}")
     private String email;
@@ -94,6 +99,8 @@ public class DataInitializer {
             initializeRegions();
             initializeDistricts();
             initializeAssetTypes();
+            roleSeeder.seedRoles();
+            titleSeeder.seedTitles();
         };
     }
 
@@ -167,29 +174,29 @@ public class DataInitializer {
     private Role initializeSuperAdminRole(List<Permission> permissions) {
         return roleRepository.findByName(SUPER_ADMIN)
                 .orElseGet(() -> roleRepository.save(
-                        new Role(
-                                null,
-                                SUPER_ADMIN,
-                                LocalDateTime.now(),
-                                LocalDateTime.now(),
-                                1L,
-                                1L,
-                                null,
-                                new HashSet<>(permissions))));
+                        Role.builder()
+                                .name(SUPER_ADMIN)
+                                .description("Super administrator role")
+                                .createDate(LocalDateTime.now())
+                                .lastModified(LocalDateTime.now())
+                                .createdBy(1L)
+                                .lastModifiedBy(1L)
+                                .permissions(new HashSet<>(permissions))
+                                .build()));
     }
 
     private Role initializeAdminRole(List<Permission> permissions) {
+        log.info("Permissions {}", permissions);
         return roleRepository.findByName(ADMIN)
                 .orElseGet(() -> roleRepository.save(
-                        new Role(
-                                null,
-                                ADMIN,
-                                LocalDateTime.now(),
-                                LocalDateTime.now(),
-                                1L,
-                                1L,
-                                null,
-                                new HashSet<>(Arrays.asList(
+                        Role.builder()
+                                .name(ADMIN)
+                                .description("Application administrator role")
+                                .createDate(LocalDateTime.now())
+                                .lastModified(LocalDateTime.now())
+                                .createdBy(1L)
+                                .lastModifiedBy(1L)
+                                .permissions(new HashSet<>(Arrays.asList(
                                         ensurePermission(READ_USER),
                                         ensurePermission(CREATE_USER),
                                         ensurePermission(UPDATE_USER),
@@ -198,6 +205,7 @@ public class DataInitializer {
                                         ensurePermission(UPDATE_REQUEST),
                                         ensurePermission(DELETE_REQUEST)
                                 )))
+                                .build()
                 ));
     }
 
@@ -298,7 +306,7 @@ public class DataInitializer {
                 districtRepository.saveAll(newDistricts);
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            log.info(e.getMessage());
         }
     }
 
@@ -314,7 +322,7 @@ public class DataInitializer {
                 assetTypeRepository.saveAll(assetTypes);
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            log.info(e.getMessage());
         }
     }
 }
