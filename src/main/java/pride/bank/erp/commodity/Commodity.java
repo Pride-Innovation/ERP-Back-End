@@ -31,7 +31,7 @@ public class Commodity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     private String name;
-    private String groupName;
+    private String groupName; // Like pieces, dozens, etc
 
     // This is optional but can be useful to easily access commodities associated with a request
     @OneToMany(mappedBy = "commodity", cascade = CascadeType.ALL, orphanRemoval = true)
