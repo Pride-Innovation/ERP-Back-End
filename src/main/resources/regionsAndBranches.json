@@ -1,0 +1,70 @@
+{
+  "branches": {
+    "Head Office": [
+      { "shortCode": "0", "name": "Head Office" }
+    ],
+    "Western": [
+      { "shortCode": "201", "name": "Mbarara" },
+      { "shortCode": "207", "name": "Rukungiri" },
+      { "shortCode": "208", "name": "Kasese" },
+      { "shortCode": "209", "name": "Ishaka" },
+      { "shortCode": "210", "name": "Kabale" },
+      { "shortCode": "219", "name": "Fortportal" },
+      { "shortCode": "241", "name": "Bushenyi" },
+      { "shortCode": "245", "name": "Kabwohe" },
+      { "shortCode": "249", "name": "Ibanda" },
+      { "shortCode": "250", "name": "Isingiro" },
+      { "shortCode": "257", "name": "Kisoro" },
+      { "shortCode": "277", "name": "western" }
+    ],
+    "Eastern": [
+      { "shortCode": "202", "name": "Jinja" },
+      { "shortCode": "206", "name": "Mbale" },
+      { "shortCode": "213", "name": "Iganga" },
+      { "shortCode": "243", "name": "Buwenge" },
+      { "shortCode": "246", "name": "Bugiri" },
+      { "shortCode": "247", "name": "Lugazi" },
+      { "shortCode": "252", "name": "Kamuli" },
+      { "shortCode": "254", "name": "Namayingo" },
+      { "shortCode": "276", "name": "Eastern" }
+    ],
+    "Central A": [
+      { "shortCode": "203", "name": "Mukono" },
+      { "shortCode": "217", "name": "Katwe" },
+      { "shortCode": "218", "name": "Nakawa" },
+      { "shortCode": "221", "name": "Entebbe Road" },
+      { "shortCode": "223", "name": "Bukoto" },
+      { "shortCode": "242", "name": "Kabalagala" },
+      { "shortCode": "253", "name": "Kayunga" },
+      { "shortCode": "255", "name": "Abayita Ababiri" },
+      { "shortCode": "256", "name": "Kyaliwajjala" },
+      { "shortCode": "260", "name": "Bweyogerere" },
+      { "shortCode": "278", "name": "CentralA" },
+      { "shortCode": "283", "name": "Central 4" }
+    ],
+    "Central B": [
+      { "shortCode": "204", "name": "CityCentre" },
+      { "shortCode": "205", "name": "Masaka" },
+      { "shortCode": "212", "name": "Nateete" },
+      { "shortCode": "216", "name": "Wandegeya" },
+      { "shortCode": "225", "name": "Nansana" },
+      { "shortCode": "244", "name": "Kawempe" },
+      { "shortCode": "248", "name": "Nakulabye" },
+      { "shortCode": "261", "name": "Gayaza" },
+      { "shortCode": "262", "name": "Kikuubo" },
+      { "shortCode": "279", "name": "Central B" }
+    ],
+    "Northern": [
+      { "shortCode": "211", "name": "Hoima" },
+      { "shortCode": "214", "name": "Lira" },
+      { "shortCode": "215", "name": "Soroti" },
+      { "shortCode": "220", "name": "Arua" },
+      { "shortCode": "222", "name": "Gulu Branch" },
+      { "shortCode": "224", "name": "Pader" },
+      { "shortCode": "251", "name": "Kagadi" },
+      { "shortCode": "258", "name": "Masindi" },
+      { "shortCode": "259", "name": "Bweyale" },
+      { "shortCode": "280", "name": "Northern" }
+    ]
+  }
+}

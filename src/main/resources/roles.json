@@ -1,0 +1,34 @@
+[
+  {
+    "name": "ROLE_ADMIN",
+    "description": "Administrator with full access to all system features and settings."
+  },
+  {
+    "name": "MANAGER",
+    "description": "Manager with access to team management and reporting features."
+  },
+  {
+    "name": "OFFICER",
+    "description": "Officer with access to their own tasks and limited system features."
+  },
+  {
+    "name": "HEAD_OF_DEPARTMENT",
+    "description": "Head of Department personnel with access to employee management and HR-related features."
+  },
+  {
+    "name": "BRANCH_MANAGER",
+    "description": "Branch Manager personnel with access to branch management and reporting features."
+  },
+  {
+    "name": "BRANCH_OPERATIONS_MANAGER",
+    "description": "Branch Operations Manager personnel with access to transaction processing and customer service features."
+  },
+  {
+    "name": "DIRECTOR",
+    "description": "Director personnel with access to strategic decision-making and high-level management features."
+  },
+  {
+    "name": "SUPERVISOR",
+    "description": "Supervisor personnel with access to advanced tasks and responsibilities within their department."
+  }
+]
