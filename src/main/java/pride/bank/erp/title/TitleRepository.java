@@ -19,6 +19,10 @@ import java.util.Optional;
 public interface TitleRepository extends JpaRepository<Title, Long> {
     Optional<Title> findByName(String name);
 
+    Optional<Title> findByNameIgnoreCaseAndShortCodeIgnoreCaseAndReportsToIsNull(String name, String shortCode);
+
+    Optional<Title> findByNameIgnoreCaseAndShortCodeIgnoreCaseAndReportsTo_Id(String name, String shortCode, Long reportsToId);
+
     @Query("SELECT t.id FROM Title t WHERE t.reportsTo.id = :titleId")
     List<Long> findSubordinateTitleIds(@Param("titleId") Long titleId);
 
