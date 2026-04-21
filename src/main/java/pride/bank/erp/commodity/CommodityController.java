@@ -16,7 +16,6 @@ import org.springframework.web.bind.annotation.*;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.DeleteResponse;
 
-import static pride.bank.erp.helper.Constants.ASCENDING_SORT_DIRECTION;
 import static pride.bank.erp.helper.Constants.GENERAL_ROUTE;
 
 
@@ -28,23 +27,8 @@ public class CommodityController {
     private final CommodityService commodityService;
 
     @GetMapping("/commodities")
-    public ResponseEntity<Page<Commodity>> listCommodities(
-            @RequestParam(required = false, defaultValue = "10") int pageSize,
-            @RequestParam(required = false, defaultValue = ASCENDING_SORT_DIRECTION) String sortDirection,
-            @RequestParam(required = false, defaultValue = "0") int pageNumber,
-            @RequestParam(required = false, defaultValue = "id") String sortBy,
-            @RequestParam(required = false) String name,
-            @RequestParam(required = false) Long assetTypeId
-
-    ) {
-        Page<Commodity> response = commodityService.fetchAllCommodities(
-                pageSize,
-                sortDirection,
-                pageNumber,
-                sortBy,
-                name,
-                assetTypeId
-        );
+    public ResponseEntity<Page<Commodity>> listCommodities(@ModelAttribute CommodityQueryParams params) {
+        Page<Commodity> response = commodityService.fetchAllCommodities(params);
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
 
