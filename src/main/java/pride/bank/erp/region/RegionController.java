@@ -16,7 +16,6 @@ import org.springframework.web.bind.annotation.*;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.DeleteResponse;
 
-import static pride.bank.erp.helper.Constants.ASCENDING_SORT_DIRECTION;
 import static pride.bank.erp.helper.Constants.GENERAL_ROUTE;
 
 
@@ -28,20 +27,8 @@ public class RegionController {
     private final RegionService regionService;
 
     @GetMapping("/regions")
-    public ResponseEntity<Page<Region>> fetchAllTitles(
-            @RequestParam(required = false, defaultValue = "10") int pageSize,
-            @RequestParam(required = false, defaultValue = ASCENDING_SORT_DIRECTION) String sortDirection,
-            @RequestParam(required = false, defaultValue = "0") int pageNumber,
-            @RequestParam(required = false, defaultValue = "id") String sortBy,
-            @RequestParam(required = false) String name
-    ) {
-        Page<Region> response = regionService.fetchAllRegions(
-                pageSize,
-                sortDirection,
-                pageNumber,
-                sortBy,
-                name
-        );
+    public ResponseEntity<Page<Region>> fetchAllTitles(@ModelAttribute RegionQueryParams params) {
+        Page<Region> response = regionService.fetchAllRegions(params);
 
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
