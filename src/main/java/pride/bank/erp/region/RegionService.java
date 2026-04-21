@@ -27,24 +27,18 @@ public class RegionService {
     private final RegionRepository regionRepository;
     private final RegionSearchDao regionSearchDao;
 
-    public Page<Region> fetchAllRegions(
-            int pageSize,
-            String sortDirection,
-            int pageNumber,
-            String sortBy,
-            String name
-    ) {
+    public Page<Region> fetchAllRegions(RegionQueryParams params) {
         try {
             RegionPage regionPage = RegionPage.builder()
-                    .pageSize(pageSize)
-                    .sortDirection(determineSortDirection(sortDirection))
-                    .sortBy(sortBy)
-                    .pageNumber(pageNumber)
+                    .pageSize(params.getPageSize())
+                    .sortDirection(determineSortDirection(params.getSortDirection()))
+                    .sortBy(params.getSortBy())
+                    .pageNumber(params.getPageNumber())
                     .build();
 
             RegionSearchCriteria regionSearchCriteria = RegionSearchCriteria
                     .builder()
-                    .name(name)
+                    .name(params.getName())
                     .build();
             return regionSearchDao.findAllWithFilters(regionPage, regionSearchCriteria);
         } catch (Exception e) {
