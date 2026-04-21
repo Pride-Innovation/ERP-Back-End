@@ -23,6 +23,7 @@ public class Department {
     private Long id;
     private String name;
     private String managersGroupEmail;
+    private String shortCode;
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "head_of_dept_id")
