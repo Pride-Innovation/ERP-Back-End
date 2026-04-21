@@ -22,12 +22,11 @@ import pride.bank.erp.assetType.AssetType;
 import pride.bank.erp.assetType.AssetTypeRepository;
 import pride.bank.erp.branch.Branch;
 import pride.bank.erp.branch.BranchRepository;
+import pride.bank.erp.department.DepartmentRepository;
 import pride.bank.erp.district.District;
 import pride.bank.erp.district.DistrictRepository;
 import pride.bank.erp.permission.Permission;
 import pride.bank.erp.permission.PermissionRepository;
-import pride.bank.erp.region.Region;
-import pride.bank.erp.region.RegionRepository;
 import pride.bank.erp.role.Role;
 import pride.bank.erp.role.RoleRepository;
 import pride.bank.erp.title.Title;
@@ -40,7 +39,56 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 
-import static pride.bank.erp.helper.Constants.*;
+import static pride.bank.erp.helper.Constants.ADMIN;
+import static pride.bank.erp.helper.Constants.ACKNOWLEDGE_REQUEST;
+import static pride.bank.erp.helper.Constants.APPROVE_ISSUANCE;
+import static pride.bank.erp.helper.Constants.APPROVE_REQUEST;
+import static pride.bank.erp.helper.Constants.CREATE_ASSET;
+import static pride.bank.erp.helper.Constants.CREATE_AUDIT;
+import static pride.bank.erp.helper.Constants.CREATE_INVENTORY;
+import static pride.bank.erp.helper.Constants.CREATE_PERMISSION;
+import static pride.bank.erp.helper.Constants.CREATE_REQUEST;
+import static pride.bank.erp.helper.Constants.CREATE_ROLE;
+import static pride.bank.erp.helper.Constants.CREATE_SETTING;
+import static pride.bank.erp.helper.Constants.CREATE_STATUS;
+import static pride.bank.erp.helper.Constants.CREATE_STORE;
+import static pride.bank.erp.helper.Constants.CREATE_TRANSPORT;
+import static pride.bank.erp.helper.Constants.CREATE_USER;
+import static pride.bank.erp.helper.Constants.DELETE_ASSET;
+import static pride.bank.erp.helper.Constants.DELETE_AUDIT;
+import static pride.bank.erp.helper.Constants.DELETE_INVENTORY;
+import static pride.bank.erp.helper.Constants.DELETE_PERMISSION;
+import static pride.bank.erp.helper.Constants.DELETE_REQUEST;
+import static pride.bank.erp.helper.Constants.DELETE_ROLE;
+import static pride.bank.erp.helper.Constants.DELETE_SETTING;
+import static pride.bank.erp.helper.Constants.DELETE_STATUS;
+import static pride.bank.erp.helper.Constants.DELETE_STORE;
+import static pride.bank.erp.helper.Constants.DELETE_TRANSPORT;
+import static pride.bank.erp.helper.Constants.DELETE_USER;
+import static pride.bank.erp.helper.Constants.ISSUE_ITEMS;
+import static pride.bank.erp.helper.Constants.READ_ASSET;
+import static pride.bank.erp.helper.Constants.READ_AUDIT;
+import static pride.bank.erp.helper.Constants.READ_INVENTORY;
+import static pride.bank.erp.helper.Constants.READ_PERMISSION;
+import static pride.bank.erp.helper.Constants.READ_REQUEST;
+import static pride.bank.erp.helper.Constants.READ_ROLE;
+import static pride.bank.erp.helper.Constants.READ_SETTING;
+import static pride.bank.erp.helper.Constants.READ_STORE;
+import static pride.bank.erp.helper.Constants.READ_TRANSPORT;
+import static pride.bank.erp.helper.Constants.READ_USER;
+import static pride.bank.erp.helper.Constants.REJECT_REQUEST;
+import static pride.bank.erp.helper.Constants.SUPER_ADMIN;
+import static pride.bank.erp.helper.Constants.UPDATE_ASSET;
+import static pride.bank.erp.helper.Constants.UPDATE_AUDIT;
+import static pride.bank.erp.helper.Constants.UPDATE_INVENTORY;
+import static pride.bank.erp.helper.Constants.UPDATE_PERMISSION;
+import static pride.bank.erp.helper.Constants.UPDATE_REQUEST;
+import static pride.bank.erp.helper.Constants.UPDATE_ROLE;
+import static pride.bank.erp.helper.Constants.UPDATE_SETTING;
+import static pride.bank.erp.helper.Constants.UPDATE_STATUS;
+import static pride.bank.erp.helper.Constants.UPDATE_STORE;
+import static pride.bank.erp.helper.Constants.UPDATE_TRANSPORT;
+import static pride.bank.erp.helper.Constants.UPDATE_USER;
 
 @Component
 @RequiredArgsConstructor
@@ -50,12 +98,14 @@ public class DataInitializer {
     private final RoleRepository roleRepository;
     private final UserRepository userRepository;
     private final BCryptPasswordEncoder passwordEncoder;
-    private final RegionRepository regionRepository;
+    private final DepartmentRepository departmentRepository;
     private final DistrictRepository districtRepository;
     private final ObjectMapper objectMapper;
     private final AssetTypeRepository assetTypeRepository;
     private final TitleRepository titleRepository;
     private final BranchRepository branchRepository;
+    private final RegionBranchSeeder regionBranchSeeder;
+    private final DepartmentSeeder departmentSeeder;
     private final RoleSeeder roleSeeder;
     private final TitleSeeder titleSeeder;
 
@@ -89,6 +139,8 @@ public class DataInitializer {
             List<Permission> permissions = initializePermissions();
             Role superAdminRole = initializeSuperAdminRole(permissions);
             Role adminRole = initializeAdminRole(permissions);
+            regionBranchSeeder.seedRegionsAndBranches();
+            departmentSeeder.seedDepartments();
             Branch headOfficeBranch = initializeBranch();
             Title superAdminTitle = initializeTitle("Super Admin Title", superAdminRole, headOfficeBranch);
             Title adminTitle = initializeTitle("Admin Title", adminRole, headOfficeBranch);
@@ -96,7 +148,6 @@ public class DataInitializer {
             initializeSuperAdminUser(superAdminTitle, headOfficeBranch);
             initializeAdminUser(adminTitle, headOfficeBranch);
 
-            initializeRegions();
             initializeDistricts();
             initializeAssetTypes();
             roleSeeder.seedRoles();
@@ -214,6 +265,7 @@ public class DataInitializer {
                 .orElseGet(() -> branchRepository.save(
                         Branch.builder()
                                 .name(headOfficeName)
+                    .shortCode("0")
                                 .telephone(headOfficeTelephone)
                                 .email(headOfficeEmail)
                                 .build()
@@ -269,28 +321,6 @@ public class DataInitializer {
                     .build();
             return userRepository.save(admin);
         });
-    }
-
-    private void initializeRegions() {
-        List<Region> regions = Arrays.asList(
-                new Region(null, Central_A, null),
-                new Region(null, Central_B, null),
-                new Region(null, Eastern, null),
-                new Region(null, Northern, null),
-                new Region(null, Western, null)
-        );
-
-        for (Region region : regions) {
-            verifyRegion(region);
-        }
-    }
-
-    private void verifyRegion(Region region) {
-        regionRepository.findByName(region.getName()).ifPresentOrElse(
-                existingRegion -> {
-                },
-                () -> regionRepository.save(region)
-        );
     }
 
     public void initializeDistricts() {
