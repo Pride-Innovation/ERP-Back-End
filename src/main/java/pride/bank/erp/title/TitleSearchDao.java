@@ -77,7 +77,25 @@ public class TitleSearchDao {
         List<Predicate> predicates = new ArrayList<>();
 
         if (Objects.nonNull(titleSearchCriteria.getName())) {
-            predicates.add(criteriaBuilder.like(titleRoot.get("name"), "%" + titleSearchCriteria.getName() + "%"));
+            predicates.add(criteriaBuilder.like(
+                    criteriaBuilder.lower(titleRoot.get("name")),
+                    "%" + titleSearchCriteria.getName().toLowerCase() + "%"
+            ));
+        }
+
+        if (Objects.nonNull(titleSearchCriteria.getShortCode())) {
+            predicates.add(criteriaBuilder.like(
+                    criteriaBuilder.lower(titleRoot.get("shortCode")),
+                    "%" + titleSearchCriteria.getShortCode().toLowerCase() + "%"
+            ));
+        }
+
+        if (Objects.nonNull(titleSearchCriteria.getReportsToId())) {
+            predicates.add(criteriaBuilder.equal(titleRoot.get("reportsTo").get("id"), titleSearchCriteria.getReportsToId()));
+        }
+
+        if (Objects.nonNull(titleSearchCriteria.getRoleId())) {
+            predicates.add(criteriaBuilder.equal(titleRoot.get("role").get("Id"), titleSearchCriteria.getRoleId()));
         }
 
         return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
