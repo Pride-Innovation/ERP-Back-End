@@ -18,11 +18,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Component;
-import pride.bank.erp.assetType.AssetType;
-import pride.bank.erp.assetType.AssetTypeRepository;
 import pride.bank.erp.branch.Branch;
 import pride.bank.erp.branch.BranchRepository;
-import pride.bank.erp.department.DepartmentRepository;
 import pride.bank.erp.district.District;
 import pride.bank.erp.district.DistrictRepository;
 import pride.bank.erp.permission.Permission;
@@ -98,14 +95,13 @@ public class DataInitializer {
     private final RoleRepository roleRepository;
     private final UserRepository userRepository;
     private final BCryptPasswordEncoder passwordEncoder;
-    private final DepartmentRepository departmentRepository;
     private final DistrictRepository districtRepository;
     private final ObjectMapper objectMapper;
-    private final AssetTypeRepository assetTypeRepository;
     private final TitleRepository titleRepository;
     private final BranchRepository branchRepository;
     private final RegionBranchSeeder regionBranchSeeder;
     private final DepartmentSeeder departmentSeeder;
+    private final AssetTypeCommoditySeeder assetTypeCommoditySeeder;
     private final RoleSeeder roleSeeder;
     private final TitleSeeder titleSeeder;
 
@@ -149,7 +145,7 @@ public class DataInitializer {
             initializeAdminUser(adminTitle, headOfficeBranch);
 
             initializeDistricts();
-            initializeAssetTypes();
+            assetTypeCommoditySeeder.seedAssetTypesAndCommodities();
             roleSeeder.seedRoles();
             titleSeeder.seedTitles();
         };
@@ -265,7 +261,7 @@ public class DataInitializer {
                 .orElseGet(() -> branchRepository.save(
                         Branch.builder()
                                 .name(headOfficeName)
-                    .shortCode("0")
+                                .shortCode("0")
                                 .telephone(headOfficeTelephone)
                                 .email(headOfficeEmail)
                                 .build()
@@ -340,19 +336,4 @@ public class DataInitializer {
         }
     }
 
-    public void initializeAssetTypes() {
-        try {
-            var resource = new ClassPathResource("assetTypes.json");
-            List<AssetType> assetTypes = objectMapper.readValue(resource.getInputStream(), new TypeReference<>() {
-            });
-            List<AssetType> newAssets = assetTypes.stream()
-                    .filter(assetType -> assetTypeRepository.findByName(assetType.getName()).isEmpty())
-                    .toList();
-            if (!newAssets.isEmpty()) {
-                assetTypeRepository.saveAll(assetTypes);
-            }
-        } catch (Exception e) {
-            log.info(e.getMessage());
-        }
-    }
 }
