@@ -16,4 +16,7 @@ import lombok.Setter;
 @Builder
 public class TitleSearchCriteria {
     private String name;
+    private String shortCode;
+    private Long reportsToId;
+    private Long roleId;
 }
