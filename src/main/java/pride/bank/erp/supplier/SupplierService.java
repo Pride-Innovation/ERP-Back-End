@@ -28,23 +28,17 @@ public class SupplierService {
     private final CommodityService commodityService;
     private final SupplierSearchDao supplierSearchDao;
 
-    public Page<Supplier> fetchAllSuppliers(
-            int pageSize,
-            String sortDirection,
-            int pageNumber,
-            String sortBy,
-            String name
-    ) {
+    public Page<Supplier> fetchAllSuppliers(SupplierQueryParams params) {
         try {
             SupplierPage supplierPage = SupplierPage.builder()
-                    .pageSize(pageSize)
-                    .sortDirection(determineSortDirection(sortDirection))
-                    .pageNumber(pageNumber)
-                    .sortBy(sortBy)
+                    .pageSize(params.getPageSize())
+                    .sortDirection(determineSortDirection(params.getSortDirection()))
+                    .pageNumber(params.getPageNumber())
+                    .sortBy(params.getSortBy())
                     .build();
             SupplierSearchCriteria supplierSearchCriteria = SupplierSearchCriteria
                     .builder()
-                    .name(name)
+                    .name(params.getName())
                     .build();
             return supplierSearchDao.findAllWithFilters(supplierPage, supplierSearchCriteria);
         } catch (Exception e) {
