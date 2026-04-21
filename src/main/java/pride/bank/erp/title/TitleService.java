@@ -30,28 +30,23 @@ public class TitleService {
     private final RoleService roleService;
 
     public Page<Title> fetchAllTitles(
-            int pageSize,
-            String sortDirection,
-            int pageNumber,
-            String sortBy,
-            String name
+            TitleQueryParams params
     ) {
-        try {
-            TitlePage titlePage = TitlePage.builder()
-                    .pageSize(pageSize)
-                    .sortDirection(determineSortDirection(sortDirection))
-                    .sortBy(sortBy)
-                    .pageNumber(pageNumber)
-                    .build();
+        TitlePage titlePage = TitlePage.builder()
+            .pageSize(params.getPageSize())
+            .sortDirection(determineSortDirection(params.getSortDirection()))
+            .sortBy(params.getSortBy())
+            .pageNumber(params.getPageNumber())
+            .build();
 
-            TitleSearchCriteria titleSearchCriteria = TitleSearchCriteria
-                    .builder()
-                    .name(name)
-                    .build();
-            return titleSearchDao.findAllWithFilters(titlePage, titleSearchCriteria);
-        } catch (Exception e) {
-            return null;
-        }
+        TitleSearchCriteria titleSearchCriteria = TitleSearchCriteria
+            .builder()
+            .name(params.getName())
+            .shortCode(params.getShortCode())
+            .reportsToId(params.getReportsToId())
+            .roleId(params.getRoleId())
+            .build();
+        return titleSearchDao.findAllWithFilters(titlePage, titleSearchCriteria);
     }
 
     public Title createTitle(TitleRequestDTO request)
