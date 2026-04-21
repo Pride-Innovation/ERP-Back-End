@@ -1,70 +1,356 @@
-{
-  "branches": {
-    "Head Office": [
-      { "shortCode": "0", "name": "Head Office" }
-    ],
-    "Western": [
-      { "shortCode": "201", "name": "Mbarara" },
-      { "shortCode": "207", "name": "Rukungiri" },
-      { "shortCode": "208", "name": "Kasese" },
-      { "shortCode": "209", "name": "Ishaka" },
-      { "shortCode": "210", "name": "Kabale" },
-      { "shortCode": "219", "name": "Fortportal" },
-      { "shortCode": "241", "name": "Bushenyi" },
-      { "shortCode": "245", "name": "Kabwohe" },
-      { "shortCode": "249", "name": "Ibanda" },
-      { "shortCode": "250", "name": "Isingiro" },
-      { "shortCode": "257", "name": "Kisoro" },
-      { "shortCode": "277", "name": "western" }
-    ],
-    "Eastern": [
-      { "shortCode": "202", "name": "Jinja" },
-      { "shortCode": "206", "name": "Mbale" },
-      { "shortCode": "213", "name": "Iganga" },
-      { "shortCode": "243", "name": "Buwenge" },
-      { "shortCode": "246", "name": "Bugiri" },
-      { "shortCode": "247", "name": "Lugazi" },
-      { "shortCode": "252", "name": "Kamuli" },
-      { "shortCode": "254", "name": "Namayingo" },
-      { "shortCode": "276", "name": "Eastern" }
-    ],
-    "Central A": [
-      { "shortCode": "203", "name": "Mukono" },
-      { "shortCode": "217", "name": "Katwe" },
-      { "shortCode": "218", "name": "Nakawa" },
-      { "shortCode": "221", "name": "Entebbe Road" },
-      { "shortCode": "223", "name": "Bukoto" },
-      { "shortCode": "242", "name": "Kabalagala" },
-      { "shortCode": "253", "name": "Kayunga" },
-      { "shortCode": "255", "name": "Abayita Ababiri" },
-      { "shortCode": "256", "name": "Kyaliwajjala" },
-      { "shortCode": "260", "name": "Bweyogerere" },
-      { "shortCode": "278", "name": "CentralA" },
-      { "shortCode": "283", "name": "Central 4" }
-    ],
-    "Central B": [
-      { "shortCode": "204", "name": "CityCentre" },
-      { "shortCode": "205", "name": "Masaka" },
-      { "shortCode": "212", "name": "Nateete" },
-      { "shortCode": "216", "name": "Wandegeya" },
-      { "shortCode": "225", "name": "Nansana" },
-      { "shortCode": "244", "name": "Kawempe" },
-      { "shortCode": "248", "name": "Nakulabye" },
-      { "shortCode": "261", "name": "Gayaza" },
-      { "shortCode": "262", "name": "Kikuubo" },
-      { "shortCode": "279", "name": "Central B" }
-    ],
-    "Northern": [
-      { "shortCode": "211", "name": "Hoima" },
-      { "shortCode": "214", "name": "Lira" },
-      { "shortCode": "215", "name": "Soroti" },
-      { "shortCode": "220", "name": "Arua" },
-      { "shortCode": "222", "name": "Gulu Branch" },
-      { "shortCode": "224", "name": "Pader" },
-      { "shortCode": "251", "name": "Kagadi" },
-      { "shortCode": "258", "name": "Masindi" },
-      { "shortCode": "259", "name": "Bweyale" },
-      { "shortCode": "280", "name": "Northern" }
+[
+  {
+    "region": "Head Office",
+    "branches": [
+      {
+        "shortCode": "0",
+        "name": "Head Office",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      }
+    ]
+  },
+  {
+    "region": "Western",
+    "branches": [
+      {
+        "shortCode": "201",
+        "name": "Mbarara",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "207",
+        "name": "Rukungiri",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "208",
+        "name": "Kasese",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "209",
+        "name": "Ishaka",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "210",
+        "name": "Kabale",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "219",
+        "name": "Fortportal",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "241",
+        "name": "Bushenyi",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "245",
+        "name": "Kabwohe",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "249",
+        "name": "Ibanda",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "250",
+        "name": "Isingiro",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "257",
+        "name": "Kisoro",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "277",
+        "name": "western",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      }
+    ]
+  },
+  {
+    "region": "Eastern",
+    "branches": [
+      {
+        "shortCode": "202",
+        "name": "Jinja",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "206",
+        "name": "Mbale",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "213",
+        "name": "Iganga",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "243",
+        "name": "Buwenge",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "246",
+        "name": "Bugiri",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "247",
+        "name": "Lugazi",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "252",
+        "name": "Kamuli",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "254",
+        "name": "Namayingo",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "276",
+        "name": "Eastern",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      }
+    ]
+  },
+  {
+    "region": "Central A",
+    "branches": [
+      {
+        "shortCode": "203",
+        "name": "Mukono",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "217",
+        "name": "Katwe",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "218",
+        "name": "Nakawa",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "221",
+        "name": "Entebbe Road",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "223",
+        "name": "Bukoto",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "242",
+        "name": "Kabalagala",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "253",
+        "name": "Kayunga",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "255",
+        "name": "Abayita Ababiri",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "256",
+        "name": "Kyaliwajjala",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "260",
+        "name": "Bweyogerere",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "278",
+        "name": "CentralA",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "283",
+        "name": "Central 4",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      }
+    ]
+  },
+  {
+    "region": "Central B",
+    "branches": [
+      {
+        "shortCode": "204",
+        "name": "CityCentre",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "205",
+        "name": "Masaka",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "212",
+        "name": "Nateete",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "216",
+        "name": "Wandegeya",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "225",
+        "name": "Nansana",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "244",
+        "name": "Kawempe",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "248",
+        "name": "Nakulabye",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "261",
+        "name": "Gayaza",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "262",
+        "name": "Kikuubo",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "279",
+        "name": "Central B",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      }
+    ]
+  },
+  {
+    "region": "Northern",
+    "branches": [
+      {
+        "shortCode": "211",
+        "name": "Hoima",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "214",
+        "name": "Lira",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "215",
+        "name": "Soroti",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "220",
+        "name": "Arua",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "222",
+        "name": "Gulu Branch",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "224",
+        "name": "Pader",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "251",
+        "name": "Kagadi",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "258",
+        "name": "Masindi",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "259",
+        "name": "Bweyale",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      },
+      {
+        "shortCode": "280",
+        "name": "Northern",
+        "email": "info@pridebank.co.ug",
+        "telephone": "+256(0)800 333 999"
+      }
     ]
   }
-}
+]
