@@ -29,26 +29,19 @@ public class CommodityService {
     private final CommoditySearchDao commoditySearchDao;
     private final AssetTypeService assetTypeService;
 
-    public Page<Commodity> fetchAllCommodities(
-            int pageSize,
-            String sortDirection,
-            int pageNumber,
-            String sortBy,
-            String name,
-            Long assetTypeId
-    ) {
+    public Page<Commodity> fetchAllCommodities(CommodityQueryParams params) {
         try {
             CommodityPage commodityPage = CommodityPage.builder()
-                    .pageSize(pageSize)
-                    .sortDirection(determineSortDirection(sortDirection))
-                    .sortBy(sortBy)
-                    .pageNumber(pageNumber)
+                    .pageSize(params.getPageSize())
+                    .sortDirection(determineSortDirection(params.getSortDirection()))
+                    .sortBy(params.getSortBy())
+                    .pageNumber(params.getPageNumber())
                     .build();
 
             CommoditySearchCriteria commoditySearchCriteria = CommoditySearchCriteria
                     .builder()
-                    .name(name)
-                    .assetTypeId(assetTypeId)
+                    .name(params.getName())
+                    .assetTypeId(params.getAssetTypeId())
                     .build();
             return commoditySearchDao.findAllWithFilters(commodityPage, commoditySearchCriteria);
         } catch (Exception e) {
