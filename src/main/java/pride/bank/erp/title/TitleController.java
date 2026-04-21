@@ -16,7 +16,6 @@ import org.springframework.web.bind.annotation.*;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.DeleteResponse;
 
-import static pride.bank.erp.helper.Constants.ASCENDING_SORT_DIRECTION;
 import static pride.bank.erp.helper.Constants.GENERAL_ROUTE;
 
 
@@ -27,20 +26,8 @@ public class TitleController {
     private final TitleService titleService;
 
     @GetMapping("/titles")
-    public ResponseEntity<Page<Title>> fetchAllTitles(
-            @RequestParam(required = false, defaultValue = "10") int pageSize,
-            @RequestParam(required = false, defaultValue = ASCENDING_SORT_DIRECTION) String sortDirection,
-            @RequestParam(required = false, defaultValue = "0") int pageNumber,
-            @RequestParam(required = false, defaultValue = "id") String sortBy,
-            @RequestParam(required = false) String name
-    ) {
-        Page<Title> response = titleService.fetchAllTitles(
-                pageSize,
-                sortDirection,
-                pageNumber,
-                sortBy,
-                name
-        );
+    public ResponseEntity<Page<Title>> fetchAllTitles(TitleQueryParams params) {
+        Page<Title> response = titleService.fetchAllTitles(params);
 
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
