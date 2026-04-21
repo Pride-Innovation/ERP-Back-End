@@ -20,11 +20,9 @@ public class DepartmentController {
     private final DepartmentService departmentService;
 
     @GetMapping("/departments")
-    public ResponseEntity<Page<Department>> fetchAllDepartments(
-            @RequestParam(required = false, defaultValue = "10") int pageSize,
-            @RequestParam(required = false, defaultValue = "0") int pageNumber
+    public ResponseEntity<Page<Department>> fetchAllDepartments(@ModelAttribute DepartmentQueryParams params
     ) {
-        Pageable pageable = PageRequest.of(pageNumber, pageSize);
+        Pageable pageable = PageRequest.of(params.getPageNumber(), params.getPageSize());
         Page<Department> response = departmentService.fetchAllDepartments(pageable);
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
