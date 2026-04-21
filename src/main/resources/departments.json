@@ -1,23 +1,77 @@
 [
-  { "shortCode": "MDO", "name": "MDS Office" },
-  { "shortCode": "LGL", "name": "Legal" },
-  { "shortCode": "EDO", "name": "EDs Office" },
-  { "shortCode": "CRD", "name": "Credit Department" },
-  { "shortCode": "ADM", "name": "Administration & Procurement" },
-  { "shortCode": "BT", "name": "Business Technology Department" },
-  { "shortCode": "CA", "name": "Business Development & Marketing" },
-  { "shortCode": "FIN", "name": "Finance" },
-  { "shortCode": "P&C", "name": "People and Culture Department" },
-  { "shortCode": "IA", "name": "Internal Audit" },
-  { "shortCode": "RSKM", "name": "Risk Management" },
-  { "shortCode": "TR", "name": "Treasury" },
-  { "shortCode": "PROC", "name": "Procurement" },
-  { "shortCode": "CRD2", "name": "Credit Department" },
-  { "shortCode": "OPS", "name": "Operations Department" },
-  { "shortCode": "COMP", "name": "Compliance" },
-  { "shortCode": "RBKN", "name": "Rubikon CBS Project" },
-  { "shortCode": "SD", "name": "Strategy Department" },
-  { "shortCode": "BD", "name": "Business Department" },
-  { "shortCode": "M&C", "name": "Marketing and Communication" },
-  { "shortCode": "SECURITY", "name": "SECURITY DEPARTMENT" }
+  {
+    "shortCode": "P&C",
+    "name": "People & Culture",
+    "branchShortCode": "0"
+  },
+  {
+    "shortCode": "SDP",
+    "name": "Strategy, Data & Projects",
+    "branchShortCode": "0"
+  },
+  {
+    "shortCode": "LGL",
+    "name": "Legal",
+    "branchShortCode": "0"
+  },
+  {
+    "shortCode": "FIN",
+    "name": "Finance",
+    "branchShortCode": "0"
+  },
+  {
+    "shortCode": "RSKM",
+    "name": "Risk Management",
+    "branchShortCode": "0"
+  },
+  {
+    "shortCode": "CRD",
+    "name": "Credit",
+    "branchShortCode": "0"
+  },
+  {
+    "shortCode": "SEC",
+    "name": "Security",
+    "branchShortCode": "0"
+  },
+  {
+    "shortCode": "BT",
+    "name": "Business Technology",
+    "branchShortCode": "0"
+  },
+  {
+    "shortCode": "OPS",
+    "name": "Operations",
+    "branchShortCode": "0"
+  },
+  {
+    "shortCode": "BD",
+    "name": "Business",
+    "branchShortCode": "0"
+  },
+  {
+    "shortCode": "M&C",
+    "name": "Marketing and Communication",
+    "branchShortCode": "0"
+  },
+  {
+    "shortCode": "TR",
+    "name": "Treasury",
+    "branchShortCode": "0"
+  },
+  {
+    "shortCode": "ADM",
+    "name": "Administration & Procurement",
+    "branchShortCode": "0"
+  },
+  {
+    "shortCode": "COMP",
+    "name": "Compliance",
+    "branchShortCode": "0"
+  },
+  {
+    "shortCode": "IA",
+    "name": "Internal Audit",
+    "branchShortCode": "0"
+  }
 ]
