@@ -15,5 +15,7 @@ import java.util.Optional;
 @Repository
 public interface AssetTypeRepository extends JpaRepository<AssetType, Long> {
     Optional<AssetType> findByName(String name);
+    Optional<AssetType> findByNameIgnoreCase(String name);
+    Optional<AssetType> findByShortCode(String shortCode);
 }
 
