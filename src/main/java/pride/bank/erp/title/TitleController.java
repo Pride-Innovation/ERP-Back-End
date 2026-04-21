@@ -26,7 +26,7 @@ public class TitleController {
     private final TitleService titleService;
 
     @GetMapping("/titles")
-    public ResponseEntity<Page<Title>> fetchAllTitles(TitleQueryParams params) {
+    public ResponseEntity<Page<Title>> fetchAllTitles(@ModelAttribute TitleQueryParams params) {
         Page<Title> response = titleService.fetchAllTitles(params);
 
         return new ResponseEntity<>(response, HttpStatus.OK);
