@@ -1,18 +1,205 @@
 [
   {
-    "name": "Office Equipment",
-    "description": "Office Equipment"
+    "name": "Equipment",
+    "description": "Equipment (E)",
+    "shortCode": "E",
+    "commodities": [
+      {
+        "name": "Note counter",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Metallic filing cabinet",
+        "groupName": "pieces"
+      },
+      {
+        "name": "CIT Box",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Security Metal Detector",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Air conditioner",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Walk in Security scanner",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Fan",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Generator",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Battery",
+        "groupName": "boxes"
+      },
+      {
+        "name": "Paper shredder",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Fire extinguisher",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Hand sanitizer dispenser",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Solar panel",
+        "groupName": "pieces"
+      }
+    ]
   },
   {
-    "name": "IT Equipment",
-    "description": "IT Equipment"
+    "name": "Furniture",
+    "description": "Furniture (F)",
+    "shortCode": "F",
+    "commodities": [
+      {
+        "name": "Chair",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Table",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Wooden filing shelve",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Coat hanger",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Drawer",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Safe",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Tea trolley",
+        "groupName": "pieces"
+      }
+    ]
+  },
+  {
+    "name": "Computers",
+    "description": "Computers (C)",
+    "shortCode": "C",
+    "commodities": [
+      {
+        "name": "CPU",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Monitor",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Keyboard",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Laptop",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Receipt Printer",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Printer",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Tablet",
+        "groupName": "pieces"
+      },
+      {
+        "name": "DFA (Telpo) Scanner",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Scanner",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Network switch",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Router",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Television set",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Tablet",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Consumables e.g. Printer ink",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Accessories e.g. Mouse, Keyboard, External connectors etc.",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Components e.g. RAM, HDD/SSD etc",
+        "groupName": "pieces"
+      }
+    ]
   },
   {
     "name": "Stationery",
-    "description": "Stationery"
+    "description": "Stationery (S)",
+    "shortCode": "S",
+    "commodities": [
+      {
+        "name": "Ream of paper",
+        "groupName": "Ream"
+      },
+      {
+        "name": "Pen",
+        "groupName": "Boxes"
+      },
+      {
+        "name": "Forms etc.",
+        "groupName": "Boxes"
+      },
+      {
+        "name": "Printer paper",
+        "groupName": "Boxes"
+      }
+    ]
   },
   {
-    "name": "Fleet",
-    "description": "Fleet"
+    "name": "Vehicle/Fleet",
+    "description": "Vehicle/Fleet (V)",
+    "shortCode": "V",
+    "commodities": [
+      {
+        "name": "Vehicle",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Motorcycle",
+        "groupName": "pieces"
+      }
+    ]
   }
 ]
