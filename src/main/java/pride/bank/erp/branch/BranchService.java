@@ -36,23 +36,19 @@ public class BranchService {
     private final RegionService regionService;
 
     public Page<BranchWithManagersDTO> fetchAllBranches(
-            int pageSize,
-            String sortDirection,
-            int pageNumber,
-            String sortBy,
-            String name
+            BranchQueryParams params
     ) {
         try {
             BranchPage branchPage = BranchPage.builder()
-                    .pageSize(pageSize)
-                    .sortDirection(determineSortDirection(sortDirection))
-                    .sortBy(sortBy)
-                    .pageNumber(pageNumber)
+                    .pageSize(params.getPageSize())
+                    .sortDirection(determineSortDirection(params.getSortDirection()))
+                    .sortBy(params.getSortBy())
+                    .pageNumber(params.getPageNumber())
                     .build();
 
             BranchSearchCriteria branchSearchCriteria = BranchSearchCriteria
                     .builder()
-                    .name(name)
+                    .name(params.getName())
                     .build();
             Page<Branch> branches = branchSearchDao.findAllWithFilters(branchPage, branchSearchCriteria);
             return branches.map(this::mapToDto);
