@@ -27,5 +27,6 @@ public class AssetType {
     private Long id;
     private String name;
     private String description;
+    private String shortCode;
 }
 
