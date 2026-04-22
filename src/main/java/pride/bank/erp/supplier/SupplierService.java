@@ -17,7 +17,10 @@ import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
 import pride.bank.erp.helper.DeleteResponse;
 
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
 
@@ -48,16 +51,15 @@ public class SupplierService {
 
     public Supplier createSupplier(SupplierDTO request)
             throws NotFoundException {
-
-        Commodity commodity = commodityService.findCommodity(request.getCommodity());
+        Set<Commodity> commodities = resolveRequestedCommodities(request);
 
         Supplier supplier = Supplier.builder()
                 .email(request.getEmail())
                 .address(request.getAddress())
                 .name(request.getName())
                 .telephone(request.getTelephone())
-                .commodity(commodity)
                 .build();
+        synchronizeSupplierCommodities(supplier, commodities);
         return supplierRepository.save(supplier);
     }
 
@@ -68,15 +70,14 @@ public class SupplierService {
     }
 
     public Supplier updateSupplier(SupplierDTO request, Long id) throws NotFoundException {
-        Commodity commodity = commodityService.findCommodity(request.getCommodity());
+        Set<Commodity> commodities = resolveRequestedCommodities(request);
         Supplier supplier = findSupplier(id);
-        assert supplier != null;
 
         supplier.setAddress(request.getAddress());
         supplier.setEmail(request.getEmail());
         supplier.setName(request.getName());
         supplier.setTelephone(request.getTelephone());
-        supplier.setCommodity(commodity);
+        synchronizeSupplierCommodities(supplier, commodities);
         return supplierRepository.save(supplier);
     }
 
@@ -91,5 +92,44 @@ public class SupplierService {
 
     private Sort.Direction determineSortDirection(String direction) {
         return Objects.equals(direction, DESCENDING_SORT_DIRECTION) ? Sort.Direction.DESC : Sort.Direction.ASC;
+    }
+
+    private Set<Commodity> resolveRequestedCommodities(SupplierDTO request) throws NotFoundException {
+        Set<Commodity> commodities = new LinkedHashSet<>();
+
+        if (request.getCommodities() != null) {
+            for (Long commodityId : request.getCommodities()) {
+                if (commodityId != null) {
+                    commodities.add(commodityService.findCommodity(commodityId));
+                }
+            }
+        }
+
+        if (request.getCommodity() != null) {
+            commodities.add(commodityService.findCommodity(request.getCommodity()));
+        }
+
+        return commodities;
+    }
+
+    private void synchronizeSupplierCommodities(Supplier supplier, Set<Commodity> commodities) {
+        if (supplier.getCommodities() == null) {
+            supplier.setCommodities(new LinkedHashSet<>());
+        }
+
+        for (Commodity existingCommodity : List.copyOf(supplier.getCommodities())) {
+            if (!commodities.contains(existingCommodity)) {
+                supplier.getCommodities().remove(existingCommodity);
+                existingCommodity.getSuppliers().remove(supplier);
+            }
+        }
+
+        for (Commodity commodity : commodities) {
+            supplier.getCommodities().add(commodity);
+            if (commodity.getSuppliers() == null) {
+                commodity.setSuppliers(new LinkedHashSet<>());
+            }
+            commodity.getSuppliers().add(supplier);
+        }
     }
 }
