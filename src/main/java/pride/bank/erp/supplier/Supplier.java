@@ -8,22 +8,28 @@ Managing Director
 package pride.bank.erp.supplier;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import pride.bank.erp.assetType.AssetType;
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
 import pride.bank.erp.commodity.Commodity;
 import pride.bank.erp.stock.Stock;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Entity
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@EqualsAndHashCode(exclude = {"stocks", "commodities"})
+@ToString(exclude = {"stocks", "commodities"})
 public class Supplier {
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
@@ -37,7 +43,13 @@ public class Supplier {
     @JsonIgnore
     private List<Stock> stocks;
 
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "commodity_id")
-    private Commodity commodity;
+    @ManyToMany(fetch = FetchType.EAGER)
+    @JoinTable(
+            name = "supplier_commodity",
+            joinColumns = @JoinColumn(name = "supplier_id"),
+            inverseJoinColumns = @JoinColumn(name = "commodity_id")
+    )
+    @JsonIgnoreProperties({"suppliers", "requestCommodities", "stockCommodities"})
+    @Builder.Default
+    private Set<Commodity> commodities = new HashSet<>();
 }
