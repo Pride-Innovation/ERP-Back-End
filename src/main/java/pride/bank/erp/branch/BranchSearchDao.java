@@ -76,7 +76,48 @@ public class BranchSearchDao {
         List<Predicate> predicates = new ArrayList<>();
 
         if (Objects.nonNull(branchSearchCriteria.getName())) {
-            predicates.add(criteriaBuilder.like(branchRoot.get("name"), "%" + branchSearchCriteria.getName() + "%"));
+            predicates.add(
+                    criteriaBuilder.like(
+                            criteriaBuilder.lower(branchRoot.get("name")),
+                            "%" + branchSearchCriteria.getName().toLowerCase() + "%"
+                    )
+            );
+        }
+
+        if (Objects.nonNull(branchSearchCriteria.getRegionId())) {
+            predicates.add(
+                    criteriaBuilder.equal(branchRoot.get("region").get("id"), branchSearchCriteria.getRegionId())
+            );
+        }
+
+        if (Objects.nonNull(branchSearchCriteria.getDistrictId())) {
+            predicates.add(
+                    criteriaBuilder.equal(branchRoot.get("district").get("id"), branchSearchCriteria.getDistrictId())
+            );
+        }
+
+        if (Objects.nonNull(branchSearchCriteria.getBranchManagerId())) {
+            predicates.add(
+                    criteriaBuilder.equal(branchRoot.get("branchManager").get("id"), branchSearchCriteria.getBranchManagerId())
+            );
+        }
+
+        if (Objects.nonNull(branchSearchCriteria.getBranchOperationsManagerId())) {
+            predicates.add(
+                    criteriaBuilder.equal(branchRoot.get("branchOperationsManager").get("id"), branchSearchCriteria.getBranchOperationsManagerId())
+            );
+        }
+
+        if (Objects.nonNull(branchSearchCriteria.getRelationshipManagerId())) {
+            predicates.add(
+                    criteriaBuilder.equal(branchRoot.get("relationshipManager").get("id"), branchSearchCriteria.getRelationshipManagerId())
+            );
+        }
+
+        if (Objects.nonNull(branchSearchCriteria.getCreditAdministratorId())) {
+            predicates.add(
+                    criteriaBuilder.equal(branchRoot.get("creditAdministrator").get("id"), branchSearchCriteria.getCreditAdministratorId())
+            );
         }
 
         return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
