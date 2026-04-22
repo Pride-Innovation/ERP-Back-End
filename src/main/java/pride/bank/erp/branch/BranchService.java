@@ -35,26 +35,27 @@ public class BranchService {
     private final DistrictService districtService;
     private final RegionService regionService;
 
-    public Page<BranchWithManagersDTO> fetchAllBranches(
-            BranchQueryParams params
-    ) {
-        try {
-            BranchPage branchPage = BranchPage.builder()
-                    .pageSize(params.getPageSize())
-                    .sortDirection(determineSortDirection(params.getSortDirection()))
-                    .sortBy(params.getSortBy())
-                    .pageNumber(params.getPageNumber())
-                    .build();
+    public Page<BranchWithManagersDTO> fetchAllBranches(BranchQueryParams params) {
+        BranchPage branchPage = BranchPage.builder()
+                .pageSize(params.getPageSize())
+                .sortDirection(determineSortDirection(params.getSortDirection()))
+                .sortBy(params.getSortBy())
+                .pageNumber(params.getPageNumber())
+                .build();
 
-            BranchSearchCriteria branchSearchCriteria = BranchSearchCriteria
-                    .builder()
-                    .name(params.getName())
-                    .build();
-            Page<Branch> branches = branchSearchDao.findAllWithFilters(branchPage, branchSearchCriteria);
-            return branches.map(this::mapToDto);
-        } catch (Exception e) {
-            return null;
-        }
+        BranchSearchCriteria branchSearchCriteria = BranchSearchCriteria
+                .builder()
+                .name(params.getName())
+                .regionId(params.getRegionId())
+                .districtId(params.getDistrictId())
+                .branchManagerId(params.getBranchManagerId())
+                .branchOperationsManagerId(params.getBranchOperationsManagerId())
+                .relationshipManagerId(params.getRelationshipManagerId())
+                .creditAdministratorId(params.getCreditAdministratorId())
+                .build();
+
+        Page<Branch> branches = branchSearchDao.findAllWithFilters(branchPage, branchSearchCriteria);
+        return branches.map(this::mapToDto);
     }
 
     @Transactional
@@ -91,6 +92,8 @@ public class BranchService {
         District district = districtService.findDistrict(request.getDistrict());
         Region region = regionService.findRegion(request.getRegion());
         branch.setName(request.getName());
+        branch.setTelephone(request.getTelephone());
+        branch.setEmail(request.getEmail());
         branch.setBranchManager(branchManager);
         branch.setBranchOperationsManager(branchOperationsManager);
         branch.setCreditAdministrator(creditAdministrator);
@@ -106,13 +109,12 @@ public class BranchService {
                 .orElseThrow(() -> new NotFoundException("Branch with ID " + id + " not found"));
     }
 
-    public DeleteResponse deleteBranch(Long id) {
-        if (branchRepository.existsById(id)) {
-            branchRepository.deleteById(id);
-            return new DeleteResponse(Constants.DELETED_SUCCESSFULLY, true);
-        } else {
-            return new DeleteResponse(Constants.ENTITY_NOT_FOUND, false);
+    public DeleteResponse deleteBranch(Long id) throws NotFoundException {
+        if (!branchRepository.existsById(id)) {
+            throw new NotFoundException("Branch with ID " + id + " not found");
         }
+        branchRepository.deleteById(id);
+        return new DeleteResponse(Constants.DELETED_SUCCESSFULLY, true);
     }
 
     private Sort.Direction determineSortDirection(String direction) {
