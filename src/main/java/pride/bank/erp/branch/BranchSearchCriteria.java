@@ -16,4 +16,10 @@ import lombok.Setter;
 @Builder
 public class BranchSearchCriteria {
     private String name;
+    private Long regionId;
+    private Long districtId;
+    private Long branchManagerId;
+    private Long branchOperationsManagerId;
+    private Long relationshipManagerId;
+    private Long creditAdministratorId;
 }
