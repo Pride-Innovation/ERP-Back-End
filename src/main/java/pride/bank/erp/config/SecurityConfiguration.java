@@ -62,7 +62,11 @@ public class SecurityConfiguration {
                                         VERIFY_EMAIL,
                                         REQUEST_PASSWORD_RESET,
                                         RESET_PASSWORD,
-                                        AUDIT_ROUTE // Audit route for test purpose
+                                        AUDIT_ROUTE, // Audit route for test purpose
+                                        "/swagger-ui/**",
+                                        "/swagger-ui.html",
+                                        "/v3/api-docs/**",
+                                        "/v3/api-docs"
                                 )
                                 .permitAll()
                                 // User Routes
