@@ -102,6 +102,7 @@ public class DataInitializer {
     private final RegionBranchSeeder regionBranchSeeder;
     private final DepartmentSeeder departmentSeeder;
     private final AssetTypeCommoditySeeder assetTypeCommoditySeeder;
+    private final SupplierCommoditySeeder supplierCommoditySeeder;
     private final RoleSeeder roleSeeder;
     private final TitleSeeder titleSeeder;
 
@@ -146,6 +147,7 @@ public class DataInitializer {
 
             initializeDistricts();
             assetTypeCommoditySeeder.seedAssetTypesAndCommodities();
+            supplierCommoditySeeder.seedSuppliersAndCommodityLinks();
             roleSeeder.seedRoles();
             titleSeeder.seedTitles();
         };
