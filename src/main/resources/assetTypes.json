@@ -199,6 +199,231 @@
       {
         "name": "Motorcycle",
         "groupName": "pieces"
+      },
+      {
+        "name": "Tyres and Tubes",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Vehicle Spare Parts",
+        "groupName": "pieces"
+      }
+    ]
+  },
+  {
+    "name": "Security",
+    "description": "Security (SE)",
+    "shortCode": "SE",
+    "commodities": [
+      {
+        "name": "CCTV Camera",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Biometric Access Control System",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Alarm System",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Vault Door / Strong Room Door",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Fire Proof Cabinet",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Personal Protective Equipment (PPE)",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Motorcycle Riding Gear / Helmet",
+        "groupName": "pieces"
+      }
+    ]
+  },
+  {
+    "name": "Cleaning & Hygiene",
+    "description": "Cleaning & Hygiene (CH)",
+    "shortCode": "CH",
+    "commodities": [
+      {
+        "name": "Cleaning Materials",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Toiletries",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Sanitary Bins",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Disinfectants / Chemicals",
+        "groupName": "litres"
+      },
+      {
+        "name": "Drinking Water (Dispensed)",
+        "groupName": "gallons"
+      }
+    ]
+  },
+  {
+    "name": "Healthcare",
+    "description": "Healthcare (H)",
+    "shortCode": "H",
+    "commodities": [
+      {
+        "name": "Drugs / Medicine",
+        "groupName": "pieces"
+      },
+      {
+        "name": "First Aid Kit",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Medical Sundries",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Hand Sanitizer",
+        "groupName": "litres"
+      }
+    ]
+  },
+  {
+    "name": "Printing & Branding",
+    "description": "Printing & Branding (PB)",
+    "shortCode": "PB",
+    "commodities": [
+      {
+        "name": "Toners / Cartridges / Ribbons",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Printed Stationery",
+        "groupName": "pieces"
+      },
+      {
+        "name": "ATM Consumables (PIN Mailers, Receipt Rolls, Journal Rolls)",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Security Printing Materials (Vouchers, Cheques)",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Promotional Items",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Branding Materials (Signage, Banners, Billboards)",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Corporate Wear / Uniforms",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Gift Vouchers / Souvenirs",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Packaging Materials",
+        "groupName": "pieces"
+      }
+    ]
+  },
+  {
+    "name": "Building & Construction",
+    "description": "Building & Construction (BC)",
+    "shortCode": "BC",
+    "commodities": [
+      {
+        "name": "Building Materials",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Painting Materials",
+        "groupName": "litres"
+      },
+      {
+        "name": "Pipes and Fittings",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Electrical Materials / Wiring",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Carpentry / Wood Joinery",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Civil Works / Renovation",
+        "groupName": "lots"
+      },
+      {
+        "name": "Network / IT Cabling",
+        "groupName": "lots"
+      }
+    ]
+  },
+  {
+    "name": "Financial & Banking Equipment",
+    "description": "Financial & Banking Equipment (FB)",
+    "shortCode": "FB",
+    "commodities": [
+      {
+        "name": "ATM Machine",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Point of Sale (POS) Terminal",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Currency Board",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Coin Bags / Seals",
+        "groupName": "pieces"
+      }
+    ]
+  },
+  {
+    "name": "Kitchen & Groceries",
+    "description": "Kitchen & Groceries (KG)",
+    "shortCode": "KG",
+    "commodities": [
+      {
+        "name": "Gas Cylinder",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Coffee Machine / Kettle / Microwave",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Fridge / Freezer",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Beverages (Tea, Coffee, Milk, Sugar)",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Disposable Cups / Plates / Cutlery",
+        "groupName": "pieces"
+      },
+      {
+        "name": "Bottled Water",
+        "groupName": "pieces"
       }
     ]
   }
