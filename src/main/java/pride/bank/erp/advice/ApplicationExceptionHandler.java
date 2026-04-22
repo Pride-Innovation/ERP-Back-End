@@ -137,7 +137,7 @@ public class ApplicationExceptionHandler {
         return errorDetail;
     }
 
-    @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
     @ExceptionHandler(NotFoundException.class)
     public Map<String, String> handleException(NotFoundException ex) {
         Map<String, String> errors = new HashMap<>();
