@@ -109,6 +109,44 @@ public class BranchService {
                 .orElseThrow(() -> new NotFoundException("Branch with ID " + id + " not found"));
     }
 
+        public BranchWithManagersDTO findBranchDetails(Long id) throws NotFoundException {
+        BranchDetailsProjection branch = branchRepository.findBranchDetailsById(id)
+            .orElseThrow(() -> new NotFoundException("Branch with ID " + id + " not found"));
+
+        return BranchWithManagersDTO.builder()
+            .id(branch.getId())
+            .name(branch.getName())
+            .email(branch.getEmail())
+            .telephone(branch.getTelephone())
+            .branchManager(mapUser(
+                branch.getBranchManagerId(),
+                branch.getBranchManagerFirstName(),
+                branch.getBranchManagerLastName(),
+                branch.getBranchManagerEmail()
+            ))
+            .branchOperationsManager(mapUser(
+                branch.getBranchOperationsManagerId(),
+                branch.getBranchOperationsManagerFirstName(),
+                branch.getBranchOperationsManagerLastName(),
+                branch.getBranchOperationsManagerEmail()
+            ))
+            .relationshipManager(mapUser(
+                branch.getRelationshipManagerId(),
+                branch.getRelationshipManagerFirstName(),
+                branch.getRelationshipManagerLastName(),
+                branch.getRelationshipManagerEmail()
+            ))
+            .creditAdministrator(mapUser(
+                branch.getCreditAdministratorId(),
+                branch.getCreditAdministratorFirstName(),
+                branch.getCreditAdministratorLastName(),
+                branch.getCreditAdministratorEmail()
+            ))
+            .region(branch.getRegion())
+            .district(branch.getDistrict())
+            .build();
+        }
+
     public DeleteResponse deleteBranch(Long id) throws NotFoundException {
         if (!branchRepository.existsById(id)) {
             throw new NotFoundException("Branch with ID " + id + " not found");
@@ -143,6 +181,19 @@ public class BranchService {
                 .firstName(user.getFirstName())
                 .lastName(user.getLastName())
                 .email(user.getEmail())
+                .build();
+    }
+
+    private User mapUser(Long id, String firstName, String lastName, String email) {
+        if (id == null) {
+            return null;
+        }
+
+        return User.builder()
+                .id(id)
+                .firstName(firstName)
+                .lastName(lastName)
+                .email(email)
                 .build();
     }
 
