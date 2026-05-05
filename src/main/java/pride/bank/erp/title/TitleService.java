@@ -8,6 +8,7 @@ Managing Director
 package pride.bank.erp.title;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -49,30 +50,35 @@ public class TitleService {
         return titleSearchDao.findAllWithFilters(titlePage, titleSearchCriteria);
     }
 
+    @Transactional
     public Title createTitle(TitleRequestDTO request)
             throws NotFoundException {
-        Title reportsTo = findTitle(request.getReportsTo());
+        Title reportsTo = request.getReportsTo() == null ? null : findTitle(request.getReportsTo());
         Role role = roleService.findOneRole(request.getRole());
+        ensureNoDuplicateTitle(request, reportsTo, null);
 
         Title title = Title.builder()
                 .name(request.getName())
+                .shortCode(request.getShortCode())
                 .reportsTo(reportsTo)
                 .role(role)
                 .build();
         return titleRepository.save(title);
     }
 
+    @Transactional
     public Title updateTitle(TitleRequestDTO request, Long id)
             throws NotFoundException {
         Title title = findTitle(id);
         Role role = roleService.findOneRole(request.getRole());
+        Title reportsTo = request.getReportsTo() == null ? null : findTitle(request.getReportsTo());
 
-        if (request.getReportsTo() != null) {
-            Title reportsTo = findTitle(request.getReportsTo());
-            title.setReportsTo(reportsTo);
-        }
+        validateReportsToRelationship(title, reportsTo);
+        ensureNoDuplicateTitle(request, reportsTo, id);
 
         title.setName(request.getName());
+        title.setShortCode(request.getShortCode());
+        title.setReportsTo(reportsTo);
         title.setRole(role);
         return titleRepository.save(title);
 
@@ -83,16 +89,50 @@ public class TitleService {
                 .orElseThrow(() -> new NotFoundException("Title with ID " + id + " not found"));
     }
 
-    public DeleteResponse deleteTitle(Long id) {
-        if (titleRepository.existsById(id)) {
-            titleRepository.deleteById(id);
-            return new DeleteResponse(Constants.DELETED_SUCCESSFULLY, true);
-        } else {
-            return new DeleteResponse(Constants.ENTITY_NOT_FOUND, false);
+    @Transactional
+    public DeleteResponse deleteTitle(Long id) throws NotFoundException {
+        if (!titleRepository.existsById(id)) {
+            throw new NotFoundException("Title with ID " + id + " not found");
         }
+        titleRepository.deleteById(id);
+        return new DeleteResponse(Constants.DELETED_SUCCESSFULLY, true);
     }
 
     private Sort.Direction determineSortDirection(String direction) {
         return Objects.equals(direction, DESCENDING_SORT_DIRECTION) ? Sort.Direction.DESC : Sort.Direction.ASC;
+    }
+
+    private void ensureNoDuplicateTitle(TitleRequestDTO request, Title reportsTo, Long currentTitleId) {
+        var existingTitle = reportsTo == null
+                ? titleRepository.findByNameIgnoreCaseAndShortCodeIgnoreCaseAndReportsToIsNull(request.getName(), request.getShortCode())
+                : titleRepository.findByNameIgnoreCaseAndShortCodeIgnoreCaseAndReportsTo_Id(
+                        request.getName(),
+                        request.getShortCode(),
+                        reportsTo.getId()
+                );
+
+        if (existingTitle.isPresent() && !existingTitle.get().getId().equals(currentTitleId)) {
+            throw new IllegalArgumentException(
+                    "A title with name '" + request.getName() + "' and short code '" + request.getShortCode() + "' already exists"
+            );
+        }
+    }
+
+    private void validateReportsToRelationship(Title title, Title reportsTo) {
+        if (reportsTo == null) {
+            return;
+        }
+
+        if (title.getId().equals(reportsTo.getId())) {
+            throw new IllegalArgumentException("A title cannot report to itself");
+        }
+
+        Title current = reportsTo;
+        while (current != null) {
+            if (title.getId().equals(current.getId())) {
+                throw new IllegalArgumentException("A title cannot report to one of its subordinates");
+            }
+            current = current.getReportsTo();
+        }
     }
 }
