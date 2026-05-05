@@ -7,6 +7,8 @@ Managing Director
 
 package pride.bank.erp.title;
 
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -15,7 +17,15 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @NoArgsConstructor
 public class TitleRequestDTO {
+    @NotBlank(message = "Name is required")
     private String name;
+
+    @NotBlank(message = "Short code is required")
+    private String shortCode;
+
     private Long reportsTo;
-    private Long role;
+
+    @NotNull(message = "Role is required")
+    private Long role; // E.g. Officer, supervisor manager etc.
+
 }
