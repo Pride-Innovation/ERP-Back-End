@@ -45,22 +45,22 @@ public class Branch {
     This is to ensure a unique entry on the column
      */
 
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "branch_manager_id")
     @JsonIgnore
     private User branchManager;
 
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "branch_operations_manager_id")
     @JsonIgnore
     private User branchOperationsManager;
 
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "relationship_manager_id")
     @JsonIgnore
     private User relationshipManager;
 
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "credit_administrator_id")
     @JsonIgnore
     private User creditAdministrator;
