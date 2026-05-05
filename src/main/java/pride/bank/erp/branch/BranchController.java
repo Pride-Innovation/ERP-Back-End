@@ -112,16 +112,16 @@ public class BranchController {
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Branch found",
                     content = @Content(mediaType = "application/json",
-                            schema = @Schema(implementation = Branch.class))),
+                            schema = @Schema(implementation = BranchWithManagersDTO.class))),
             @ApiResponse(responseCode = "404", description = "Branch not found",
                     content = @Content)
     })
     @GetMapping("/branches/{id}")
-    public ResponseEntity<Branch> getSingleBranch(
+    public ResponseEntity<BranchWithManagersDTO> getSingleBranch(
             @Parameter(description = "ID of the branch", required = true)
             @PathVariable Long id
     ) throws NotFoundException {
-        return new ResponseEntity<>(branchService.findBranch(id), HttpStatus.OK);
+        return new ResponseEntity<>(branchService.findBranchDetails(id), HttpStatus.OK);
     }
 
     @Operation(
