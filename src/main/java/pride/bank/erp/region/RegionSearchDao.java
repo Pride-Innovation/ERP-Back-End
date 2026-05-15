@@ -78,7 +78,9 @@ public class RegionSearchDao {
         List<Predicate> predicates = new ArrayList<>();
 
         if (Objects.nonNull(regionSearchCriteria.getName())) {
-            predicates.add(criteriaBuilder.like(regionRoot.get("name"), "%" + regionSearchCriteria.getName() + "%"));
+            predicates.add(criteriaBuilder.like(
+                    criteriaBuilder.lower(regionRoot.get("name")),
+                    "%" + regionSearchCriteria.getName().toLowerCase() + "%"));
         }
 
         return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
