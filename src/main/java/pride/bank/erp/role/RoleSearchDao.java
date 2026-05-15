@@ -77,7 +77,9 @@ public class RoleSearchDao {
         List<Predicate> predicates = new ArrayList<>();
 
         if (Objects.nonNull(roleSearchCriteria.getName())) {
-            predicates.add(criteriaBuilder.like(roleRoot.get("name"), "%" + roleSearchCriteria.getName() + "%"));
+            predicates.add(criteriaBuilder.like(
+                    criteriaBuilder.lower(roleRoot.get("name")),
+                    "%" + roleSearchCriteria.getName().toLowerCase() + "%"));
         }
 
         return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
