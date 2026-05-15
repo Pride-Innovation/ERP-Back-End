@@ -13,5 +13,6 @@ public class CommodityQueryParams {
     private String sortBy = "id";
     private String sortDirection = ASCENDING_SORT_DIRECTION;
     private String name;
+    private String groupName;
     private Long assetTypeId;
 }
