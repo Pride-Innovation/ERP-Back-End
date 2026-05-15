@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import pride.bank.erp.commodity.Commodity;
 import pride.bank.erp.commodity.CommodityService;
 import pride.bank.erp.exception.NotFoundException;
@@ -20,6 +21,7 @@ import pride.bank.erp.helper.DeleteResponse;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 
 import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
@@ -32,25 +34,26 @@ public class SupplierService {
     private final SupplierSearchDao supplierSearchDao;
 
     public Page<Supplier> fetchAllSuppliers(SupplierQueryParams params) {
-        try {
-            SupplierPage supplierPage = SupplierPage.builder()
-                    .pageSize(params.getPageSize())
-                    .sortDirection(determineSortDirection(params.getSortDirection()))
-                    .pageNumber(params.getPageNumber())
-                    .sortBy(params.getSortBy())
-                    .build();
-            SupplierSearchCriteria supplierSearchCriteria = SupplierSearchCriteria
-                    .builder()
-                    .name(params.getName())
-                    .build();
-            return supplierSearchDao.findAllWithFilters(supplierPage, supplierSearchCriteria);
-        } catch (Exception e) {
-            return null;
-        }
+        SupplierPage supplierPage = SupplierPage.builder()
+                .pageSize(params.getPageSize())
+                .sortDirection(determineSortDirection(params.getSortDirection()))
+                .pageNumber(params.getPageNumber())
+                .sortBy(params.getSortBy())
+                .build();
+        SupplierSearchCriteria supplierSearchCriteria = SupplierSearchCriteria
+                .builder()
+                .name(params.getName())
+                .email(params.getEmail())
+                .address(params.getAddress())
+                .telephone(params.getTelephone())
+                .build();
+        return supplierSearchDao.findAllWithFilters(supplierPage, supplierSearchCriteria);
     }
 
+    @Transactional
     public Supplier createSupplier(SupplierDTO request)
             throws NotFoundException {
+        ensureNoDuplicateSupplierName(request.getName(), null);
         Set<Commodity> commodities = resolveRequestedCommodities(request);
 
         Supplier supplier = Supplier.builder()
@@ -69,7 +72,9 @@ public class SupplierService {
                 .orElseThrow(() -> new NotFoundException("Supplier with ID " + supplierId + " not found"));
     }
 
+    @Transactional
     public Supplier updateSupplier(SupplierDTO request, Long id) throws NotFoundException {
+        ensureNoDuplicateSupplierName(request.getName(), id);
         Set<Commodity> commodities = resolveRequestedCommodities(request);
         Supplier supplier = findSupplier(id);
 
@@ -81,17 +86,24 @@ public class SupplierService {
         return supplierRepository.save(supplier);
     }
 
-    public DeleteResponse deleteSupplier(Long supplierId) {
-        if (supplierRepository.existsById(supplierId)) {
-            supplierRepository.deleteById(supplierId);
-            return new DeleteResponse(Constants.DELETED_SUCCESSFULLY, true);
-        } else {
-            return new DeleteResponse(Constants.ENTITY_NOT_FOUND, false);
+    @Transactional
+    public DeleteResponse deleteSupplier(Long supplierId) throws NotFoundException {
+        if (!supplierRepository.existsById(supplierId)) {
+            throw new NotFoundException("Supplier with ID " + supplierId + " not found");
         }
+        supplierRepository.deleteById(supplierId);
+        return new DeleteResponse(Constants.DELETED_SUCCESSFULLY, true);
     }
 
     private Sort.Direction determineSortDirection(String direction) {
         return Objects.equals(direction, DESCENDING_SORT_DIRECTION) ? Sort.Direction.DESC : Sort.Direction.ASC;
+    }
+
+    private void ensureNoDuplicateSupplierName(String name, Long excludeId) {
+        Optional<Supplier> existing = supplierRepository.findByNameIgnoreCase(name);
+        if (existing.isPresent() && !existing.get().getId().equals(excludeId)) {
+            throw new IllegalArgumentException("A supplier with the name '" + name + "' already exists");
+        }
     }
 
     private Set<Commodity> resolveRequestedCommodities(SupplierDTO request) throws NotFoundException {
