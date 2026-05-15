@@ -12,11 +12,13 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
 import pride.bank.erp.helper.DeleteResponse;
 
 import java.util.Objects;
+import java.util.Optional;
 
 import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
 
@@ -28,33 +30,33 @@ public class RegionService {
     private final RegionSearchDao regionSearchDao;
 
     public Page<Region> fetchAllRegions(RegionQueryParams params) {
-        try {
-            RegionPage regionPage = RegionPage.builder()
-                    .pageSize(params.getPageSize())
-                    .sortDirection(determineSortDirection(params.getSortDirection()))
-                    .sortBy(params.getSortBy())
-                    .pageNumber(params.getPageNumber())
-                    .build();
+        RegionPage regionPage = RegionPage.builder()
+                .pageSize(params.getPageSize())
+                .sortDirection(determineSortDirection(params.getSortDirection()))
+                .sortBy(params.getSortBy())
+                .pageNumber(params.getPageNumber())
+                .build();
 
-            RegionSearchCriteria regionSearchCriteria = RegionSearchCriteria
-                    .builder()
-                    .name(params.getName())
-                    .build();
-            return regionSearchDao.findAllWithFilters(regionPage, regionSearchCriteria);
-        } catch (Exception e) {
-            return null;
-        }
+        RegionSearchCriteria regionSearchCriteria = RegionSearchCriteria
+                .builder()
+                .name(params.getName())
+                .build();
+        return regionSearchDao.findAllWithFilters(regionPage, regionSearchCriteria);
     }
 
-    public Region createRegion(Region request) {
+    @Transactional
+    public Region createRegion(RegionRequestDTO request) {
+        ensureNoDuplicateRegionName(request.getName(), null);
         Region region = Region.builder()
                 .name(request.getName())
                 .build();
         return regionRepository.save(region);
     }
 
-    public Region updateRegion(Region request, Long id) throws NotFoundException {
+    @Transactional
+    public Region updateRegion(RegionRequestDTO request, Long id) throws NotFoundException {
         Region region = findRegion(id);
+        ensureNoDuplicateRegionName(request.getName(), id);
         region.setName(request.getName());
         return regionRepository.save(region);
     }
@@ -65,16 +67,23 @@ public class RegionService {
                 .orElseThrow(() -> new NotFoundException("Region with ID " + id + " not found"));
     }
 
-    public DeleteResponse deleteRegion(Long id) {
-        if (regionRepository.existsById(id)) {
-            regionRepository.deleteById(id);
-            return new DeleteResponse(Constants.DELETED_SUCCESSFULLY, true);
-        } else {
-            return new DeleteResponse(Constants.ENTITY_NOT_FOUND, false);
+    @Transactional
+    public DeleteResponse deleteRegion(Long id) throws NotFoundException {
+        if (!regionRepository.existsById(id)) {
+            throw new NotFoundException("Region with ID " + id + " not found");
         }
+        regionRepository.deleteById(id);
+        return new DeleteResponse(Constants.DELETED_SUCCESSFULLY, true);
     }
 
     private Sort.Direction determineSortDirection(String direction) {
         return Objects.equals(direction, DESCENDING_SORT_DIRECTION) ? Sort.Direction.DESC : Sort.Direction.ASC;
+    }
+
+    private void ensureNoDuplicateRegionName(String name, Long excludeId) {
+        Optional<Region> existing = regionRepository.findByNameIgnoreCase(name);
+        if (existing.isPresent() && !existing.get().getId().equals(excludeId)) {
+            throw new IllegalArgumentException("A region with the name '" + name + "' already exists");
+        }
     }
 }
