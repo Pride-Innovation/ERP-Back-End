@@ -76,7 +76,27 @@ public class SupplierSearchDao {
         List<Predicate> predicates = new ArrayList<>();
 
         if (Objects.nonNull(supplierSearchCriteria.getName())) {
-            predicates.add(criteriaBuilder.like(supplierRoot.get("name"), "%" + supplierSearchCriteria.getName() + "%"));
+            predicates.add(criteriaBuilder.like(
+                    criteriaBuilder.lower(supplierRoot.get("name")),
+                    "%" + supplierSearchCriteria.getName().toLowerCase() + "%"));
+        }
+
+        if (Objects.nonNull(supplierSearchCriteria.getEmail())) {
+            predicates.add(criteriaBuilder.like(
+                    criteriaBuilder.lower(supplierRoot.get("email")),
+                    "%" + supplierSearchCriteria.getEmail().toLowerCase() + "%"));
+        }
+
+        if (Objects.nonNull(supplierSearchCriteria.getAddress())) {
+            predicates.add(criteriaBuilder.like(
+                    criteriaBuilder.lower(supplierRoot.get("address")),
+                    "%" + supplierSearchCriteria.getAddress().toLowerCase() + "%"));
+        }
+
+        if (Objects.nonNull(supplierSearchCriteria.getTelephone())) {
+            predicates.add(criteriaBuilder.like(
+                    supplierRoot.get("telephone"),
+                    "%" + supplierSearchCriteria.getTelephone() + "%"));
         }
 
         return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
