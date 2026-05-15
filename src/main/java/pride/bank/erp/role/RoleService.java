@@ -1,16 +1,10 @@
-/*
-13.9 Pride's Standard Copyright Notice:
-Copyright ©20XX. Management of Pride Bank Limited (PBL). All Rights Reserved. Permission to use, copy, modify,
-and distribute this software and its documentation for any purpose is prohibited unless authorized in writing by the
-Managing Director
-*/
-
 package pride.bank.erp.role;
 
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
 import pride.bank.erp.helper.DeleteResponse;
@@ -18,22 +12,29 @@ import pride.bank.erp.permission.Permission;
 import pride.bank.erp.permission.PermissionService;
 
 import java.util.Objects;
+import java.util.Optional;
 
 import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
 
-
 @Service
+@RequiredArgsConstructor
 public class RoleService {
 
-    @Autowired
-    private RoleRepository roleRepository;
-    @Autowired
-    private PermissionService permissionService;
-    @Autowired
-    private RoleSearchDao roleSearchDao;
+    private final RoleRepository roleRepository;
+    private final PermissionService permissionService;
+    private final RoleSearchDao roleSearchDao;
 
-    public Role createRole(Role role) {
-        return roleRepository.save(role);
+    public Page<Role> fetchRoles(RoleQueryParams params) {
+        RolePage rolePage = RolePage.builder()
+                .pageSize(params.getPageSize())
+                .sortDirection(determineSortDirection(params.getSortDirection()))
+                .pageNumber(params.getPageNumber())
+                .sortBy(params.getSortBy())
+                .build();
+        RoleSearchCriteria roleSearchCriteria = RoleSearchCriteria.builder()
+                .name(params.getName())
+                .build();
+        return roleSearchDao.findAllWithFilters(rolePage, roleSearchCriteria);
     }
 
     public Role findOneRole(Long roleId) throws NotFoundException {
@@ -41,76 +42,53 @@ public class RoleService {
                 .orElseThrow(() -> new NotFoundException("Role with ID " + roleId + " is not found"));
     }
 
-    public Role assignPermissionsToRole(Long roleID, Long permID) throws NotFoundException {
-        Role role = findRoleOrThrow(roleID);
-        Permission permission = findPermissionOrThrow(permID);
-
-        if (role.getPermissions().add(permission)) {
-            return roleRepository.save(role);
-        }
-        return role;
+    @Transactional
+    public Role createRole(RoleRequestDTO request) {
+        ensureNoDuplicateRoleName(request.getName(), null);
+        Role role = Role.builder()
+                .name(request.getName())
+                .description(request.getDescription())
+                .build();
+        return roleRepository.save(role);
     }
 
-    public Role removePermissionsFromRole(Long roleID, Long permID) throws NotFoundException {
-        Role role = findRoleOrThrow(roleID);
-        Permission permission = findPermissionOrThrow(permID);
-
-        if (role.getPermissions().remove(permission)) {
-            return roleRepository.save(role);
-        }
-        return role;
-    }
-
-    private Role findRoleOrThrow(Long roleID) throws NotFoundException {
-        return roleRepository.findById(roleID)
-                .orElseThrow(() -> new NotFoundException("Role with ID " + roleID + " not found"));
-    }
-
-    private Permission findPermissionOrThrow(Long permID) throws NotFoundException {
-        return permissionService.findOnePermission(permID);
-    }
-
-    public DeleteResponse deleteRole(Long roleID) {
-        DeleteResponse response = new DeleteResponse();
-        if (roleRepository.existsById(roleID)) {
-            roleRepository.deleteById(roleID);
-            response.setMessage(Constants.DELETED_SUCCESSFULLY);
-            response.setSuccess(true);
-        } else {
-            response.setMessage(Constants.ENTITY_NOT_FOUND);
-            response.setSuccess(false);
-        }
-        return response;
-    }
-
-    public Role updateRole(Long roleID, Role role) throws NotFoundException {
+    @Transactional
+    public Role updateRole(Long roleID, RoleRequestDTO request) throws NotFoundException {
         Role currentData = findOneRole(roleID);
-        currentData.setName(role.getName());
+        ensureNoDuplicateRoleName(request.getName(), roleID);
+        currentData.setName(request.getName());
+        currentData.setDescription(request.getDescription());
         return roleRepository.save(currentData);
     }
 
-    public Page<Role> fetchRoles(
-            int pageSize,
-            String sortDirection,
-            int pageNumber,
-            String sortBy,
-            String name
-    ) {
+    @Transactional
+    public Role assignPermissionsToRole(Long roleID, Long permID) throws NotFoundException {
+        Role role = findOneRole(roleID);
+        Permission permission = permissionService.findOnePermission(permID);
+        role.getPermissions().add(permission);
+        return roleRepository.save(role);
+    }
 
-        try {
-            RolePage rolePage = RolePage.builder()
-                    .pageSize(pageSize)
-                    .sortDirection(determineSortDirection(sortDirection))
-                    .pageNumber(pageNumber)
-                    .sortBy(sortBy)
-                    .build();
-            RoleSearchCriteria roleSearchCriteria = RoleSearchCriteria
-                    .builder()
-                    .name(name)
-                    .build();
-            return roleSearchDao.findAllWithFilters(rolePage, roleSearchCriteria);
-        } catch (Exception e) {
-            return null;
+    @Transactional
+    public Role removePermissionsFromRole(Long roleID, Long permID) throws NotFoundException {
+        Role role = findOneRole(roleID);
+        Permission permission = permissionService.findOnePermission(permID);
+        role.getPermissions().remove(permission);
+        return roleRepository.save(role);
+    }
+
+    @Transactional
+    public DeleteResponse deleteRole(Long roleID) throws NotFoundException {
+        findOneRole(roleID);
+        roleRepository.deleteById(roleID);
+        return new DeleteResponse(Constants.DELETED_SUCCESSFULLY, true);
+    }
+
+    private void ensureNoDuplicateRoleName(String name, Long excludeId) {
+        Optional<Role> existing = roleRepository.findByNameIgnoreCase(name);
+        if (existing.isPresent() && !existing.get().getId().equals(excludeId)) {
+            throw new IllegalArgumentException(
+                    String.format("A role with the name '%s' already exists", name));
         }
     }
 
