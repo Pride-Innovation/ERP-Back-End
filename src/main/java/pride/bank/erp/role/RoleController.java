@@ -1,85 +1,167 @@
-/*
-13.9 Pride's Standard Copyright Notice:
-Copyright ©20XX. Management of Pride Bank Limited (PBL). All Rights Reserved. Permission to use, copy, modify,
-and distribute this software and its documentation for any purpose is prohibited unless authorized in writing by the
-Managing Director
-*/
-
 package pride.bank.erp.role;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.DeleteResponse;
 
-import static pride.bank.erp.helper.Constants.ASCENDING_SORT_DIRECTION;
 import static pride.bank.erp.helper.Constants.GENERAL_ROUTE;
 
 @RestController
 @RequestMapping(GENERAL_ROUTE)
+@RequiredArgsConstructor
+@Tag(name = "Roles", description = "Manage roles – creation, retrieval, update, removal and permission assignment")
+@SecurityRequirement(name = "bearerAuth")
 public class RoleController {
-    @Autowired
-    private RoleService roleService;
+    private final RoleService roleService;
 
+    @Operation(
+            summary = "List roles",
+            description = "Returns a paginated list of roles. The optional name filter uses a " +
+                    "case-insensitive partial match. When no filters are provided all roles are returned (paginated)."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Roles retrieved successfully",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = Page.class))),
+            @ApiResponse(responseCode = "401", description = "Unauthorized – missing or invalid JWT token",
+                    content = @Content),
+            @ApiResponse(responseCode = "403", description = "Forbidden – insufficient permissions",
+                    content = @Content)
+    })
     @GetMapping("/roles")
     public ResponseEntity<Page<Role>> getRoleWithFilters(
-            @RequestParam(required = false, defaultValue = "10") int pageSize,
-            @RequestParam(required = false, defaultValue = ASCENDING_SORT_DIRECTION) String sortDirection,
-            @RequestParam(required = false, defaultValue = "0") int pageNumber,
-            @RequestParam(required = false, defaultValue = "id") String sortBy,
-            @RequestParam(required = false) String name
-    ) {
-        return new ResponseEntity<>(roleService.fetchRoles(
-                pageSize,
-                sortDirection,
-                pageNumber,
-                sortBy,
-                name), HttpStatus.OK);
+            @Parameter(description = "Filter and pagination parameters")
+            @ModelAttribute RoleQueryParams params) {
+        return new ResponseEntity<>(roleService.fetchRoles(params), HttpStatus.OK);
     }
 
+    @Operation(
+            summary = "Get a role by ID",
+            description = "Returns the full details of a single role including its assigned permissions."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Role found",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = Role.class))),
+            @ApiResponse(responseCode = "404", description = "Role not found",
+                    content = @Content)
+    })
     @GetMapping("/roles/{roleID}")
-    public ResponseEntity<Role> fetchRole(@PathVariable Long roleID)
+    public ResponseEntity<Role> fetchRole(
+            @Parameter(description = "ID of the role", required = true)
+            @PathVariable Long roleID)
             throws NotFoundException {
-        Role role = roleService.findOneRole(roleID);
-        return new ResponseEntity<>(role, HttpStatus.OK);
+        return new ResponseEntity<>(roleService.findOneRole(roleID), HttpStatus.OK);
     }
 
+    @Operation(
+            summary = "Create a role",
+            description = "Creates a new role. Name is required and must be unique."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Role created successfully",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = Role.class))),
+            @ApiResponse(responseCode = "400", description = "Validation error or duplicate role name",
+                    content = @Content)
+    })
     @PostMapping("/roles")
-    public ResponseEntity<Role> createRole(@RequestBody @Valid Role role) {
-        Role response = roleService.createRole(role);
-        return new ResponseEntity<>(response, HttpStatus.CREATED);
+    public ResponseEntity<Role> createRole(
+            @Valid @RequestBody RoleRequestDTO request) {
+        return new ResponseEntity<>(roleService.createRole(request), HttpStatus.CREATED);
     }
 
-    @PutMapping("/roles/{roleID}/add-permissions/{permID}")
-    public ResponseEntity<Role> assignPermissionsToRole(@PathVariable Long roleID, @PathVariable Long permID)
-            throws NotFoundException {
-        Role response = roleService.assignPermissionsToRole(roleID, permID);
-        return new ResponseEntity<>(response, HttpStatus.CREATED);
-    }
-
-    @PutMapping("/roles/{roleID}/remove-permissions/{permID}")
-    public ResponseEntity<Role> removePermissionsToRole(@PathVariable Long roleID, @PathVariable Long permID)
-            throws NotFoundException {
-        Role response = roleService.removePermissionsFromRole(roleID, permID);
-        return new ResponseEntity<>(response, HttpStatus.CREATED);
-    }
-
+    @Operation(
+            summary = "Update a role",
+            description = "Fully replaces the role identified by {roleID}. Name is required."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Role updated successfully",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = Role.class))),
+            @ApiResponse(responseCode = "400", description = "Validation error or duplicate role name",
+                    content = @Content),
+            @ApiResponse(responseCode = "404", description = "Role not found",
+                    content = @Content)
+    })
     @PutMapping("/roles/{roleID}")
-    public ResponseEntity<Role> updateRole(@PathVariable Long roleID, @RequestBody Role role)
+    public ResponseEntity<Role> updateRole(
+            @Parameter(description = "ID of the role to update", required = true)
+            @PathVariable Long roleID,
+            @Valid @RequestBody RoleRequestDTO request)
             throws NotFoundException {
-        Role response = roleService.updateRole(roleID, role);
-        return new ResponseEntity<>(response, HttpStatusCode.valueOf(201));
+        return new ResponseEntity<>(roleService.updateRole(roleID, request), HttpStatus.OK);
     }
 
+    @Operation(
+            summary = "Assign a permission to a role",
+            description = "Adds the permission identified by {permID} to the role identified by {roleID}. " +
+                    "If the permission is already assigned the operation is idempotent."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Permission assigned successfully",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = Role.class))),
+            @ApiResponse(responseCode = "404", description = "Role or permission not found",
+                    content = @Content)
+    })
+    @PutMapping("/roles/{roleID}/add-permissions/{permID}")
+    public ResponseEntity<Role> assignPermissionsToRole(
+            @Parameter(description = "ID of the role", required = true) @PathVariable Long roleID,
+            @Parameter(description = "ID of the permission to assign", required = true) @PathVariable Long permID)
+            throws NotFoundException {
+        return new ResponseEntity<>(roleService.assignPermissionsToRole(roleID, permID), HttpStatus.OK);
+    }
+
+    @Operation(
+            summary = "Remove a permission from a role",
+            description = "Removes the permission identified by {permID} from the role identified by {roleID}. " +
+                    "If the permission is not assigned the operation is idempotent."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Permission removed successfully",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = Role.class))),
+            @ApiResponse(responseCode = "404", description = "Role or permission not found",
+                    content = @Content)
+    })
+    @PutMapping("/roles/{roleID}/remove-permissions/{permID}")
+    public ResponseEntity<Role> removePermissionsFromRole(
+            @Parameter(description = "ID of the role", required = true) @PathVariable Long roleID,
+            @Parameter(description = "ID of the permission to remove", required = true) @PathVariable Long permID)
+            throws NotFoundException {
+        return new ResponseEntity<>(roleService.removePermissionsFromRole(roleID, permID), HttpStatus.OK);
+    }
+
+    @Operation(
+            summary = "Delete a role",
+            description = "Permanently deletes the role identified by {roleID}."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Role deleted successfully",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = DeleteResponse.class))),
+            @ApiResponse(responseCode = "404", description = "Role not found",
+                    content = @Content)
+    })
     @DeleteMapping("/roles/{roleID}")
-    public ResponseEntity<DeleteResponse> deleteRole(@PathVariable Long roleID) {
-        var response = roleService.deleteRole(roleID);
-        return new ResponseEntity<>(response, HttpStatusCode.valueOf(204));
+    public ResponseEntity<DeleteResponse> deleteRole(
+            @Parameter(description = "ID of the role to delete", required = true)
+            @PathVariable Long roleID)
+            throws NotFoundException {
+        return new ResponseEntity<>(roleService.deleteRole(roleID), HttpStatus.OK);
     }
-
 }
