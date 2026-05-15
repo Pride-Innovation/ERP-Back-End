@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import pride.bank.erp.assetType.AssetType;
 import pride.bank.erp.assetType.AssetTypeService;
 import pride.bank.erp.exception.NotFoundException;
@@ -18,6 +19,7 @@ import pride.bank.erp.helper.Constants;
 import pride.bank.erp.helper.DeleteResponse;
 
 import java.util.Objects;
+import java.util.Optional;
 
 import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
 
@@ -30,28 +32,27 @@ public class CommodityService {
     private final AssetTypeService assetTypeService;
 
     public Page<Commodity> fetchAllCommodities(CommodityQueryParams params) {
-        try {
-            CommodityPage commodityPage = CommodityPage.builder()
-                    .pageSize(params.getPageSize())
-                    .sortDirection(determineSortDirection(params.getSortDirection()))
-                    .sortBy(params.getSortBy())
-                    .pageNumber(params.getPageNumber())
-                    .build();
+        CommodityPage commodityPage = CommodityPage.builder()
+                .pageSize(params.getPageSize())
+                .sortDirection(determineSortDirection(params.getSortDirection()))
+                .sortBy(params.getSortBy())
+                .pageNumber(params.getPageNumber())
+                .build();
 
-            CommoditySearchCriteria commoditySearchCriteria = CommoditySearchCriteria
-                    .builder()
-                    .name(params.getName())
-                    .assetTypeId(params.getAssetTypeId())
-                    .build();
-            return commoditySearchDao.findAllWithFilters(commodityPage, commoditySearchCriteria);
-        } catch (Exception e) {
-            return null;
-        }
+        CommoditySearchCriteria commoditySearchCriteria = CommoditySearchCriteria
+                .builder()
+                .name(params.getName())
+                .groupName(params.getGroupName())
+                .assetTypeId(params.getAssetTypeId())
+                .build();
+        return commoditySearchDao.findAllWithFilters(commodityPage, commoditySearchCriteria);
     }
 
+    @Transactional
     public Commodity createCommodity(CommodityDTO request)
             throws NotFoundException {
         AssetType assetType = assetTypeService.findOneAssetType(request.getAssetType());
+        ensureNoDuplicateCommodity(request.getName(), request.getGroupName(), request.getAssetType(), null);
         Commodity commodity = Commodity.builder()
                 .name(request.getName())
                 .groupName(request.getGroupName())
@@ -60,9 +61,11 @@ public class CommodityService {
         return commodityRepository.save(commodity);
     }
 
+    @Transactional
     public Commodity updateCommodity(CommodityDTO request, Long id) throws NotFoundException {
         Commodity commodity = findCommodity(id);
         AssetType assetType = assetTypeService.findOneAssetType(request.getAssetType());
+        ensureNoDuplicateCommodity(request.getName(), request.getGroupName(), request.getAssetType(), id);
 
         commodity.setName(request.getName());
         commodity.setGroupName(request.getGroupName());
@@ -75,16 +78,25 @@ public class CommodityService {
                 .orElseThrow(() -> new NotFoundException("Commodity with ID " + id + " not found"));
     }
 
-    public DeleteResponse deleteCommodity(Long id) {
-        if (commodityRepository.existsById(id)) {
-            commodityRepository.deleteById(id);
-            return new DeleteResponse(Constants.DELETED_SUCCESSFULLY, true);
-        } else {
-            return new DeleteResponse(Constants.ENTITY_NOT_FOUND, false);
+    @Transactional
+    public DeleteResponse deleteCommodity(Long id) throws NotFoundException {
+        if (!commodityRepository.existsById(id)) {
+            throw new NotFoundException("Commodity with ID " + id + " not found");
         }
+        commodityRepository.deleteById(id);
+        return new DeleteResponse(Constants.DELETED_SUCCESSFULLY, true);
     }
 
     private Sort.Direction determineSortDirection(String direction) {
         return Objects.equals(direction, DESCENDING_SORT_DIRECTION) ? Sort.Direction.DESC : Sort.Direction.ASC;
+    }
+
+    private void ensureNoDuplicateCommodity(String name, String groupName, Long assetTypeId, Long excludeId) {
+        Optional<Commodity> existing = commodityRepository
+                .findByNameIgnoreCaseAndGroupNameIgnoreCaseAndAssetType_Id(name, groupName, assetTypeId);
+        if (existing.isPresent() && !existing.get().getId().equals(excludeId)) {
+            throw new IllegalArgumentException(
+                    "A commodity with name '" + name + "', group '" + groupName + "' and the same asset type already exists");
+        }
     }
 }
