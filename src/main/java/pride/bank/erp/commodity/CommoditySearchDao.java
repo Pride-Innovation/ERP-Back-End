@@ -77,7 +77,15 @@ public class CommoditySearchDao {
         List<Predicate> predicates = new ArrayList<>();
 
         if (Objects.nonNull(commoditySearchCriteria.getName())) {
-            predicates.add(criteriaBuilder.like(commodityRoot.get("name"), "%" + commoditySearchCriteria.getName() + "%"));
+            predicates.add(criteriaBuilder.like(
+                    criteriaBuilder.lower(commodityRoot.get("name")),
+                    "%" + commoditySearchCriteria.getName().toLowerCase() + "%"));
+        }
+
+        if (Objects.nonNull(commoditySearchCriteria.getGroupName())) {
+            predicates.add(criteriaBuilder.like(
+                    criteriaBuilder.lower(commodityRoot.get("groupName")),
+                    "%" + commoditySearchCriteria.getGroupName().toLowerCase() + "%"));
         }
 
         if (Objects.nonNull(commoditySearchCriteria.getAssetTypeId())) {
