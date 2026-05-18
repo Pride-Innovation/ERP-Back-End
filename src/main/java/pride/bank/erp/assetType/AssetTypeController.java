@@ -7,59 +7,91 @@ Managing Director
 
 package pride.bank.erp.assetType;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
 import pride.bank.erp.helper.DeleteResponse;
 
+import java.util.Map;
+
 import static pride.bank.erp.helper.Constants.ASCENDING_SORT_DIRECTION;
 
 @RestController
 @RequestMapping(Constants.GENERAL_ROUTE)
 @RequiredArgsConstructor
+@Tag(name = "Asset Categories", description = "Manage asset categories – creation, retrieval, update and removal")
+@SecurityRequirement(name = "bearerAuth")
 public class AssetTypeController {
     public final AssetTypeService assetTypeService;
 
+    @Operation(summary = "List asset categories", description = "Returns a paginated list of asset categories, optionally filtered by name.")
     @GetMapping("/asset-types")
     public ResponseEntity<Page<AssetType>> fetchAllAssetTypes(
             @RequestParam(required = false, defaultValue = "10") int pageSize,
-            @RequestParam(required = false, defaultValue = "0") int pageNumber
+            @RequestParam(required = false, defaultValue = "0") int pageNumber,
+            @RequestParam(required = false, defaultValue = "name") String sortBy,
+            @RequestParam(required = false, defaultValue = ASCENDING_SORT_DIRECTION) String sortDirection,
+            @RequestParam(required = false) String name
     ) {
-        Pageable pageable = PageRequest.of(pageNumber, pageSize);
-        Page<AssetType> response = assetTypeService.fetchAllAssetTypes(pageable);
+        Sort sort = sortDirection.equalsIgnoreCase("DESC")
+                ? Sort.by(sortBy).descending()
+                : Sort.by(sortBy).ascending();
+        Pageable pageable = PageRequest.of(pageNumber, pageSize, sort);
+        Page<AssetType> response = assetTypeService.fetchAllAssetTypes(pageable, name);
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
 
+    @Operation(summary = "Create an asset category")
     @PostMapping("/asset-types")
     public ResponseEntity<AssetType> createAssetType(@RequestBody AssetType assetType) {
         AssetType response = assetTypeService.createAssetType(assetType);
-        return new ResponseEntity<>(response, HttpStatusCode.valueOf(201));
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 
+    @Operation(summary = "Update an asset category")
     @PutMapping("/asset-types/{id}")
     public ResponseEntity<AssetType> updateAssetType(@PathVariable Long id, @RequestBody AssetType assetType)
             throws NotFoundException {
         AssetType response = assetTypeService.updateAssetType(assetType, id);
-        return new ResponseEntity<>(response, HttpStatus.CREATED);
+        return new ResponseEntity<>(response, HttpStatus.OK);
     }
 
+    @Operation(summary = "Delete an asset category")
     @DeleteMapping("/asset-types/{id}")
-    public ResponseEntity<DeleteResponse> deleteAssetType(@PathVariable Long id) {
+    public ResponseEntity<DeleteResponse> deleteAssetType(@PathVariable Long id) throws NotFoundException {
         DeleteResponse response = assetTypeService.deleteAssetType(id);
-        return new ResponseEntity<>(response, HttpStatusCode.valueOf(204));
+        return new ResponseEntity<>(response, HttpStatus.OK);
     }
 
+    @Operation(summary = "Get a single asset category by ID")
     @GetMapping("/asset-types/{id}")
     public ResponseEntity<AssetType> getOneAssetType(@PathVariable Long id)
             throws NotFoundException {
         return new ResponseEntity<>(assetTypeService.findOneAssetType(id), HttpStatus.OK);
+    }
+
+    @Operation(
+            summary = "Configure field visibility for an asset category",
+            description = "Sets each form field to 'required', 'optional', or 'hidden' for this asset type."
+    )
+    @PutMapping("/asset-types/{id}/field-config")
+    public ResponseEntity<AssetType> updateFieldConfig(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> fieldConfig
+    ) throws NotFoundException {
+        AssetType response = assetTypeService.updateFieldConfig(id, fieldConfig);
+        return new ResponseEntity<>(response, HttpStatus.OK);
     }
 }
 
