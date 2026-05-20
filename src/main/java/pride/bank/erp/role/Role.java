@@ -79,6 +79,7 @@ public class Role {
             inverseJoinColumns = @JoinColumn(name = "permission_id")
     )
     @NotAudited
+    @Builder.Default
     private Set<Permission> permissions = new HashSet<>();
 
 }

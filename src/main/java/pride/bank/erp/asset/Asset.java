@@ -61,6 +61,7 @@ public class Asset {
     private String assetDepreciationRate;
     private String description;
     private String image;
+    @Builder.Default
     private Boolean disposed = false;
     private LocalDateTime disposalDate;
     private String lastRepairedBy;

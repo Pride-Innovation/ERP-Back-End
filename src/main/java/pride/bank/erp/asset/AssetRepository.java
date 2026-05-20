@@ -35,14 +35,14 @@ public interface AssetRepository extends JpaRepository<Asset, Long> {
                 a.assetType.name AS assetType,
                 COUNT(a.id) AS total,
                 SUM(CASE WHEN a.assetStatus.status = 'inMaintenance' THEN 1 ELSE 0 END) AS inMaintenance,
-                SUM(CASE WHEN a.assetStatus.status = 'requireUpdate' THEN 1 ELSE 0 END) AS unassigned
+                SUM(CASE WHEN a.assetStatus.status = 'requireUpdate' THEN 1 ELSE 0 END) AS unassigned,
+                SUM(CASE WHEN a.assetStatus.status NOT IN ('inMaintenance', 'requireUpdate') THEN 1 ELSE 0 END) AS assigned
             FROM Asset a
-            WHERE a.assetType.name IN ('Office Equipment', 'IT Equipment', 'Fleet')
-              AND a.branch.id = :branchId
+            WHERE a.branch.id = :branchId
             GROUP BY a.assetType.name
             ORDER BY a.assetType.name
             """)
-    List<AssetTypeStatsProjection> getAssetStatsByType(Long branchId);
+    List<AssetTypeStatsProjection> getAssetStatsByType(@Param("branchId") Long branchId);
 
     @Query("""
                 SELECT a

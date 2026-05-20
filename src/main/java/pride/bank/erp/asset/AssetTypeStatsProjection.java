@@ -8,4 +8,6 @@ public interface AssetTypeStatsProjection {
     Long getInMaintenance();
 
     Long getUnassigned();
+
+    Long getAssigned();
 }

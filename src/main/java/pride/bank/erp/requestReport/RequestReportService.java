@@ -29,8 +29,8 @@ import pride.bank.erp.user.User;
 import pride.bank.erp.user.UserRepository;
 import pride.bank.erp.user.UserService;
 
+import pride.bank.erp.workflowinstance.WorkflowEngineService;
 import java.util.List;
-import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -44,6 +44,7 @@ public class RequestReportService {
     private final UserRepository userRepository;
     private final UserBuilder userBuilder;
     private final RequestCommodityRepository requestCommodityRepository;
+    private final WorkflowEngineService workflowEngineService;
 
     @Value("${application.admin.email}")
     private String adminEmailAddress;
@@ -55,17 +56,30 @@ public class RequestReportService {
         User approver = userService.findUser(body.getApproverId());
         Status status = statusService.findOneStatus(body.getStatusId());
 
-        String message = handleStatusUpdate(request, status, body.getComment());
+        // Map status to workflow action string
+        String workflowAction = resolveWorkflowAction(status.getStatus());
 
+        // Advance workflow step (handles status update, next-approver assignment, emails, notifications)
+        workflowEngineService.processStepAction(
+                body.getRequestId(),
+                body.getApproverId(),
+                workflowAction,
+                body.getComment()
+        );
+
+        // Persist the approval report record for audit purposes
         RequestReport requestReport = RequestReport.builder()
                 .approver(approver)
                 .request(request)
                 .status(status)
                 .comment(body.getComment())
                 .build();
-
         RequestReport response = requestReportRepository.save(requestReport);
-        response.setMessage(message);
+
+        // Reload request to pick up status changes made by the workflow engine
+        request = requestService.findRequest(body.getRequestId());
+        response.setMessage("Workflow step processed: " + workflowAction);
+
         return RequestDTO
                 .builder()
                 .id(request.getId())
@@ -94,13 +108,23 @@ public class RequestReportService {
                 .build();
     }
 
+    private String resolveWorkflowAction(String statusCode) {
+        if (statusCode == null) return "APPROVED";
+        return switch (statusCode.toLowerCase()) {
+            case "requestrejected" -> "REJECTED";
+            case "issued" -> "ISSUED";
+            case "receiptacknowledged" -> "ACKNOWLEDGED";
+            default -> "APPROVED";
+        };
+    }
+
     /**
      * Updates the request status and handles notifications.
      * If the request is rejected, only the requester is notified.
      * If the request is approved, both the requester and the admin are notified.
      */
     @Transactional
-    private String handleStatusUpdate(
+    protected String handleStatusUpdate(
             Request request,
             Status status,
             String comment

@@ -38,6 +38,7 @@ public class GrnCommodity {
     private int totalOrderedQuantity;
     private Integer totalCostPrice;
     private Integer totalPurchasePrice;
+    @Builder.Default
     private Boolean disposed = false;
     private LocalDateTime disposalDate;
 }

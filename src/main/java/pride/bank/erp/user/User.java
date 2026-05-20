@@ -64,6 +64,7 @@ public class User implements UserDetails {
     private String profileImage;
     private boolean blocked;
     private boolean isActing;
+    @Builder.Default
     private int failedLoginAttempts = 0;
 
     @CreatedDate
@@ -88,9 +89,11 @@ public class User implements UserDetails {
     private List<Token> tokens;
 
     @NotAudited
+    @Builder.Default
     private boolean isEnabled = false;
 
     @NotAudited
+    @Builder.Default
     private boolean isAccountNonLocked = true;
 
     @OneToMany(mappedBy = "requester", cascade = CascadeType.PERSIST)

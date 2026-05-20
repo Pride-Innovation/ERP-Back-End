@@ -47,6 +47,7 @@ public class Request {
     private String priority;
     private String description;
     private String signaturePath;
+    @Builder.Default
     private Boolean deleted = false;
     private LocalDateTime deletionDate;
     private Boolean isBranchStationery; // Tracks branch stationery requests.

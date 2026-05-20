@@ -783,4 +783,184 @@ public class Email {
                 GOLD_PRIMARY
         );
     }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Workflow step email
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Sends a professional workflow step notification email.
+     *
+     * @param email        Recipient email address
+     * @param subject      Email subject
+     * @param greeting     Recipient's first name or "Team"
+     * @param stepTitle    The step name e.g. "Manager Approval Required"
+     * @param instructions Step-specific instruction text
+     * @param request      The request entity
+     * @param step         The current approval step (may be null for rejection)
+     * @param stepStatus   "PENDING", "REJECTED", "CC"
+     */
+    @Async
+    public boolean sendWorkflowEmail(
+            String email,
+            String subject,
+            String greeting,
+            String stepTitle,
+            String instructions,
+            Request request,
+            Object step,
+            String stepStatus
+    ) {
+        if (email == null || email.isBlank()) return false;
+        try {
+            String htmlContent = getWorkflowEmailContent(greeting, stepTitle, instructions, request, stepStatus);
+
+            MimeMessage mimeMessage = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "utf-8");
+            helper.setTo(email);
+            helper.setSubject(subject);
+            helper.setFrom(fromEmail);
+            helper.setText(htmlContent, true);
+
+            String pathToAttachment = "src/main/resources/static/images/logo.png";
+            FileSystemResource image = new FileSystemResource(new File(pathToAttachment));
+            helper.addInline("logoImage", image);
+
+            mailSender.send(mimeMessage);
+            logger.info("Workflow email sent to {}", email);
+            return true;
+        } catch (Exception e) {
+            logger.error("Failed to send workflow email to {}", email, e);
+            return false;
+        }
+    }
+
+    private String getWorkflowEmailContent(
+            String greeting,
+            String stepTitle,
+            String instructions,
+            Request request,
+            String stepStatus
+    ) {
+        String statusColor;
+        String statusLabel;
+        String statusIcon;
+        switch (stepStatus != null ? stepStatus.toUpperCase() : "PENDING") {
+            case "REJECTED" -> { statusColor = "#C53030"; statusLabel = "REJECTED"; statusIcon = "✗"; }
+            case "CC"       -> { statusColor = TEAL_PRIMARY; statusLabel = "FOR YOUR INFORMATION"; statusIcon = "ℹ"; }
+            default         -> { statusColor = GOLD_PRIMARY; statusLabel = "ACTION REQUIRED"; statusIcon = "⚡"; }
+        }
+
+        String commodityRows = buildCommodityRows(request);
+        String requesterName = (request.getRequester() != null)
+                ? request.getRequester().getFirstName() + " " + request.getRequester().getLastName()
+                : "N/A";
+        String requesterBranch = (request.getRequester() != null && request.getRequester().getBranch() != null)
+                ? request.getRequester().getBranch().getName() : "N/A";
+        String viewLink = format("%s/assets-mgt/asset-request/view?id=%d", verificationUrl, request.getId());
+
+        return format(
+                "<!DOCTYPE html><html lang='en'><head>" +
+                "<meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'>" +
+                "<title>%s — Pride Bank</title></head>" +
+                "<body style='margin:0; padding:0; font-family:-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif; background-color:#f0f4f8;'>" +
+                "<div style='background: linear-gradient(135deg, #e8f5f3 0%%, #f0f7ff 100%%); min-height:100vh; padding:40px 16px;'>" +
+                "<div style='max-width:620px; margin:0 auto; background:#ffffff; border-radius:20px; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,0.10);'>" +
+
+                // Header
+                "<div style='background-color:%s; background-image:linear-gradient(135deg,%s 0%%,%s 100%%); padding:40px 32px; text-align:center;'>" +
+                "<img src='cid:logoImage' alt='Pride Bank Limited' style='max-width:240px; height:auto; filter:brightness(0) invert(1); margin-bottom:20px;'/>" +
+                "<div style='display:inline-block; background:rgba(255,255,255,0.18); border:1px solid rgba(255,255,255,0.4); border-radius:50px; padding:6px 20px; margin-top:8px;'>" +
+                "<p style='margin:0; color:#ffffff; font-size:12px; font-weight:700; letter-spacing:2px; text-transform:uppercase;'>%s %s</p>" +
+                "</div>" +
+                "</div>" +
+
+                // Body
+                "<div style='padding:36px 32px;'>" +
+                "<p style='color:#2d3748; font-size:16px; font-weight:600; margin:0 0 6px 0;'>Dear %s,</p>" +
+                "<p style='color:#4a5568; font-size:15px; line-height:1.7; margin:0 0 24px 0;'>%s</p>" +
+
+                // Request card
+                "<div style='background:#f7fafc; border:1px solid #e2e8f0; border-radius:14px; overflow:hidden; margin:24px 0;'>" +
+                "<div style='background:%s; padding:14px 20px;'><p style='margin:0; color:#ffffff; font-size:13px; font-weight:700; letter-spacing:1px; text-transform:uppercase;'>📋 Request Details</p></div>" +
+                "<div style='padding:20px 24px;'>" +
+                "<table style='width:100%%; border-collapse:collapse;'>" +
+                "<tr><td style='padding:8px 0; color:#718096; font-size:13px; width:40%%;'>Request ID</td><td style='padding:8px 0; color:#2d3748; font-size:14px; font-weight:600;'>#%d</td></tr>" +
+                "<tr style='border-top:1px solid #e2e8f0;'><td style='padding:8px 0; color:#718096; font-size:13px;'>Request Name</td><td style='padding:8px 0; color:#2d3748; font-size:14px; font-weight:600;'>%s</td></tr>" +
+                "<tr style='border-top:1px solid #e2e8f0;'><td style='padding:8px 0; color:#718096; font-size:13px;'>Requested By</td><td style='padding:8px 0; color:#2d3748; font-size:14px;'>%s</td></tr>" +
+                "<tr style='border-top:1px solid #e2e8f0;'><td style='padding:8px 0; color:#718096; font-size:13px;'>Branch</td><td style='padding:8px 0; color:#2d3748; font-size:14px;'>%s</td></tr>" +
+                "<tr style='border-top:1px solid #e2e8f0;'><td style='padding:8px 0; color:#718096; font-size:13px;'>Priority</td><td style='padding:8px 0; color:#2d3748; font-size:14px;'>%s</td></tr>" +
+                "</table></div></div>" +
+
+                // Items
+                "%s" +
+
+                // CTA (hide for CC)
+                "%s" +
+
+                // Step title
+                "<p style='color:#718096; font-size:12px; margin:24px 0 0 0;'>This is an automated notification from the Pride Bank ERP system. Please do not reply to this email.</p>" +
+                "</div>" +
+
+                "%s" + // footer
+                "</div></div></body></html>",
+
+                // title
+                stepTitle,
+
+                // header bg
+                TEAL_PRIMARY, TEAL_PRIMARY, TEAL_SECONDARY,
+
+                // badge
+                statusIcon, statusLabel,
+
+                // greeting
+                greeting, instructions,
+
+                // request card header
+                TEAL_PRIMARY,
+
+                // request details
+                request.getId(),
+                request.getName() != null ? request.getName() : "N/A",
+                requesterName,
+                requesterBranch,
+                request.getPriority() != null ? request.getPriority() : "Normal",
+
+                // commodity rows
+                commodityRows,
+
+                // CTA button
+                ("CC".equalsIgnoreCase(stepStatus)) ? "" :
+                        format("<div style='text-align:center; margin:28px 0;'>" +
+                               "<a href='%s' style='display:inline-block; background:%s; color:#ffffff; text-decoration:none; " +
+                               "padding:14px 36px; border-radius:50px; font-size:14px; font-weight:700; letter-spacing:0.5px;'>View Request</a>" +
+                               "</div>", viewLink, TEAL_PRIMARY),
+
+                // footer
+                getEmailFooter()
+        );
+    }
+
+    private String buildCommodityRows(Request request) {
+        if (request.getCommodities() == null || request.getCommodities().isEmpty()) return "";
+
+        StringBuilder rows = new StringBuilder();
+        rows.append("<div style='background:#f7fafc; border:1px solid #e2e8f0; border-radius:14px; overflow:hidden; margin:16px 0;'>")
+            .append("<div style='background:" + GOLD_PRIMARY + "; padding:14px 20px;'><p style='margin:0; color:#ffffff; font-size:13px; font-weight:700; letter-spacing:1px; text-transform:uppercase;'>📦 Requested Items</p></div>")
+            .append("<div style='padding:0 24px;'><table style='width:100%%; border-collapse:collapse;'>")
+            .append("<tr style='background:#edf2f7;'><th style='padding:10px 8px; text-align:left; color:#4a5568; font-size:12px; text-transform:uppercase;'>Item</th>" +
+                    "<th style='padding:10px 8px; text-align:right; color:#4a5568; font-size:12px; text-transform:uppercase;'>Qty</th></tr>");
+
+        for (var c : request.getCommodities()) {
+            String itemName = (c.getCommodity() != null && c.getCommodity().getName() != null)
+                    ? c.getCommodity().getName() : "Item";
+            rows.append(format("<tr style='border-top:1px solid #e2e8f0;'>" +
+                    "<td style='padding:10px 8px; color:#2d3748; font-size:14px;'>%s</td>" +
+                    "<td style='padding:10px 8px; color:#2d3748; font-size:14px; text-align:right; font-weight:600;'>%d</td></tr>",
+                    itemName, c.getQuantity()));
+        }
+        rows.append("</table></div></div>");
+        return rows.toString();
+    }
 }

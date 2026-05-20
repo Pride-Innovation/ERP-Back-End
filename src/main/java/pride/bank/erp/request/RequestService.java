@@ -38,6 +38,9 @@ import pride.bank.erp.title.TitleRepository;
 import pride.bank.erp.user.User;
 import pride.bank.erp.user.UserRepository;
 
+import pride.bank.erp.workflowinstance.WorkflowEngineService;
+import pride.bank.erp.workflowinstance.RequestWorkflowInstance;
+
 import java.io.File;
 import java.io.IOException;
 import java.time.LocalDateTime;
@@ -68,6 +71,7 @@ public class RequestService {
     private final CurrentUserService currentUserService;
     private final TitleRepository titleRepository;
     private final UserBuilder userBuilder;
+    private final WorkflowEngineService workflowEngineService;
 
     /**
      * Creates a new request with commodities while enforcing business rules:
@@ -137,11 +141,6 @@ public class RequestService {
         );
         Request savedRequest = saveRequest(request);
 
-        // Find and assign supervisor
-        User supervisor = findSupervisorToApproveRequest();
-        savedRequest.setCurrentApprover(supervisor);
-        savedRequest = saveRequest(savedRequest);
-
         // Add commodities to request
         addCommoditiesToRequest(savedRequest, requestCommoditiesRequest);
 
@@ -150,20 +149,30 @@ public class RequestService {
         List<CommodityWithQuantityDTO> commodities = commodityWithQuantityDTO(requestCommodities);
         savedRequest.setCommodities(commodities);
 
-        String emailStatus;
+        String emailStatus = "Notification pending";
 
-        // Notify supervisor
-        if (!supervisor.isBlocked() || supervisor.isAccountNonLocked()) {
-            emailStatus = notifySupervisor(supervisor.getEmail(), savedRequest, supervisor.getFirstName());
-            notifySupervisor(supervisor.getDepartment().getManagersGroupEmail(), savedRequest, "Team");
-            // Notify the managers Group
+        // Start workflow engine (handles approver assignment + email notifications)
+        RequestWorkflowInstance workflowInstance = workflowEngineService.startWorkflow(savedRequest);
+
+        if (workflowInstance == null) {
+            // Fallback: legacy supervisor routing if no workflow configured
+            User supervisor = findSupervisorToApproveRequest();
+            if (supervisor != null) {
+                savedRequest.setCurrentApprover(supervisor);
+                savedRequest = saveRequest(savedRequest);
+                if (!supervisor.isBlocked() || supervisor.isAccountNonLocked()) {
+                    emailStatus = notifySupervisor(supervisor.getEmail(), savedRequest, supervisor.getFirstName());
+                    if (supervisor.getDepartment() != null) {
+                        notifySupervisor(supervisor.getDepartment().getManagersGroupEmail(), savedRequest, "Team");
+                    }
+                } else if (supervisor.getDepartment() != null) {
+                    emailStatus = notifySupervisor(
+                            supervisor.getDepartment().getManagersGroupEmail(), savedRequest, "Managers");
+                }
+            }
         } else {
-            emailStatus = notifySupervisor(
-                    supervisor.getDepartment().getManagersGroupEmail(),
-                    savedRequest,
-                    "Managers");
+            emailStatus = "Workflow started – notifications sent";
         }
-        // Notify Managers Group
         savedRequest.setEmailMessage(emailStatus);
 
         log.info("Request created successfully with ID: {}", savedRequest.getId());

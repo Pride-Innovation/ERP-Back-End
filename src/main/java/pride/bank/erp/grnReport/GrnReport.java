@@ -29,6 +29,7 @@ public class GrnReport {
     private Long id;
     private String name;
     private String documentPath;
+    @Builder.Default
     private Boolean disposed = false;
     private LocalDateTime disposalDate;
     private Boolean grnDownloaded;

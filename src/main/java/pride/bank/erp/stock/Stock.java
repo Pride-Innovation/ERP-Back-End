@@ -47,7 +47,9 @@ public class Stock {
     private int balanceCost;
     private String lpoNumber;
     private String grnNumber;
+    @Builder.Default
     private boolean canNotBeDeleted = false;
+    @Builder.Default
     private Boolean disposed = false;
     private LocalDateTime disposalDate;
 
