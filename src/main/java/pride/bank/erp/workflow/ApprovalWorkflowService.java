@@ -3,9 +3,16 @@ package pride.bank.erp.workflow;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import pride.bank.erp.assetType.AssetType;
+import pride.bank.erp.assetType.AssetTypeRepository;
 import pride.bank.erp.exception.NotFoundException;
+import pride.bank.erp.role.Role;
+import pride.bank.erp.role.RoleRepository;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -14,6 +21,8 @@ public class ApprovalWorkflowService {
 
     private final ApprovalWorkflowRepository workflowRepository;
     private final ApprovalStepRepository stepRepository;
+    private final AssetTypeRepository assetTypeRepository;
+    private final RoleRepository roleRepository;
 
     @Transactional(readOnly = true)
     public List<ApprovalWorkflowDTO> findAll() {
@@ -33,11 +42,12 @@ public class ApprovalWorkflowService {
         ApprovalWorkflow workflow = ApprovalWorkflow.builder()
                 .name(dto.getName())
                 .description(dto.getDescription())
-                .assetTypeId(dto.getAssetTypeId())
+                .assetTypes(loadAssetTypes(dto.getAssetTypeIds()))
                 .branchId(dto.getBranchId())
                 .branchScope(dto.getBranchScope() != null ? dto.getBranchScope() : WorkflowBranchScope.ALL)
                 .active(dto.isActive())
                 .priority(dto.getPriority() > 0 ? dto.getPriority() : 100)
+                .requesterRoles(loadRoles(dto.getRequesterRoleIds()))
                 .build();
 
         ApprovalWorkflow saved = workflowRepository.save(workflow);
@@ -50,11 +60,12 @@ public class ApprovalWorkflowService {
         ApprovalWorkflow workflow = findWorkflow(id);
         workflow.setName(dto.getName());
         workflow.setDescription(dto.getDescription());
-        workflow.setAssetTypeId(dto.getAssetTypeId());
+        workflow.setAssetTypes(loadAssetTypes(dto.getAssetTypeIds()));
         workflow.setBranchId(dto.getBranchId());
         workflow.setBranchScope(dto.getBranchScope() != null ? dto.getBranchScope() : WorkflowBranchScope.ALL);
         workflow.setActive(dto.isActive());
         workflow.setPriority(dto.getPriority() > 0 ? dto.getPriority() : 100);
+        workflow.setRequesterRoles(loadRoles(dto.getRequesterRoleIds()));
 
         // Replace all steps
         workflow.getSteps().clear();
@@ -86,6 +97,28 @@ public class ApprovalWorkflowService {
                 .orElseThrow(() -> new NotFoundException("Workflow " + id + " not found"));
     }
 
+    private Set<AssetType> loadAssetTypes(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return new HashSet<>();
+        }
+        List<AssetType> loaded = assetTypeRepository.findAllById(ids);
+        if (loaded.size() != ids.stream().distinct().count()) {
+            throw new NotFoundException("One or more assetTypeIds not found: " + ids);
+        }
+        return new HashSet<>(loaded);
+    }
+
+    private Set<Role> loadRoles(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return new HashSet<>();
+        }
+        List<Role> loaded = roleRepository.findAllById(ids);
+        if (loaded.size() != ids.stream().distinct().count()) {
+            throw new NotFoundException("One or more role ids not found: " + ids);
+        }
+        return new HashSet<>(loaded);
+    }
+
     private void addSteps(ApprovalWorkflow workflow, List<ApprovalStepDTO> stepDTOs) {
         if (stepDTOs == null || stepDTOs.isEmpty()) return;
         int order = 1;
@@ -99,8 +132,11 @@ public class ApprovalWorkflowService {
                     .groupEmail(dto.getGroupEmail())
                     .specificUserId(dto.getSpecificUserId())
                     .notifyGroupEmail(dto.getNotifyGroupEmail())
+                    .notifyGroupSource(dto.getNotifyGroupSource() != null ? dto.getNotifyGroupSource() : NotifyGroupSource.STATIC)
+                    .notifyOnCompletion(dto.getNotifyOnCompletion() != null ? new HashSet<>(dto.getNotifyOnCompletion()) : new HashSet<>())
                     .optional(dto.isOptional())
                     .escalationHours(dto.getEscalationHours())
+                    .skipIfRequesterRoles(loadRoles(dto.getSkipIfRequesterRoleIds()))
                     .build();
             workflow.getSteps().add(step);
             order++;
@@ -109,20 +145,47 @@ public class ApprovalWorkflowService {
     }
 
     private ApprovalWorkflowDTO toDTO(ApprovalWorkflow w) {
+        List<Long> assetTypeIds = new ArrayList<>();
+        List<String> assetTypeNames = new ArrayList<>();
+        if (w.getAssetTypes() != null) {
+            for (AssetType at : w.getAssetTypes()) {
+                assetTypeIds.add(at.getId());
+                assetTypeNames.add(at.getName());
+            }
+        }
+
+        List<Long> requesterRoleIds = new ArrayList<>();
+        List<String> requesterRoleNames = new ArrayList<>();
+        if (w.getRequesterRoles() != null) {
+            for (Role r : w.getRequesterRoles()) {
+                requesterRoleIds.add(r.getId());
+                requesterRoleNames.add(r.getName());
+            }
+        }
+
         return ApprovalWorkflowDTO.builder()
                 .id(w.getId())
                 .name(w.getName())
                 .description(w.getDescription())
-                .assetTypeId(w.getAssetTypeId())
+                .assetTypeIds(assetTypeIds)
+                .assetTypeNames(assetTypeNames)
                 .branchId(w.getBranchId())
                 .branchScope(w.getBranchScope())
                 .active(w.isActive())
                 .priority(w.getPriority())
+                .requesterRoleIds(requesterRoleIds)
+                .requesterRoleNames(requesterRoleNames)
                 .steps(w.getSteps().stream().map(this::toStepDTO).collect(Collectors.toList()))
                 .build();
     }
 
     private ApprovalStepDTO toStepDTO(ApprovalStep s) {
+        List<Long> skipIds = new ArrayList<>();
+        if (s.getSkipIfRequesterRoles() != null) {
+            for (Role r : s.getSkipIfRequesterRoles()) {
+                skipIds.add(r.getId());
+            }
+        }
         return ApprovalStepDTO.builder()
                 .id(s.getId())
                 .stepOrder(s.getStepOrder())
@@ -132,8 +195,11 @@ public class ApprovalWorkflowService {
                 .groupEmail(s.getGroupEmail())
                 .specificUserId(s.getSpecificUserId())
                 .notifyGroupEmail(s.getNotifyGroupEmail())
+                .notifyGroupSource(s.getNotifyGroupSource() != null ? s.getNotifyGroupSource() : NotifyGroupSource.STATIC)
+                .notifyOnCompletion(s.getNotifyOnCompletion() != null ? new HashSet<>(s.getNotifyOnCompletion()) : new HashSet<>())
                 .optional(s.isOptional())
                 .escalationHours(s.getEscalationHours())
+                .skipIfRequesterRoleIds(skipIds)
                 .build();
     }
 }

@@ -6,6 +6,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pride.bank.erp.appnotification.AppNotificationService;
+import pride.bank.erp.availability.Leave;
+import pride.bank.erp.availability.LeaveRepository;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.notification.Email;
 import pride.bank.erp.request.Request;
@@ -19,23 +21,25 @@ import pride.bank.erp.user.UserRepository;
 import pride.bank.erp.workflow.ApprovalStep;
 import pride.bank.erp.workflow.ApprovalWorkflow;
 import pride.bank.erp.workflow.ApprovalWorkflowRepository;
+import pride.bank.erp.workflow.NotifyGroupSource;
 import pride.bank.erp.workflow.WorkflowBranchScope;
+import pride.bank.erp.workflow.WorkflowResolveService;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class WorkflowEngineService {
 
-    private static final Long HEAD_OFFICE_BRANCH_ID = 1L;
-
-    // Status IDs (from existing system)
-    private static final Long STATUS_REJECTED = 2L;
-    private static final Long STATUS_APPROVED = 3L;
-    private static final Long STATUS_ISSUED = 5L;
-    private static final Long STATUS_ACKNOWLEDGED = 7L;
+    // Status codes (stable across re-seeds)
+    private static final String STATUS_REJECTED    = "requestRejected";
+    private static final String STATUS_APPROVED    = "requestApproved";
+    private static final String STATUS_ISSUED      = "issued";
+    private static final String STATUS_ACKNOWLEDGED = "receiptAcknowledged";
 
     private final ApprovalWorkflowRepository workflowRepository;
     private final RequestWorkflowInstanceRepository instanceRepository;
@@ -43,9 +47,11 @@ public class WorkflowEngineService {
     private final RequestRepository requestRepository;
     private final RequestCommodityRepository requestCommodityRepository;
     private final UserRepository userRepository;
+    private final LeaveRepository leaveRepository;
     private final StatusService statusService;
     private final Email emailService;
     private final AppNotificationService notificationService;
+    private final WorkflowResolveService workflowResolveService;
 
     @Value("${application.admin.email}")
     private String adminEmail;
@@ -161,28 +167,83 @@ public class WorkflowEngineService {
         instance.setStatus(InstanceStatus.REJECTED);
         instanceRepository.save(instance);
 
-        Status rejectedStatus = statusService.findOneStatus(STATUS_REJECTED);
+        Status rejectedStatus = statusService.findByStatusCode(STATUS_REJECTED);
         request.setStatus(rejectedStatus);
         request.setCurrentApprover(null);
         requestRepository.save(request);
 
-        // Notify requester
         User requester = request.getRequester();
-        String rejectionComment = comment != null ? comment : "Your request has been rejected.";
-        emailService.sendWorkflowEmail(
-                requester.getEmail(),
-                "Request Rejected – " + request.getName(),
-                requester.getFirstName(),
+        String rejectionComment = (comment != null && !comment.isBlank())
+                ? comment
+                : "Your request has been rejected.";
+
+        // Track who we have already notified so the same person isn't pinged twice
+        // (e.g. the rejector themselves, or the requester appearing as a prior approver
+        // in a multi-step chain where they were also a step actor).
+        Set<Long> notifiedUserIds = new HashSet<>();
+
+        // 1. Requester
+        notifyRejection(requester, request, rejectionComment,
                 "Your Request Has Been Rejected",
-                rejectionComment,
+                "Your request \"" + request.getName() + "\" has been rejected.");
+        notifiedUserIds.add(requester.getId());
+
+        // Don't fan-out back to the actor who just rejected
+        if (actor != null && actor.getId() != null) {
+            notifiedUserIds.add(actor.getId());
+        }
+
+        // 2. Every previous approver who already APPROVED this request — they
+        //    need to know a downstream approver rejected something they cleared.
+        List<RequestStepLog> logs = stepLogRepository
+                .findByInstanceIdOrderByStepOrderAscCreateDateAsc(instance.getId());
+        for (RequestStepLog logEntry : logs) {
+            if (logEntry.getAction() != StepLogAction.APPROVED) continue;
+            User prev = logEntry.getActor();
+            if (prev == null || prev.getId() == null) continue;
+            if (!notifiedUserIds.add(prev.getId())) continue;
+
+            notifyRejection(prev, request, rejectionComment,
+                    "Request You Approved Was Rejected",
+                    "A request you previously approved (\"" + request.getName()
+                            + "\") was rejected at a downstream step.");
+        }
+
+        // 3. Department managers group email — keeps the wider management team
+        //    in the loop without spamming everyone in the department.
+        if (requester.getDepartment() != null
+                && requester.getDepartment().getManagersGroupEmail() != null
+                && !requester.getDepartment().getManagersGroupEmail().isBlank()) {
+            emailService.sendWorkflowEmail(
+                    requester.getDepartment().getManagersGroupEmail(),
+                    "Request Rejected – " + request.getName(),
+                    "Team",
+                    "Request Rejected",
+                    rejectionComment,
+                    request,
+                    null,
+                    "REJECTED"
+            );
+        }
+    }
+
+    /** Single recipient: workflow email + in-app push, with the rejection comment. */
+    private void notifyRejection(User user, Request request, String comment,
+                                 String emailHeadline, String inAppLeadIn) {
+        emailService.sendWorkflowEmail(
+                user.getEmail(),
+                "Request Rejected – " + request.getName(),
+                user.getFirstName(),
+                emailHeadline,
+                comment,
                 request,
                 null,
                 "REJECTED"
         );
         notificationService.createAndPush(
-                requester,
+                user,
                 "Request Rejected",
-                "Your request \"" + request.getName() + "\" has been rejected. " + rejectionComment,
+                inAppLeadIn + " " + comment,
                 "STEP_REJECTED",
                 request.getId(),
                 frontEndUrl + "/assets-mgt/asset-request/view?id=" + request.getId()
@@ -193,6 +254,9 @@ public class WorkflowEngineService {
                                    ApprovalStep currentStep, Request request, User actor, String comment) throws NotFoundException {
         // Update request status based on current step type
         updateRequestStatus(request, currentStep);
+
+        // Fan out completion notifications configured on the just-finished step
+        sendCompletionNotifications(currentStep, request);
 
         // Find next step
         ApprovalStep nextStep = getNextStep(workflow, currentStep.getStepOrder());
@@ -220,14 +284,55 @@ public class WorkflowEngineService {
         }
     }
 
-    private void updateRequestStatus(Request request, ApprovalStep step) throws NotFoundException {
-        Long statusId;
-        switch (step.getStepType()) {
-            case ISSUANCE -> statusId = STATUS_ISSUED;
-            case ACKNOWLEDGE_RECEIPT -> statusId = STATUS_ACKNOWLEDGED;
-            default -> statusId = STATUS_APPROVED;
+    /**
+     * Sends a "step-completed" email to every {@link NotifyGroupSource} target
+     * configured on the step. Used so the requester gets a "items ready for
+     * picking" mail when issuance is approved, and so admin / supervisor get a
+     * "items collected" mail once the requester acknowledges receipt.
+     * <p>Silent for entries that resolve to a blank email; {@code STATIC} and
+     * {@code NONE} are skipped (the per-step CC field already covers static).</p>
+     */
+    private void sendCompletionNotifications(ApprovalStep step, Request request) {
+        Set<NotifyGroupSource> targets = step.getNotifyOnCompletion();
+        if (targets == null || targets.isEmpty()) return;
+
+        String subject = String.format("Update – %s completed (Request #%d: %s)",
+                step.getStepName(), request.getId(), request.getName());
+
+        for (NotifyGroupSource target : targets) {
+            if (target == NotifyGroupSource.STATIC || target == NotifyGroupSource.NONE) continue;
+            String email = workflowResolveService.resolveEmailForSource(target, request.getRequester());
+            if (email == null) continue;
+            emailService.sendWorkflowEmail(
+                    email,
+                    subject,
+                    "Team",
+                    step.getStepName() + " completed",
+                    buildCompletionInstructions(step, request),
+                    request,
+                    step,
+                    "COMPLETION"
+            );
         }
-        Status status = statusService.findOneStatus(statusId);
+    }
+
+    private String buildCompletionInstructions(ApprovalStep step, Request request) {
+        return switch (step.getStepType()) {
+            case ISSUANCE -> "Issuance has been approved. The requested items are ready for collection.";
+            case ACKNOWLEDGE_RECEIPT -> "The requester has acknowledged receipt of the issued items.";
+            case REQUEST_APPROVAL -> "The request has been approved at this stage.";
+            case ACKNOWLEDGE_REQUEST -> "The request has been acknowledged and is now being processed.";
+        };
+    }
+
+    private void updateRequestStatus(Request request, ApprovalStep step) throws NotFoundException {
+        String statusCode;
+        switch (step.getStepType()) {
+            case ISSUANCE -> statusCode = STATUS_ISSUED;
+            case ACKNOWLEDGE_RECEIPT -> statusCode = STATUS_ACKNOWLEDGED;
+            default -> statusCode = STATUS_APPROVED;
+        }
+        Status status = statusService.findByStatusCode(statusCode);
         request.setStatus(status);
         requestRepository.save(request);
     }
@@ -268,10 +373,11 @@ public class WorkflowEngineService {
             );
         }
 
-        // CC group email
-        if (step.getNotifyGroupEmail() != null && !step.getNotifyGroupEmail().isBlank()) {
+        // CC group email — resolved per the step's notifyGroupSource (STATIC, dynamic, or none)
+        String ccEmail = workflowResolveService.resolveCcEmail(step, request.getRequester());
+        if (ccEmail != null) {
             emailService.sendWorkflowEmail(
-                    step.getNotifyGroupEmail(),
+                    ccEmail,
                     "FYI: " + actionRequiredSubject(step, request),
                     "Team",
                     "Request Update – " + step.getStepName(),
@@ -302,15 +408,23 @@ public class WorkflowEngineService {
     private ApprovalWorkflow resolveWorkflow(Request request, Long assetTypeId) {
         Long branchId = (request.getRequester().getBranch() != null)
                 ? request.getRequester().getBranch().getId() : null;
-        WorkflowBranchScope scope = HEAD_OFFICE_BRANCH_ID.equals(branchId)
+        boolean isHeadOffice = request.getRequester().getBranch() != null
+                && request.getRequester().getBranch().isHeadOffice();
+        WorkflowBranchScope scope = isHeadOffice
                 ? WorkflowBranchScope.HEAD_OFFICE : WorkflowBranchScope.BRANCH;
 
+        Set<Long> requesterRoleIds = request.getRequester().getEffectiveRoleIds();
         List<ApprovalWorkflow> candidates = workflowRepository.findActiveWorkflowsForRequest(
-                branchId, assetTypeId, scope);
+                branchId, assetTypeId, scope, requesterRoleIds);
         return candidates.isEmpty() ? null : candidates.get(0);
     }
 
     private Long resolveAssetTypeId(Request request) {
+        // Prefer the explicit primary category set on the request (Phase B)
+        if (request.getAssetType() != null) {
+            return request.getAssetType().getId();
+        }
+        // Fallback: derive from the first commodity's asset type (legacy behavior)
         List<RequestCommodity> commodities = requestCommodityRepository.findByRequestId(request.getId());
         if (commodities == null || commodities.isEmpty()) return null;
         RequestCommodity first = commodities.get(0);
@@ -325,7 +439,7 @@ public class WorkflowEngineService {
     // ─────────────────────────────────────────────────────────────────────────
 
     public User resolveApprover(ApprovalStep step, Request request) {
-        return switch (step.getApproverType()) {
+        User candidate = switch (step.getApproverType()) {
             case DIRECT_SUPERVISOR -> resolveDirectSupervisor(request.getRequester());
             case DEPT_HEAD -> (request.getRequester().getDepartment() != null)
                     ? request.getRequester().getDepartment().getHeadOfDepartment() : null;
@@ -337,7 +451,23 @@ public class WorkflowEngineService {
             case SPECIFIC_USER -> (step.getSpecificUserId() != null)
                     ? userRepository.findById(step.getSpecificUserId()).orElse(null) : null;
             case GROUP_EMAIL -> null; // no individual approver for group-email-only steps
+            case REQUESTER -> request.getRequester();
         };
+        return substituteIfOnLeave(candidate);
+    }
+
+    /**
+     * If the resolved approver is currently on leave and has assigned an acting
+     * user, route to the acting user instead. Keeps the request moving while
+     * the original approver is away.
+     */
+    private User substituteIfOnLeave(User candidate) {
+        if (candidate == null || candidate.getId() == null) return candidate;
+        Optional<Leave> active = leaveRepository.findActiveLeaveByUser(candidate.getId());
+        if (active.isPresent() && active.get().getActingUser() != null) {
+            return active.get().getActingUser();
+        }
+        return candidate;
     }
 
     private User resolveDirectSupervisor(User requester) {
@@ -397,6 +527,7 @@ public class WorkflowEngineService {
     private String buildStepInstructions(ApprovalStep step, Request request) {
         return switch (step.getStepType()) {
             case REQUEST_APPROVAL -> "Please review and approve or reject this request in the system.";
+            case ACKNOWLEDGE_REQUEST -> "Please acknowledge receipt of this request so it can proceed.";
             case ISSUANCE -> "Please proceed to issue the requested items to the requester.";
             case ACKNOWLEDGE_RECEIPT -> "Please confirm receipt of the issued items.";
         };

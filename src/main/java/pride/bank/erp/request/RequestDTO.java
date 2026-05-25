@@ -11,6 +11,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import pride.bank.erp.assetType.AssetTypeRefDTO;
 import pride.bank.erp.requestCommodity.RequestCommodity;
 import pride.bank.erp.requestReport.RequestReportDAO;
 import pride.bank.erp.status.Status;
@@ -18,6 +19,7 @@ import pride.bank.erp.user.User;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @Data
@@ -42,4 +44,13 @@ public class RequestDTO {
     private Set<RequestCommodity> requestCommodities;
     private User currentApprover;
     private Boolean isBranchStationery;
+
+    /** Primary asset category id (null on legacy requests). */
+    private Long assetTypeId;
+
+    /** Compact view of the chosen category for UI rendering. */
+    private AssetTypeRefDTO assetType;
+
+    /** Submitted values for the chosen category's custom attributes. */
+    private Map<String, Object> attributes;
 }

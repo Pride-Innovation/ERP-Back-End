@@ -14,6 +14,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 import org.springframework.web.multipart.MultipartFile;
+import pride.bank.erp.assetType.AssetType;
+import pride.bank.erp.assetType.AssetTypeCustomAttribute;
+import pride.bank.erp.assetType.AssetTypeRefDTO;
+import pride.bank.erp.assetType.AssetTypeService;
+import pride.bank.erp.assetType.AttributeDataType;
 import pride.bank.erp.commodity.Commodity;
 import pride.bank.erp.commodity.CommodityService;
 import pride.bank.erp.config.CurrentUserService;
@@ -43,8 +48,11 @@ import pride.bank.erp.workflowinstance.RequestWorkflowInstance;
 
 import java.io.File;
 import java.io.IOException;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
@@ -57,7 +65,6 @@ import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
 @RequiredArgsConstructor
 @Slf4j
 public class RequestService {
-    private static final Long HEAD_OFFICE_BRANCH_ID = 1L;
     private static final String STATIONERY_TYPE = "Stationery";
 
     private final RequestRepository requestRepository;
@@ -72,6 +79,7 @@ public class RequestService {
     private final TitleRepository titleRepository;
     private final UserBuilder userBuilder;
     private final WorkflowEngineService workflowEngineService;
+    private final AssetTypeService assetTypeService;
 
     /**
      * Creates a new request with commodities while enforcing business rules:
@@ -91,12 +99,18 @@ public class RequestService {
     public RequestDTO createRequest(
             Request body,
             MultipartFile file,
-            List<RequestCommodityDTO> requestCommoditiesRequest
+            List<RequestCommodityDTO> requestCommoditiesRequest,
+            Long assetTypeId,
+            Map<String, Object> attributes
     ) throws IOException, NotFoundException, ValidationException, BusinessRuleException {
         log.info("Creating new request: {}", body != null ? body.getName() : "null");
 
         // Basic validation
         validateRequestData(body, requestCommoditiesRequest);
+
+        // Category + attribute validation (back-compat: skipped when assetTypeId is null)
+        AssetType resolvedAssetType = resolveAssetTypeAndValidateAttributes(assetTypeId, attributes);
+        Map<String, Object> sanitisedAttributes = sanitiseAttributes(attributes);
 
         // Get current user and determine branch
         User requester = currentUserService.getCurrentUser();
@@ -105,7 +119,7 @@ public class RequestService {
         }
 
         Long requesterBranchId = requester.getBranch() != null ? requester.getBranch().getId() : null;
-        boolean isHeadOfficeUser = HEAD_OFFICE_BRANCH_ID.equals(requesterBranchId);
+        boolean isHeadOfficeUser = requester.getBranch() != null && requester.getBranch().isHeadOffice();
 
         log.info("Request from user at branch ID: {}, isHeadOfficeUser: {}", requesterBranchId, isHeadOfficeUser);
 
@@ -139,6 +153,8 @@ public class RequestService {
                 isBranchStationeryRequest,
                 isBranchNonStationeryRequest
         );
+        request.setAssetType(resolvedAssetType);
+        request.setAttributes(sanitisedAttributes);
         Request savedRequest = saveRequest(request);
 
         // Add commodities to request
@@ -226,21 +242,27 @@ public class RequestService {
             Long requestId,
             Request body,
             MultipartFile file,
-            List<RequestCommodityDTO> updatedRequestCommodities
+            List<RequestCommodityDTO> updatedRequestCommodities,
+            Long assetTypeId,
+            Map<String, Object> attributes
     ) throws IOException, NotFoundException, ValidationException {
         log.info("Updating request with ID: {}", requestId);
 
         // Validate input data
         validateRequestData(body, updatedRequestCommodities);
 
+        // Category + attribute validation (back-compat: skipped when assetTypeId is null)
+        AssetType resolvedAssetType = resolveAssetTypeAndValidateAttributes(assetTypeId, attributes);
+        Map<String, Object> sanitisedAttributes = sanitiseAttributes(attributes);
+
         // Find the existing request
         Request existingRequest = findRequest(requestId);
-        Status status = statusService.findOneStatus(1L); // Asset Request Created status
+        Status status = statusService.findByStatusCode("requestCreated");
 
         // Get current user and determine branch
         User requester = currentUserService.getCurrentUser();
         Long requesterBranchId = requester.getBranch() != null ? requester.getBranch().getId() : null;
-        boolean isHeadOfficeUser = HEAD_OFFICE_BRANCH_ID.equals(requesterBranchId);
+        boolean isHeadOfficeUser = requester.getBranch() != null && requester.getBranch().isHeadOffice();
 
         // Enforce business rules for mixed item types
         if (!isHeadOfficeUser) {
@@ -259,6 +281,8 @@ public class RequestService {
         existingRequest.setTimeOfSubmissionOfRequest(body.getTimeOfSubmissionOfRequest());
         existingRequest.setStatus(status);
         existingRequest.setDescription(body.getDescription());
+        existingRequest.setAssetType(resolvedAssetType);
+        existingRequest.setAttributes(sanitisedAttributes);
 
         Request savedRequest = requestRepository.save(existingRequest);
         log.info("Updated request basic details for ID: {}", requestId);
@@ -606,6 +630,113 @@ public class RequestService {
     }
 
     /**
+     * Resolves the chosen asset category (if any) and validates the supplied attribute values
+     * against its custom attribute definitions. Returns the AssetType entity to attach to the
+     * Request, or null when no category was supplied.
+     *
+     * <p>Back-compat: when {@code assetTypeId} is null, attributes are accepted as-is and not
+     * validated (older clients may submit attributes without a category).
+     */
+    private AssetType resolveAssetTypeAndValidateAttributes(Long assetTypeId, Map<String, Object> attributes)
+            throws NotFoundException, ValidationException {
+        if (assetTypeId == null) {
+            return null;
+        }
+
+        AssetType assetType = assetTypeService.findOneAssetType(assetTypeId);
+        Map<String, Object> values = attributes == null ? Collections.emptyMap() : attributes;
+        Map<String, AssetTypeCustomAttribute> defs = assetType.getCustomAttributes() == null
+                ? Collections.emptyMap()
+                : assetType.getCustomAttributes().stream()
+                .collect(Collectors.toMap(AssetTypeCustomAttribute::getKey, Function.identity()));
+
+        for (String key : values.keySet()) {
+            if (!defs.containsKey(key)) {
+                throw new ValidationException(
+                        "Unknown attribute key '" + key + "' for asset category '" + assetType.getName() + "'");
+            }
+        }
+
+        for (AssetTypeCustomAttribute def : defs.values()) {
+            Object value = values.get(def.getKey());
+            boolean missing = value == null || (value instanceof String s && s.isBlank());
+            if (def.isRequired() && missing) {
+                throw new ValidationException(
+                        "Required attribute '" + def.getKey() + "' is missing for asset category '" + assetType.getName() + "'");
+            }
+            if (!missing) {
+                validateAttributeValue(def, value);
+            }
+        }
+
+        return assetType;
+    }
+
+    private void validateAttributeValue(AssetTypeCustomAttribute def, Object value) throws ValidationException {
+        AttributeDataType type = def.getDataType();
+        switch (type) {
+            case TEXT -> {
+                if (!(value instanceof String)) {
+                    throw new ValidationException(
+                            "Attribute '" + def.getKey() + "' must be a string (TEXT)");
+                }
+            }
+            case NUMBER -> {
+                if (!(value instanceof Number)) {
+                    throw new ValidationException(
+                            "Attribute '" + def.getKey() + "' must be a number");
+                }
+            }
+            case BOOLEAN -> {
+                if (!(value instanceof Boolean)) {
+                    throw new ValidationException(
+                            "Attribute '" + def.getKey() + "' must be a boolean");
+                }
+            }
+            case DATE -> {
+                if (!(value instanceof String s) || !isIsoDate(s)) {
+                    throw new ValidationException(
+                            "Attribute '" + def.getKey() + "' must be an ISO date string (YYYY-MM-DD)");
+                }
+            }
+            case SELECT -> {
+                if (!(value instanceof String s)) {
+                    throw new ValidationException(
+                            "Attribute '" + def.getKey() + "' must be a string (one of the configured options)");
+                }
+                if (def.getOptions() == null || !def.getOptions().contains(s)) {
+                    throw new ValidationException(
+                            "Attribute '" + def.getKey() + "' value '" + s + "' is not one of the configured options "
+                                    + def.getOptions());
+                }
+            }
+        }
+    }
+
+    private boolean isIsoDate(String s) {
+        try {
+            LocalDate.parse(s);
+            return true;
+        } catch (DateTimeParseException e) {
+            return false;
+        }
+    }
+
+    /** Drops null-valued entries; returns null if the resulting map is empty. */
+    private Map<String, Object> sanitiseAttributes(Map<String, Object> attributes) {
+        if (attributes == null || attributes.isEmpty()) {
+            return null;
+        }
+        Map<String, Object> cleaned = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : attributes.entrySet()) {
+            if (entry.getValue() != null) {
+                cleaned.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return cleaned.isEmpty() ? null : cleaned;
+    }
+
+    /**
      * Validates basic request data
      */
     private void validateRequestData(Request body, List<RequestCommodityDTO> requestCommodities)
@@ -686,9 +817,9 @@ public class RequestService {
      */
     private Status getInitialRequestStatus() throws NotFoundException {
         try {
-            Status status = statusService.findOneStatus(1L);
+            Status status = statusService.findByStatusCode("requestCreated");
             if (status == null) {
-                throw new NotFoundException("Status with ID 1 not found.");
+                throw new NotFoundException("Status 'requestCreated' not found.");
             }
             return status;
         } catch (Exception ex) {
@@ -1035,6 +1166,9 @@ public class RequestService {
                 .currentApprover(request.getCurrentApprover())
                 .commodities(getRequestCommodities(request))
                 .requestReports(request.getRequestReportDAOS())
+                .assetTypeId(request.getAssetType() != null ? request.getAssetType().getId() : null)
+                .assetType(AssetTypeRefDTO.from(request.getAssetType()))
+                .attributes(request.getAttributes())
                 .build()).toList();
     }
 
@@ -1122,6 +1256,9 @@ public class RequestService {
                 .requestReports(reports)
                 .currentApprover(request.getCurrentApprover() != null ?
                         userBuilder.builder(request.getCurrentApprover()) : null)
+                .assetTypeId(request.getAssetType() != null ? request.getAssetType().getId() : null)
+                .assetType(AssetTypeRefDTO.from(request.getAssetType()))
+                .attributes(request.getAttributes())
                 .build();
     }
 }

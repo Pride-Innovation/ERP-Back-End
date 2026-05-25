@@ -10,7 +10,6 @@ package pride.bank.erp.assetType;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
-import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -23,6 +22,7 @@ import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
 import pride.bank.erp.helper.DeleteResponse;
 
+import java.util.List;
 import java.util.Map;
 
 import static pride.bank.erp.helper.Constants.ASCENDING_SORT_DIRECTION;
@@ -37,7 +37,7 @@ public class AssetTypeController {
 
     @Operation(summary = "List asset categories", description = "Returns a paginated list of asset categories, optionally filtered by name.")
     @GetMapping("/asset-types")
-    public ResponseEntity<Page<AssetType>> fetchAllAssetTypes(
+    public ResponseEntity<Page<AssetTypeDTO>> fetchAllAssetTypes(
             @RequestParam(required = false, defaultValue = "10") int pageSize,
             @RequestParam(required = false, defaultValue = "0") int pageNumber,
             @RequestParam(required = false, defaultValue = "name") String sortBy,
@@ -48,22 +48,22 @@ public class AssetTypeController {
                 ? Sort.by(sortBy).descending()
                 : Sort.by(sortBy).ascending();
         Pageable pageable = PageRequest.of(pageNumber, pageSize, sort);
-        Page<AssetType> response = assetTypeService.fetchAllAssetTypes(pageable, name);
+        Page<AssetTypeDTO> response = assetTypeService.fetchAllAssetTypes(pageable, name);
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
 
     @Operation(summary = "Create an asset category")
     @PostMapping("/asset-types")
-    public ResponseEntity<AssetType> createAssetType(@RequestBody AssetType assetType) {
-        AssetType response = assetTypeService.createAssetType(assetType);
+    public ResponseEntity<AssetTypeDTO> createAssetType(@RequestBody AssetTypeDTO assetType) {
+        AssetTypeDTO response = assetTypeService.createAssetType(assetType);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 
     @Operation(summary = "Update an asset category")
     @PutMapping("/asset-types/{id}")
-    public ResponseEntity<AssetType> updateAssetType(@PathVariable Long id, @RequestBody AssetType assetType)
+    public ResponseEntity<AssetTypeDTO> updateAssetType(@PathVariable Long id, @RequestBody AssetTypeDTO assetType)
             throws NotFoundException {
-        AssetType response = assetTypeService.updateAssetType(assetType, id);
+        AssetTypeDTO response = assetTypeService.updateAssetType(assetType, id);
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
 
@@ -76,9 +76,9 @@ public class AssetTypeController {
 
     @Operation(summary = "Get a single asset category by ID")
     @GetMapping("/asset-types/{id}")
-    public ResponseEntity<AssetType> getOneAssetType(@PathVariable Long id)
+    public ResponseEntity<AssetTypeDTO> getOneAssetType(@PathVariable Long id)
             throws NotFoundException {
-        return new ResponseEntity<>(assetTypeService.findOneAssetType(id), HttpStatus.OK);
+        return new ResponseEntity<>(assetTypeService.getOneAssetType(id), HttpStatus.OK);
     }
 
     @Operation(
@@ -86,12 +86,25 @@ public class AssetTypeController {
             description = "Sets each form field to 'required', 'optional', or 'hidden' for this asset type."
     )
     @PutMapping("/asset-types/{id}/field-config")
-    public ResponseEntity<AssetType> updateFieldConfig(
+    public ResponseEntity<AssetTypeDTO> updateFieldConfig(
             @PathVariable Long id,
             @RequestBody Map<String, String> fieldConfig
     ) throws NotFoundException {
-        AssetType response = assetTypeService.updateFieldConfig(id, fieldConfig);
+        AssetTypeDTO response = assetTypeService.updateFieldConfig(id, fieldConfig);
+        return new ResponseEntity<>(response, HttpStatus.OK);
+    }
+
+    @Operation(
+            summary = "Replace the custom attributes for an asset category",
+            description = "Replaces the asset category's custom attributes with the supplied array. " +
+                    "Order in the payload determines display order (1..n)."
+    )
+    @PutMapping("/asset-types/{id}/custom-attributes")
+    public ResponseEntity<List<AssetTypeCustomAttributeDTO>> updateCustomAttributes(
+            @PathVariable Long id,
+            @RequestBody List<AssetTypeCustomAttributeDTO> attributes
+    ) throws NotFoundException {
+        List<AssetTypeCustomAttributeDTO> response = assetTypeService.updateCustomAttributes(id, attributes);
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
 }
-

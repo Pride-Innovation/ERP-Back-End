@@ -35,8 +35,8 @@ public class UserController {
     private final UserService userService;
 
     @GetMapping("/users")
-    public ResponseEntity<Page<User>> getAllUsers(UserQueryParams params) {
-        Page<User> users = userService.fetchUsers(params);
+    public ResponseEntity<Page<UserResponseDTO>> getAllUsers(UserQueryParams params) {
+        Page<UserResponseDTO> users = userService.fetchUsers(params).map(UserResponseDTO::from);
         return new ResponseEntity<>(users, HttpStatus.OK);
     }
 
@@ -48,101 +48,90 @@ public class UserController {
     }
 
     @PutMapping("/users/{userId}")
-    public ResponseEntity<User> updateUser(@PathVariable Long userId, @RequestBody @Valid UserDTO user)
+    public ResponseEntity<UserResponseDTO> updateUser(@PathVariable Long userId, @RequestBody @Valid UserDTO user)
             throws NotFoundException {
-        User response = userService.updateUser(user, userId);
-        return new ResponseEntity<>(response, HttpStatus.CREATED);
+        return new ResponseEntity<>(UserResponseDTO.from(userService.updateUser(user, userId)), HttpStatus.CREATED);
     }
 
     @GetMapping("/users/{userID}")
-    public ResponseEntity<User> getSingleUser(
+    public ResponseEntity<UserResponseDTO> getSingleUser(
             @PathVariable Long userID
     ) throws NotFoundException {
-        User user = userService.findUser(userID);
-        return new ResponseEntity<>(user, HttpStatus.OK);
+        return new ResponseEntity<>(UserResponseDTO.from(userService.findUser(userID)), HttpStatus.OK);
     }
 
     @PostMapping("/users/{userID}/disable")
-    public ResponseEntity<User> deleteUser(@PathVariable Long userID)
+    public ResponseEntity<UserResponseDTO> deleteUser(@PathVariable Long userID)
             throws NotFoundException {
-        User response = userService.deleteUser(userID);
-        return new ResponseEntity<>(response, HttpStatusCode.valueOf(201));
+        return new ResponseEntity<>(UserResponseDTO.from(userService.deleteUser(userID)), HttpStatusCode.valueOf(201));
     }
 
     @PostMapping("/users/{userID}/enable")
-    public ResponseEntity<User> enableUser(@PathVariable Long userID)
+    public ResponseEntity<UserResponseDTO> enableUser(@PathVariable Long userID)
             throws NotFoundException {
-        User response = userService.enableUser(userID);
-        return new ResponseEntity<>(response, HttpStatusCode.valueOf(201));
+        return new ResponseEntity<>(UserResponseDTO.from(userService.enableUser(userID)), HttpStatusCode.valueOf(201));
     }
 
     @PostMapping("/users/{userID}/unblock")
-    public ResponseEntity<User> unblockUser(@PathVariable Long userID)
+    public ResponseEntity<UserResponseDTO> unblockUser(@PathVariable Long userID)
             throws NotFoundException {
-        User response = userService.unblockUser(userID);
-        return new ResponseEntity<>(response, HttpStatusCode.valueOf(201));
+        return new ResponseEntity<>(UserResponseDTO.from(userService.unblockUser(userID)), HttpStatusCode.valueOf(201));
     }
 
     @PostMapping("/users/{userID}/block")
-    public ResponseEntity<User> blockUser(@PathVariable Long userID)
+    public ResponseEntity<UserResponseDTO> blockUser(@PathVariable Long userID)
             throws NotFoundException {
-        User response = userService.blockUser(userID);
-        return new ResponseEntity<>(response, HttpStatusCode.valueOf(201));
+        return new ResponseEntity<>(UserResponseDTO.from(userService.blockUser(userID)), HttpStatusCode.valueOf(201));
     }
 
     @PostMapping("/users/{userID}/return-from-leave")
-    public ResponseEntity<User> returnUserFromLeave(@PathVariable Long userID)
+    public ResponseEntity<UserResponseDTO> returnUserFromLeave(@PathVariable Long userID)
             throws NotFoundException {
-        User response = userService.returnUserFromLeave(userID);
-        return new ResponseEntity<>(response, HttpStatusCode.valueOf(201));
+        return new ResponseEntity<>(UserResponseDTO.from(userService.returnUserFromLeave(userID)), HttpStatusCode.valueOf(201));
     }
 
     @GetMapping("/users/search")
-    public ResponseEntity<Page<User>> searchUserByEmailNameStaffNumber(
+    public ResponseEntity<Page<UserResponseDTO>> searchUserByEmailNameStaffNumber(
             @RequestParam String text,
             @RequestParam(defaultValue = "0") int pageNumber,
             @RequestParam(defaultValue = "10") int pageSize
     ) {
         Pageable pageable = PageRequest.of(pageNumber, pageSize);
-        Page<User> users = userService.searchUserByEmailNameStaffNumber(text, pageable);
+        Page<UserResponseDTO> users = userService.searchUserByEmailNameStaffNumber(text, pageable)
+                .map(UserResponseDTO::from);
         return ResponseEntity.ok(users);
     }
 
     @PutMapping(value = "users/image/{userID}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<User> uploadUserImage(
+    public ResponseEntity<UserResponseDTO> uploadUserImage(
             @RequestParam(value = "file", required = false) MultipartFile file,
             @PathVariable Long userID
     ) throws IOException, NotFoundException {
-        User response = userService.uploadUserImage(file, userID);
-        return new ResponseEntity<>(response, HttpStatus.CREATED);
+        return new ResponseEntity<>(UserResponseDTO.from(userService.uploadUserImage(file, userID)), HttpStatus.CREATED);
     }
 
     @PutMapping("users/remove/image/{userID}")
-    public ResponseEntity<User> removeUserImage(
+    public ResponseEntity<UserResponseDTO> removeUserImage(
             @PathVariable Long userID
     ) throws NotFoundException {
-        User response = userService.removeUserImage(userID);
-        return new ResponseEntity<>(response, HttpStatus.CREATED);
+        return new ResponseEntity<>(UserResponseDTO.from(userService.removeUserImage(userID)), HttpStatus.CREATED);
     }
 
     @PostMapping("users/change-password")
-    public ResponseEntity<User> changeUserPassword(
+    public ResponseEntity<UserResponseDTO> changeUserPassword(
             @RequestBody ChangePasswordDTO request
     ) {
-        User response = userService.changePassword(request);
-        return new ResponseEntity<>(response, HttpStatus.CREATED);
+        return new ResponseEntity<>(UserResponseDTO.from(userService.changePassword(request)), HttpStatus.CREATED);
     }
 
     @PostMapping("users/bulk-insert")
     public ResponseEntity<Map<String, Object>> bulkInsertUsers(
             @RequestParam("users") String users
     ) throws JsonProcessingException {
-
         ObjectMapper objectMapper = new ObjectMapper();
         List<BulkUserDTO> userList = objectMapper.readValue(users,
                 objectMapper.getTypeFactory()
                         .constructCollectionType(List.class, BulkUserDTO.class));
-
         Map<String, Object> response = userService.bulkInsertUsers(userList);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }

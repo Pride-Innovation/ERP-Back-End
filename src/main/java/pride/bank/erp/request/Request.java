@@ -21,6 +21,7 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedBy;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+import pride.bank.erp.assetType.AssetType;
 import pride.bank.erp.requestCommodity.RequestCommodity;
 import pride.bank.erp.requestReport.RequestReport;
 import pride.bank.erp.requestReport.RequestReportDAO;
@@ -29,6 +30,7 @@ import pride.bank.erp.user.User;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @Entity
@@ -91,6 +93,24 @@ public class Request {
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "current_approver_id")
     private User currentApprover;
+
+    /** Primary asset category for the request; drives workflow resolution and custom attribute validation. */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "asset_type_id")
+    @NotAudited
+    private AssetType assetType;
+
+    /**
+     * Free-form map of attribute values keyed by {@code AssetTypeCustomAttribute.key}
+     * on the chosen {@link #assetType}. Validated on save when {@code assetType} is set.
+     * Stored as a JSON object in a large-text column.
+     */
+    // MSSQL (uncomment + comment-out the MySQL line below when switching back):
+    // @Column(name = "attributes_json", columnDefinition = "NVARCHAR(MAX)")
+    // MySQL:
+    @Column(name = "attributes_json", columnDefinition = "LONGTEXT")
+    @Convert(converter = RequestAttributesConverter.class)
+    private Map<String, Object> attributes;
 
     @Transient
     private List<CommodityWithQuantityDTO> commodities;

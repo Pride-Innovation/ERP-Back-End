@@ -28,12 +28,16 @@ import pride.bank.erp.branch.Branch;
 import pride.bank.erp.department.Department;
 import pride.bank.erp.helper.Constants;
 import pride.bank.erp.request.Request;
+import pride.bank.erp.role.Role;
 import pride.bank.erp.title.Title;
 import pride.bank.erp.token.Token;
 
 import java.time.LocalDateTime;
 import java.util.Collection;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Data
@@ -123,13 +127,60 @@ public class User implements UserDetails {
     @NotAudited
     private Department department;
 
+    /**
+     * Optional secondary roles in addition to the role implied by {@link #title}.
+     * Used for workflow matching (e.g. a user can be Officer-by-title and also have
+     * an "Approver" role for cross-cutting approvals). Empty for most users.
+     */
+    @ManyToMany(fetch = FetchType.EAGER)
+    @JoinTable(
+            name = "user_role",
+            joinColumns = @JoinColumn(name = "user_id"),
+            inverseJoinColumns = @JoinColumn(name = "role_id")
+    )
+    @NotAudited
+    @Builder.Default
+    private Set<Role> additionalRoles = new HashSet<>();
+
+    /**
+     * All role IDs that should be considered when matching this user against
+     * workflow {@code requesterRoleIds} or step {@code skipIfRequesterRoleIds}.
+     * Combines the role implied by {@link #title} with {@link #additionalRoles}.
+     */
+    public Set<Long> getEffectiveRoleIds() {
+        Set<Long> ids = new LinkedHashSet<>();
+        if (title != null && title.getRole() != null && title.getRole().getId() != null) {
+            ids.add(title.getRole().getId());
+        }
+        if (additionalRoles != null) {
+            for (Role r : additionalRoles) {
+                if (r != null && r.getId() != null) {
+                    ids.add(r.getId());
+                }
+            }
+        }
+        return ids;
+    }
+
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        if (title == null || title.getRole() == null || title.getRole().getPermissions() == null) {
-            return List.of();
+        Set<String> permissionNames = new LinkedHashSet<>();
+        if (title != null && title.getRole() != null && title.getRole().getPermissions() != null) {
+            title.getRole().getPermissions().forEach(p -> {
+                if (p != null && p.getName() != null) permissionNames.add(p.getName());
+            });
         }
-        return title.getRole().getPermissions().stream()
-                .map(permission -> new SimpleGrantedAuthority(permission.getName()))
+        if (additionalRoles != null) {
+            for (Role role : additionalRoles) {
+                if (role != null && role.getPermissions() != null) {
+                    role.getPermissions().forEach(p -> {
+                        if (p != null && p.getName() != null) permissionNames.add(p.getName());
+                    });
+                }
+            }
+        }
+        return permissionNames.stream()
+                .map(SimpleGrantedAuthority::new)
                 .collect(Collectors.toList());
     }
 

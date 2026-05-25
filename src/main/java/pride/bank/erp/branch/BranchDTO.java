@@ -35,6 +35,9 @@ public class BranchDTO {
     @Email(message = EMAIL_VALIDATOR)
     private String email;
 
+    @Email(message = EMAIL_VALIDATOR)
+    private String managersGroupEmail;
+
     @NotNull(message = "District is required")
     private Long district;
 }

@@ -105,6 +105,9 @@ public class DataInitializer {
     private final SupplierCommoditySeeder supplierCommoditySeeder;
     private final RoleSeeder roleSeeder;
     private final TitleSeeder titleSeeder;
+    private final BranchHeadOfficeSeeder branchHeadOfficeSeeder;
+    private final AssetCategoryFeatureSeeder assetCategoryFeatureSeeder;
+    private final StatusSeeder statusSeeder;
 
     @Value("${application.super.admin.email}")
     private String email;
@@ -150,6 +153,11 @@ public class DataInitializer {
             supplierCommoditySeeder.seedSuppliersAndCommodityLinks();
             roleSeeder.seedRoles();
             titleSeeder.seedTitles();
+
+            // Phase F backfills (idempotent — only fill fields that are unset).
+            branchHeadOfficeSeeder.seedHeadOfficeFlag();
+            assetCategoryFeatureSeeder.seedFeatures();
+            statusSeeder.seedStatuses();
         };
     }
 

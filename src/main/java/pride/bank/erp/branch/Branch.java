@@ -35,6 +35,25 @@ public class Branch {
     private String email;
     private String shortCode;
 
+    /**
+     * True when this branch represents the head office. Used by workflow
+     * resolution to choose between {@code HEAD_OFFICE} and {@code BRANCH} scope.
+     * Defaults to false; the head-office row is flagged via the startup seeder.
+     *
+     * <p>Column definition includes a DEFAULT so auto-DDL can add this NOT NULL
+     * column to existing branch tables without rejecting pre-existing rows.
+     */
+    @Column(name = "is_head_office", columnDefinition = "BIT NOT NULL DEFAULT 0")
+    @Builder.Default
+    private boolean isHeadOffice = false;
+
+    /**
+     * Distribution-list email that reaches every manager of this branch. Used as the
+     * dynamic CC target when a workflow step's {@code notifyGroupSource} is
+     * {@code REQUESTER_MANAGERS_GROUP} and the requester is at a branch (not HO).
+     */
+    private String managersGroupEmail;
+
     @OneToMany(mappedBy = "branch", cascade = CascadeType.PERSIST)
     @JsonIgnore
     private Set<User> users;

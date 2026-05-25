@@ -7,17 +7,24 @@ Managing Director
 
 package pride.bank.erp.assetType;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.Column;
-import jakarta.persistence.Convert;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 @Entity
@@ -34,12 +41,27 @@ public class AssetType {
     private String shortCode;
 
     /**
+     * Email group notified to fulfil a request after approvals
+     * (e.g. it-infra@bank for Computer, admin@bank for Furniture).
+     */
+    @Column(name = "owner_group_email", length = 255)
+    private String ownerGroupEmail;
+
+    /**
      * Per-field visibility configuration.
      * Each key is a form-field name; each value is one of: "required", "optional", "hidden".
-     * Stored as a JSON string in NVARCHAR(MAX).
+     * Stored as a JSON string in a large-text column.
      */
-    @Column(name = "field_config", columnDefinition = "NVARCHAR(MAX)")
+    // MSSQL (uncomment + comment-out the MySQL line below when switching back):
+    // @Column(name = "field_config", columnDefinition = "NVARCHAR(MAX)")
+    // MySQL:
+    @Column(name = "field_config", columnDefinition = "LONGTEXT")
     @Convert(converter = FieldConfigConverter.class)
     private Map<String, String> fieldConfig;
-}
 
+    @OneToMany(mappedBy = "assetType", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @OrderBy("displayOrder ASC")
+    @JsonIgnore
+    @Builder.Default
+    private List<AssetTypeCustomAttribute> customAttributes = new ArrayList<>();
+}

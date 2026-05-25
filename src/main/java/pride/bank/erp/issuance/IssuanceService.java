@@ -20,6 +20,7 @@ import pride.bank.erp.assetAssignmentHostory.AssetAssignmentHistoryRepository;
 import pride.bank.erp.commodity.Commodity;
 import pride.bank.erp.commodity.CommodityService;
 import pride.bank.erp.config.CurrentUserService;
+import pride.bank.erp.exception.BadRequestException;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.ExtractNumberFromEmailAddress;
 import pride.bank.erp.issuedCommodity.IssuedCommodity;
@@ -53,6 +54,8 @@ import static java.lang.String.format;
 public class IssuanceService {
     private static final Logger logger = Logger.getLogger(IssuanceService.class.getName());
     private static final Long HEAD_OFFICE_ID = 1L;
+    /** Status ID of newly-stocked assets that still need their details filled in. */
+    private static final Long STATUS_REQUIRE_UPDATE = 9L;
 
     private final UserService userService;
     private final IssuanceRepository issuanceRepository;
@@ -385,6 +388,33 @@ public class IssuanceService {
         Status assignedStatus = statusService.findOneStatus(4L);
         if (assignedStatus == null) {
             throw new NotFoundException("Status with ID 4 not found.");
+        }
+
+        // Block issuance of any asset still flagged "requires update after stocking" —
+        // i.e. the responsible team has not yet filled in the engraved number and
+        // remaining details. Surface every offending asset in one error so the
+        // issuer doesn't have to retry one-by-one.
+        List<String> incomplete = new ArrayList<>();
+        for (IssueAssetsDTO asst : assets) {
+            Asset asset = assetService.findOne(asst.getId());
+            Status currentStatus = asset.getAssetStatus();
+            boolean stillNeedsCompletion = currentStatus != null
+                    && currentStatus.getId() != null
+                    && currentStatus.getId().equals(STATUS_REQUIRE_UPDATE);
+            boolean missingEngravedNumber = asset.getEngravedNumber() == null
+                    || asset.getEngravedNumber().isBlank();
+            if (stillNeedsCompletion || (missingEngravedNumber && stillNeedsCompletion)) {
+                incomplete.add(asset.getAssetName()
+                        + (missingEngravedNumber ? " (no engraved number)" : "")
+                        + " [id=" + asset.getId() + "]");
+            }
+        }
+        if (!incomplete.isEmpty()) {
+            throw new BadRequestException(
+                    "Cannot issue assets that have not been completed after stocking. "
+                            + "Please ask the responsible team to add the engraved number and "
+                            + "mark the following ready for issuance: "
+                            + String.join("; ", incomplete));
         }
 
         for (IssueAssetsDTO asst : assets) {

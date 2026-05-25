@@ -26,6 +26,8 @@ public interface BranchRepository extends JpaRepository<Branch, Long> {
                 b.name as name,
                 b.email as email,
                 b.telephone as telephone,
+                b.managersGroupEmail as managersGroupEmail,
+                b.isHeadOffice as headOffice,
                 b.region as region,
                 b.district as district,
                 branchManager.id as branchManagerId,

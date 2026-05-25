@@ -7,7 +7,9 @@ Managing Director
 
 package pride.bank.erp.request;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -15,19 +17,25 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import pride.bank.erp.exception.BadRequestException;
+import pride.bank.erp.exception.BusinessRuleException;
+import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.exception.ResourceNotFoundException;
+import pride.bank.erp.exception.ValidationException;
 import pride.bank.erp.helper.Constants;
 import pride.bank.erp.requestCommodity.RequestCommodityDTO;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
 
+@Slf4j
 @RestController
 @RequestMapping(Constants.GENERAL_ROUTE)
 public class RequestController {
@@ -84,9 +92,13 @@ public class RequestController {
             @RequestParam("name") String name,
             @RequestParam("priority") String priority,
             @RequestParam("description") String description,
-            @RequestParam("requestCommodities") String requestCommodities
+            @RequestParam("requestCommodities") String requestCommodities,
+            @RequestParam(value = "assetTypeId", required = false) String assetTypeIdRaw,
+            @RequestParam(value = "attributes", required = false) String attributesRaw
     ) {
         List<RequestCommodityDTO> commodityList;
+        Long assetTypeId;
+        Map<String, Object> attributes;
 
         try {
             ObjectMapper objectMapper = new ObjectMapper();
@@ -97,6 +109,13 @@ public class RequestController {
                     .body("Error deserializing requestCommodities: " + e.getMessage());
         }
 
+        try {
+            assetTypeId = parseAssetTypeId(assetTypeIdRaw);
+            attributes = parseAttributes(attributesRaw);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+        }
+
         Request request = Request.builder()
                 .name(name)
                 .priority(priority)
@@ -104,18 +123,18 @@ public class RequestController {
                 .build();
 
         try {
-            RequestDTO savedRequest = requestService.createRequest(request, file, commodityList);
+            RequestDTO savedRequest = requestService.createRequest(request, file, commodityList, assetTypeId, attributes);
             return ResponseEntity.status(HttpStatus.CREATED).body(savedRequest);
-        } catch (BadRequestException | IllegalArgumentException e) {
+        } catch (ValidationException | BusinessRuleException | BadRequestException | IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        } catch (ResourceNotFoundException e) {
+        } catch (NotFoundException | ResourceNotFoundException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
-
         } catch (IOException e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("File processing failed.");
         } catch (Exception e) {
+            log.error("Unexpected error creating request", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Request creation failed due to an unexpected error.");
+                    .body("Request creation failed: " + e.getMessage());
         }
     }
 
@@ -126,9 +145,13 @@ public class RequestController {
             @RequestParam("priority") String priority,
             @RequestParam("description") String description,
             @RequestParam("requestCommodities") String requestCommodities,
+            @RequestParam(value = "assetTypeId", required = false) String assetTypeIdRaw,
+            @RequestParam(value = "attributes", required = false) String attributesRaw,
             @PathVariable Long id
     ) {
         List<RequestCommodityDTO> commodityList;
+        Long assetTypeId;
+        Map<String, Object> attributes;
 
         try {
             ObjectMapper objectMapper = new ObjectMapper();
@@ -139,19 +162,53 @@ public class RequestController {
                     .body("Error deserializing requestCommodities: " + e.getMessage());
         }
 
+        try {
+            assetTypeId = parseAssetTypeId(assetTypeIdRaw);
+            attributes = parseAttributes(attributesRaw);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+        }
+
         Request request = Request.builder()
                 .name(name)
                 .priority(priority)
                 .description(description)
                 .build();
         try {
-            RequestDTO updatedRequest = requestService.updateRequest(id, request, file, commodityList);
+            RequestDTO updatedRequest = requestService.updateRequest(id, request, file, commodityList, assetTypeId, attributes);
             return ResponseEntity.ok(updatedRequest);
-        } catch (IllegalArgumentException e) {
+        } catch (ValidationException | BusinessRuleException | BadRequestException | IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+        } catch (NotFoundException | ResourceNotFoundException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
+        } catch (IOException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("File processing failed.");
         } catch (Exception e) {
+            log.error("Unexpected error updating request", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Request update failed due to an unexpected error.");
+                    .body("Request update failed: " + e.getMessage());
+        }
+    }
+
+    private Long parseAssetTypeId(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return null;
+        }
+        try {
+            return Long.parseLong(raw.trim());
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("assetTypeId must be a number");
+        }
+    }
+
+    private Map<String, Object> parseAttributes(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return null;
+        }
+        try {
+            return new ObjectMapper().readValue(raw, new TypeReference<Map<String, Object>>() {});
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Error deserializing attributes: " + e.getMessage());
         }
     }
 

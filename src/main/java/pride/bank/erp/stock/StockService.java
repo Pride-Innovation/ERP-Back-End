@@ -549,13 +549,10 @@ public class StockService {
     private void createAssetsFromStock(Stock stock) throws NotFoundException {
         List<StockCommodity> stockCommodities = stockCommodityRepository.findByStockId(stock.getId());
 
-        boolean itEquipmentCreated = false;
-        boolean officeEquipmentCreated = false;
-
-        StringBuilder itCommodities = new StringBuilder();
-        StringBuilder officeCommodities = new StringBuilder();
-        Map<String, Integer> itMap = new HashMap<>();
-        Map<String, Integer> officeMap = new HashMap<>();
+        // Group by asset type so we can fire one consolidated notification per
+        // category to the team responsible (via AssetType.ownerGroupEmail).
+        // Map of assetType -> { commodityName -> quantity }
+        Map<AssetType, Map<String, Integer>> createdByType = new HashMap<>();
 
         for (StockCommodity stockCommodity : stockCommodities) {
             Commodity commodity = stockCommodity.getCommodity();
@@ -564,6 +561,8 @@ public class StockService {
             if (assetType == null) continue;
 
             String typeName = assetType.getName();
+            // Asset creation is opt-in by category. Stationery and other
+            // consumable types are intentionally skipped.
             if (!("IT Equipment".equalsIgnoreCase(typeName)
                     || "Office Equipment".equalsIgnoreCase(typeName)
                     || "Fleet".equalsIgnoreCase(typeName))) {
@@ -598,44 +597,43 @@ public class StockService {
 
             stockCommodityRepository.save(stockCommodity);
 
-            String commodityName = commodity.getName();
-
-            if ("IT Equipment".equalsIgnoreCase(typeName)) {
-                itMap.put(commodityName, itMap.getOrDefault(commodityName, 0) + availableQuantity);
-                itEquipmentCreated = true;
-            } else if ("Office Equipment".equalsIgnoreCase(typeName)) {
-                officeMap.put(commodityName, officeMap.getOrDefault(commodityName, 0) + availableQuantity);
-                officeEquipmentCreated = true;
-            }
+            createdByType
+                    .computeIfAbsent(assetType, k -> new HashMap<>())
+                    .merge(commodity.getName(), availableQuantity, Integer::sum);
         }
 
+        // Fire one email per asset type. Recipient: the category's
+        // ownerGroupEmail (CLAUDE.md: "the unit responsible for this should also
+        // be customizable per asset category"). Fall back to the legacy
+        // hardcoded routing for backwards compatibility while admins migrate.
+        for (Map.Entry<AssetType, Map<String, Integer>> entry : createdByType.entrySet()) {
+            AssetType type = entry.getKey();
+            Map<String, Integer> items = entry.getValue();
 
-        itMap.forEach((name, qty) -> itCommodities.append("- ").append(qty).append(" ").append(name).append("<br/>"));
-        officeMap.forEach((name, qty) -> officeCommodities.append("- ").append(qty).append(" ").append(name).append("<br/>"));
+            StringBuilder summary = new StringBuilder();
+            items.forEach((name, qty) ->
+                    summary.append("- ").append(qty).append(" ").append(name).append("<br/>"));
 
-        if (itEquipmentCreated) {
-            notifyIndividual(
-                    itTeamEmailAddress,
-                    stock,
-                    "Dear Technical Team,",
-                    buildAdminEmailBody(
-                            itCommodities.toString(),
-                            "update the inventory of stocked IT assets"
-                    )
+            String recipient = (type.getOwnerGroupEmail() != null && !type.getOwnerGroupEmail().isBlank())
+                    ? type.getOwnerGroupEmail()
+                    : legacyFallbackEmail(type.getName());
+            if (recipient == null) continue;
+
+            String greeting = "Dear " + type.getName() + " Team,";
+            String body = buildAdminEmailBody(
+                    summary.toString(),
+                    "update the inventory of stocked " + type.getName() + " items"
             );
+            notifyIndividual(recipient, stock, greeting, body);
         }
+    }
 
-        if (officeEquipmentCreated) {
-            notifyIndividual(
-                    adminTeamEmailAddress,
-                    stock,
-                    "Dear Administration Team,",
-                    buildAdminEmailBody(
-                            officeCommodities.toString(),
-                            "update the inventory of all stocked furniture and non-IT assets"
-                    )
-            );
-        }
+    /** Legacy mapping kept until every AssetType has its ownerGroupEmail filled in. */
+    private String legacyFallbackEmail(String typeName) {
+        if ("IT Equipment".equalsIgnoreCase(typeName)) return itTeamEmailAddress;
+        if ("Office Equipment".equalsIgnoreCase(typeName)) return adminTeamEmailAddress;
+        if ("Fleet".equalsIgnoreCase(typeName)) return adminTeamEmailAddress;
+        return null;
     }
 
     private Summation calculateSumsFromStock(Long stockId) {

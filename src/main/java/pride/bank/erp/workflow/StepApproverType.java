@@ -7,5 +7,6 @@ public enum StepApproverType {
     BRANCH_MANAGER,      // branch.branchManager
     ADMIN,               // application.admin.email config user
     GROUP_EMAIL,         // send only to a configured group email, no individual
-    SPECIFIC_USER        // a specific user by ID
+    SPECIFIC_USER,       // a specific user by ID
+    REQUESTER            // the user who originally raised the request — used for "Acknowledge Receipt"
 }

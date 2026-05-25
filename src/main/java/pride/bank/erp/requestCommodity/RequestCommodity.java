@@ -7,6 +7,7 @@ Managing Director
 
 package pride.bank.erp.requestCommodity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -27,6 +28,7 @@ public class RequestCommodity {
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "request_id", nullable = false)
+    @JsonIgnore
     private Request request;
 
     @ManyToOne(fetch = FetchType.EAGER)

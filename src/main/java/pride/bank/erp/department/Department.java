@@ -27,6 +27,7 @@ public class Department {
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "head_of_dept_id")
+    @JsonIgnore
     private User headOfDepartment;
 
     @ManyToOne(fetch = FetchType.EAGER)

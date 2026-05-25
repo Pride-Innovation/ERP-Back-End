@@ -11,6 +11,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.TypedQuery;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import org.springframework.data.domain.*;
@@ -124,6 +125,33 @@ public class UserSearchDao {
 
         if (Objects.nonNull(userSearchCriteria.getTitle())) {
             predicates.add(criteriaBuilder.like(userRoot.get("title").get("name"), "%" + userSearchCriteria.getTitle() + "%"));
+        }
+
+        if (Objects.nonNull(userSearchCriteria.getGender())) {
+            predicates.add(criteriaBuilder.equal(
+                    criteriaBuilder.lower(userRoot.get("gender")),
+                    userSearchCriteria.getGender().toLowerCase()));
+        }
+
+        if (Objects.nonNull(userSearchCriteria.getTitleId())) {
+            predicates.add(criteriaBuilder.equal(userRoot.get("title").get("id"), userSearchCriteria.getTitleId()));
+        }
+
+        if (Objects.nonNull(userSearchCriteria.getBranchId())) {
+            predicates.add(criteriaBuilder.equal(userRoot.get("branch").get("id"), userSearchCriteria.getBranchId()));
+        }
+
+        if (Objects.nonNull(userSearchCriteria.getDepartmentId())) {
+            predicates.add(criteriaBuilder.equal(userRoot.get("department").get("id"), userSearchCriteria.getDepartmentId()));
+        }
+
+        // Role filter matches BOTH the title's role and any additional roles attached to the user.
+        if (Objects.nonNull(userSearchCriteria.getRoleId())) {
+            Long roleId = userSearchCriteria.getRoleId();
+            Predicate titleRole = criteriaBuilder.equal(userRoot.get("title").get("role").get("Id"), roleId);
+            Predicate additionalRole = criteriaBuilder.equal(
+                    userRoot.join("additionalRoles", JoinType.LEFT).get("Id"), roleId);
+            predicates.add(criteriaBuilder.or(titleRole, additionalRole));
         }
 
         // Date range filter on createDate

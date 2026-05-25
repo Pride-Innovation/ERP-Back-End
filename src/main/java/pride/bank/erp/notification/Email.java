@@ -47,6 +47,12 @@ public class Email {
     @Value("${application.security.jwt.expiration}")
     private long tokenExpirationTime;
 
+    @Value("${application.mail.recipient.strip-digits:false}")
+    private boolean stripDigitsFromRecipient;
+
+    @Value("${application.mail.recipient.strip-digits.domains:pridebank.co.ug}")
+    private String stripDigitsDomainsCsv;
+
     // Brand colors
     private static final String TEAL_PRIMARY = "#05544B";
     private static final String TEAL_SECONDARY = "#0a6b5d";
@@ -94,9 +100,10 @@ public class Email {
                 return false;
             }
 
+            String recipient = cleanRecipient(email);
             MimeMessage mimeMessage = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "utf-8");
-            helper.setTo(email);
+            helper.setTo(recipient);
             helper.setSubject(subject);
             helper.setFrom(fromEmail);
             helper.setText(htmlContent, true);
@@ -106,7 +113,7 @@ public class Email {
             helper.addInline("logoImage", image);
 
             mailSender.send(mimeMessage);
-            logger.info("Email sent to {}", email);
+            logger.info("Email sent to {}", recipient);
             return true;
         } catch (Exception e) {
             logger.error("Failed to send email to {}", email, e);
@@ -815,9 +822,10 @@ public class Email {
         try {
             String htmlContent = getWorkflowEmailContent(greeting, stepTitle, instructions, request, stepStatus);
 
+            String recipient = cleanRecipient(email);
             MimeMessage mimeMessage = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "utf-8");
-            helper.setTo(email);
+            helper.setTo(recipient);
             helper.setSubject(subject);
             helper.setFrom(fromEmail);
             helper.setText(htmlContent, true);
@@ -827,12 +835,49 @@ public class Email {
             helper.addInline("logoImage", image);
 
             mailSender.send(mimeMessage);
-            logger.info("Workflow email sent to {}", email);
+            logger.info("Workflow email sent to {}", recipient);
             return true;
         } catch (Exception e) {
             logger.error("Failed to send workflow email to {}", email, e);
             return false;
         }
+    }
+
+    /**
+     * Maps a stored recipient address to the one actually used at SMTP send time.
+     * When {@code application.mail.recipient.strip-digits=true} AND the address belongs to a
+     * domain in {@code application.mail.recipient.strip-digits.domains}, every digit in the
+     * local part is removed. Used so the team can populate the DB with sodong1@…, sodong2@…
+     * (to keep the email-unique constraint happy) while every actual notification lands in
+     * the single real mailbox sodong@pridebank.co.ug. Addresses on other domains pass through
+     * unchanged so a misconfiguration in prod can never merge external recipients.
+     */
+    private String cleanRecipient(String email) {
+        if (!stripDigitsFromRecipient || email == null) return email;
+
+        int at = email.lastIndexOf('@');
+        if (at <= 0 || at == email.length() - 1) return email;
+
+        String local = email.substring(0, at);
+        String domain = email.substring(at + 1);
+
+        if (!isCleanableDomain(domain)) return email;
+
+        String cleanedLocal = local.replaceAll("\\d", "");
+        if (cleanedLocal.isEmpty() || cleanedLocal.equals(local)) return email;
+
+        String cleaned = cleanedLocal + "@" + domain;
+        logger.debug("Recipient rewritten for SMTP: {} -> {}", email, cleaned);
+        return cleaned;
+    }
+
+    private boolean isCleanableDomain(String domain) {
+        if (stripDigitsDomainsCsv == null || stripDigitsDomainsCsv.isBlank()) return false;
+        String d = domain.toLowerCase();
+        for (String allowed : stripDigitsDomainsCsv.split(",")) {
+            if (d.equals(allowed.trim().toLowerCase())) return true;
+        }
+        return false;
     }
 
     private String getWorkflowEmailContent(

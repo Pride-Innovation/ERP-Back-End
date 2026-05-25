@@ -31,6 +31,8 @@ import pride.bank.erp.helper.ExtractNumberFromEmailAddress;
 import pride.bank.erp.helper.FileUpload;
 import pride.bank.erp.helper.PasswordGenerator;
 import pride.bank.erp.notification.Email;
+import pride.bank.erp.role.Role;
+import pride.bank.erp.role.RoleRepository;
 import pride.bank.erp.title.Title;
 import pride.bank.erp.title.TitleRepository;
 import pride.bank.erp.title.TitleService;
@@ -38,6 +40,7 @@ import pride.bank.erp.title.TitleService;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.regex.Pattern;
 
 import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
 
@@ -58,6 +61,7 @@ public class UserService {
     private final CurrentUserService currentUserService;
     private final LeaveRepository leaveRepository;
     private final TitleRepository titleRepository;
+    private final RoleRepository roleRepository;
 
     public User findUser(Long userId) throws NotFoundException {
         return userRepository.findById(userId)
@@ -131,8 +135,7 @@ public class UserService {
         if (!emailSent) {
             Response emailResponse = new Response("failed",
                     "Failed to send verification email to " + newUser.getEmail() + ". Please contact the system administrator.");
-            return UserResponse
-                    .builder()
+            return UserResponse.builder()
                     .response(emailResponse)
                     .user(null)
                     .build();
@@ -144,7 +147,7 @@ public class UserService {
         return UserResponse
                 .builder()
                 .response(emailResponse)
-                .user(savedUser)
+                .user(UserResponseDTO.from(savedUser))
                 .build();
     }
 
@@ -273,6 +276,11 @@ public class UserService {
                     .name(params.getName())
                     .staffNumber(params.getStaffNumber())
                     .title(params.getTitle())
+                    .gender(params.getGender())
+                    .titleId(params.getTitleId())
+                    .branchId(params.getBranchId())
+                    .departmentId(params.getDepartmentId())
+                    .roleId(params.getRoleId())
                     .createdAtFrom(params.getCreatedAtFrom())
                     .createdAtTo(params.getCreatedAtTo())
                     .build();
@@ -335,85 +343,147 @@ public class UserService {
         return userRepository.save(user);
     }
 
-    @Transactional
+    private static final Pattern EMAIL_PATTERN =
+            Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
+
     public Map<String, Object> bulkInsertUsers(List<BulkUserDTO> userList) {
-        Branch headOffice = branchRepository.findById(1L).orElse(null);
-        Map<String, Object> result = new HashMap<>();
-
-        List<String> errors = new ArrayList<>();
+        List<Map<String, Object>> errors = new ArrayList<>();
         int successCount = 0;
+        int total = userList == null ? 0 : userList.size();
 
-        // TO DO -> :::: Ensure that email and stuff number is a unique field.
+        for (int i = 0; i < total; i++) {
+            BulkUserDTO dto = userList.get(i);
+            // Prefer the spreadsheet's own "No." column; fall back to array index + 1.
+            long rowNumber = dto.getNo() != null ? dto.getNo() : (i + 1);
 
-        for (BulkUserDTO dto : userList) {
             try {
-                // Split name
-                String[] nameParts = dto.getName().trim().split("\\s+");
-                String firstName = nameParts.length > 0 ? nameParts[0] : null;
-                String lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : null;
-                String otherName = nameParts.length > 2
-                        ? String.join(" ", Arrays.copyOfRange(nameParts, 1, nameParts.length - 1))
-                        : null;
-
-                // Title / Branch / Department (null if not found)
-                Title title = titleRepository.findByNameIgnoreCase(dto.getTitle()).orElse(null);
-                Branch branch = branchRepository.findByNameIgnoreCase(dto.getDutyStation()).orElse(null);
-                Department department = null;
-                if (branch == null) {
-                    department = departmentRepository.findByNameIgnoreCase(dto.getDutyStation()).orElse(null);
-                    branch = headOffice;
-                }
-
-                // Generate password
-                String generatedPassword = PasswordGenerator.generatePassword();
-
-                // Create and save user
-                User user = User.builder()
-                        .firstName(firstName)
-                        .lastName(lastName)
-                        .otherName(otherName)
-                        .staffNumber(dto.getStaffNumber())
-                        .email(dto.getEmail())
-                        .password(passwordEncoder.encode(generatedPassword))
-                        .gender(dto.getGender())
-                        .availability("present")
-                        .title(title)
-                        .branch(branch)
-                        .department(department)
-                        .isEnabled(false)
-                        .blocked(false)
-                        .isAccountNonLocked(true)
-                        .build();
-
-                userRepository.save(user);
-
-                // Notify user after successful save
-                String recipientFullName = firstName + (lastName != null ? " " + lastName : "");
-                ExtractNumberFromEmailAddress cleanedEmail = new ExtractNumberFromEmailAddress(dto.getEmail());
-                emailService.sendEmailVerification(
-                        cleanedEmail.getCleanedEmail(),
-                        "Welcome to Pride Bank — Verify Your Account",
-                        null,
-                        "Account Verification",
-                        "Verify My Account",
-                        generatedPassword,
-                        "authentication",
-                        null, null, null, null, recipientFullName
-                );
-
+                insertSingleUserRow(dto);
                 successCount++;
-
             } catch (Exception e) {
-                errors.add("Failed for staffNumber=" + dto.getStaffNumber() + ": " + e.getMessage());
+                Map<String, Object> err = new LinkedHashMap<>();
+                err.put("row", rowNumber);
+                err.put("name", buildFullName(dto));
+                err.put("staffNumber", dto.getStaffNumber());
+                err.put("email", dto.getEmail());
+                err.put("error", e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+                errors.add(err);
             }
         }
 
-        result.put("success", errors.isEmpty());
+        Map<String, Object> result = new LinkedHashMap<>();
+        // "success" reflects whether *any* row was inserted, not whether every row was perfect —
+        // partial success is still a successful import per the bulk-insert contract.
+        result.put("success", successCount > 0);
+        result.put("total", total);
         result.put("inserted", successCount);
         result.put("failed", errors.size());
         result.put("errors", errors);
 
         return result;
+    }
+
+    // Each row commits independently because bulkInsertUsers is not @Transactional
+    // and Spring Data's save() opens its own implicit transaction per call. A row
+    // failure throws out of here and is caught by the loop without affecting earlier rows.
+    private void insertSingleUserRow(BulkUserDTO dto) {
+        // Required field presence
+        if (isBlank(dto.getFirstName())) throw new BadRequestException("First Name is required.");
+        if (isBlank(dto.getLastName())) throw new BadRequestException("Last Name is required.");
+        if (isBlank(dto.getEmail())) throw new BadRequestException("Email is required.");
+        if (isBlank(dto.getStaffNumber())) throw new BadRequestException("Staff Number is required.");
+        if (isBlank(dto.getGender())) throw new BadRequestException("Gender is required.");
+        if (isBlank(dto.getTitle())) throw new BadRequestException("Title is required.");
+        if (isBlank(dto.getDutyStation())) throw new BadRequestException("Duty Station / Branch is required.");
+
+        // Email format
+        if (!EMAIL_PATTERN.matcher(dto.getEmail().trim()).matches()) {
+            throw new BadRequestException("Email '" + dto.getEmail() + "' is not a valid email address.");
+        }
+
+        // Uniqueness (within the existing DB)
+        if (userRepository.existsByEmail(dto.getEmail())) {
+            throw new BadRequestException("Email '" + dto.getEmail() + "' already exists.");
+        }
+        if (userRepository.existsByStaffNumber(dto.getStaffNumber())) {
+            throw new BadRequestException("Staff Number '" + dto.getStaffNumber() + "' already exists.");
+        }
+
+        // Strict lookups — no silent fallbacks
+        Title title = titleRepository.findByNameIgnoreCase(dto.getTitle())
+                .orElseThrow(() -> new BadRequestException("Title '" + dto.getTitle() + "' not found."));
+
+        Branch branch = branchRepository.findByNameIgnoreCase(dto.getDutyStation())
+                .orElseThrow(() -> new BadRequestException("Duty Station / Branch '" + dto.getDutyStation() + "' not found."));
+
+        Department department = null;
+        if (!isBlank(dto.getDepartment())) {
+            department = departmentRepository.findByNameIgnoreCase(dto.getDepartment())
+                    .orElseThrow(() -> new BadRequestException("Department '" + dto.getDepartment() + "' not found."));
+        }
+
+        Set<Role> additionalRoles = new HashSet<>();
+        if (!isBlank(dto.getRole())) {
+            Role role = roleRepository.findByNameIgnoreCase(dto.getRole())
+                    .orElseThrow(() -> new BadRequestException("Role '" + dto.getRole() + "' not found."));
+            additionalRoles.add(role);
+        }
+
+        String firstName = dto.getFirstName().trim();
+        String lastName = dto.getLastName().trim();
+        String otherName = isBlank(dto.getOtherName()) ? null : dto.getOtherName().trim();
+
+        String generatedPassword = PasswordGenerator.generatePassword();
+
+        User user = User.builder()
+                .firstName(firstName)
+                .lastName(lastName)
+                .otherName(otherName)
+                .staffNumber(dto.getStaffNumber())
+                .email(dto.getEmail())
+                .password(passwordEncoder.encode(generatedPassword))
+                .gender(dto.getGender())
+                .availability("present")
+                .title(title)
+                .branch(branch)
+                .department(department)
+                .additionalRoles(additionalRoles)
+                .isEnabled(false)
+                .blocked(false)
+                .isAccountNonLocked(true)
+                .build();
+
+        userRepository.save(user);
+
+        String recipientFullName = firstName + " " + lastName;
+        ExtractNumberFromEmailAddress cleanedEmail = new ExtractNumberFromEmailAddress(dto.getEmail());
+        emailService.sendEmailVerification(
+                cleanedEmail.getCleanedEmail(),
+                "Welcome to Pride Bank — Verify Your Account",
+                null,
+                "Account Verification",
+                "Verify My Account",
+                generatedPassword,
+                "authentication",
+                null, null, null, null, recipientFullName
+        );
+    }
+
+    private static boolean isBlank(String s) {
+        return s == null || s.trim().isEmpty();
+    }
+
+    private static String buildFullName(BulkUserDTO dto) {
+        StringBuilder sb = new StringBuilder();
+        if (!isBlank(dto.getFirstName())) sb.append(dto.getFirstName().trim());
+        if (!isBlank(dto.getOtherName())) {
+            if (sb.length() > 0) sb.append(' ');
+            sb.append(dto.getOtherName().trim());
+        }
+        if (!isBlank(dto.getLastName())) {
+            if (sb.length() > 0) sb.append(' ');
+            sb.append(dto.getLastName().trim());
+        }
+        return sb.length() == 0 ? null : sb.toString();
     }
 
 }

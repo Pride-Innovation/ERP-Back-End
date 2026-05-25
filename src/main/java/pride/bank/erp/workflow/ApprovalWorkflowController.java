@@ -14,10 +14,27 @@ import static pride.bank.erp.helper.Constants.GENERAL_ROUTE;
 public class ApprovalWorkflowController {
 
     private final ApprovalWorkflowService service;
+    private final WorkflowResolveService resolveService;
 
     @GetMapping
     public ResponseEntity<List<ApprovalWorkflowDTO>> findAll() {
         return ResponseEntity.ok(service.findAll());
+    }
+
+    /**
+     * Resolves which workflow will run for the given (category, branch, requester) tuple
+     * and returns per-step approver / fallback / skip metadata for UI preview.
+     *
+     * <p>When no workflow matches, returns 200 OK with {@code workflowId = null} and a
+     * human-readable {@code noMatchReason}.
+     */
+    @GetMapping("/resolve")
+    public ResponseEntity<ResolvedApprovalWorkflowDTO> resolve(
+            @RequestParam("categoryId") Long categoryId,
+            @RequestParam(value = "branchId", required = false) Long branchId,
+            @RequestParam(value = "requesterId", required = false) Long requesterId
+    ) {
+        return ResponseEntity.ok(resolveService.resolve(categoryId, branchId, requesterId));
     }
 
     @GetMapping("/{id}")
