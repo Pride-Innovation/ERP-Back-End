@@ -8,11 +8,12 @@ Managing Director
 package pride.bank.erp.requestReport;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import pride.bank.erp.exception.BusinessRuleException;
 import pride.bank.erp.exception.NotFoundException;
-import pride.bank.erp.request.Request;
 import pride.bank.erp.request.RequestDTO;
 
 import static pride.bank.erp.helper.Constants.GENERAL_ROUTE;
@@ -25,10 +26,17 @@ public class RequestReportController {
     private final RequestReportService requestReportService;
 
     @PostMapping("/approvals")
-    public ResponseEntity<RequestDTO> approveRequest(@RequestBody RequestReportDTO requestReportDTO)
-            throws NotFoundException {
-        RequestDTO response = requestReportService.approveRequest(requestReportDTO);
-        return new ResponseEntity<>(response, HttpStatusCode.valueOf(201));
+    public ResponseEntity<?> approveRequest(@RequestBody RequestReportDTO requestReportDTO) {
+        try {
+            RequestDTO response = requestReportService.approveRequest(requestReportDTO);
+            return new ResponseEntity<>(response, HttpStatusCode.valueOf(201));
+        } catch (BusinessRuleException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(e.getMessage());
+        } catch (NotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(e.getMessage());
+        }
     }
 
     @GetMapping("/request-report/{requestId}")

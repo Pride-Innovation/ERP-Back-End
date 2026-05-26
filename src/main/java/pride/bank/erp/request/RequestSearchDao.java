@@ -178,6 +178,13 @@ public class RequestSearchDao {
             predicates.add(criteriaBuilder.or(firstNameMatch, lastNameMatch, otherNameMatch));
         }
 
+        if (Objects.nonNull(requestSearchCriteria.getCurrentApproverId())) {
+            predicates.add(criteriaBuilder.equal(
+                    requestRoot.get("currentApprover").get("id"),
+                    requestSearchCriteria.getCurrentApproverId()
+            ));
+        }
+
         // Filter Admin data for the requests listing
 
         if (Boolean.TRUE.equals(requestSearchCriteria.getIsAdmin()) &&

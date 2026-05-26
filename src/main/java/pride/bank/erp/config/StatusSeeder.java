@@ -25,7 +25,11 @@ public class StatusSeeder {
         ensureStatus("Require Update",         "requireUpdate",   "requireupdate");
         ensureStatus("Stock Pending",          "stockPending",    "stockpending");
         ensureStatus("Stock Completed",        "stockCompleted",  "stockcompleted");
-        ensureStatus("Sent to Store",          "sentToStore",     "senttostore");
+        ensureStatus("Sent to Store",              "sentToStore",            "senttostore");
+        ensureStatus("Manager Approved",           "managerApproved",        "managerapproved");
+        ensureStatus("HOD Approved",               "hodApproved",            "hodapproved");
+        ensureStatus("BOM Approved",               "bomApproved",            "bomapproved");
+        ensureStatus("Branch Manager Approved",    "branchManagerApproved",  "branchmanagerapproved");
         log.info("Status seeding complete");
     }
 

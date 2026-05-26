@@ -22,6 +22,7 @@ import pride.bank.erp.workflow.ApprovalStep;
 import pride.bank.erp.workflow.ApprovalWorkflow;
 import pride.bank.erp.workflow.ApprovalWorkflowRepository;
 import pride.bank.erp.workflow.NotifyGroupSource;
+import pride.bank.erp.workflow.StepApproverType;
 import pride.bank.erp.workflow.WorkflowBranchScope;
 import pride.bank.erp.workflow.WorkflowResolveService;
 
@@ -36,10 +37,14 @@ import java.util.Set;
 public class WorkflowEngineService {
 
     // Status codes (stable across re-seeds)
-    private static final String STATUS_REJECTED    = "requestRejected";
-    private static final String STATUS_APPROVED    = "requestApproved";
-    private static final String STATUS_ISSUED      = "issued";
-    private static final String STATUS_ACKNOWLEDGED = "receiptAcknowledged";
+    private static final String STATUS_REJECTED              = "requestRejected";
+    private static final String STATUS_APPROVED              = "requestApproved";
+    private static final String STATUS_MANAGER_APPROVED      = "managerApproved";
+    private static final String STATUS_HOD_APPROVED          = "hodApproved";
+    private static final String STATUS_BOM_APPROVED          = "bomApproved";
+    private static final String STATUS_BRANCH_MANAGER_APPROVED = "branchManagerApproved";
+    private static final String STATUS_ISSUED                = "issued";
+    private static final String STATUS_ACKNOWLEDGED          = "receiptAcknowledged";
 
     private final ApprovalWorkflowRepository workflowRepository;
     private final RequestWorkflowInstanceRepository instanceRepository;
@@ -65,7 +70,7 @@ public class WorkflowEngineService {
 
     /**
      * Starts a new workflow instance for the given request.
-     * Resolves the best-matching active workflow and notifies step 1's approver.
+     * Resolves the best-matching active workflow and notifies the first non-skipped step's approver.
      */
     @Transactional
     public RequestWorkflowInstance startWorkflow(Request request) {
@@ -77,16 +82,48 @@ public class WorkflowEngineService {
             return null;
         }
 
+        ApprovalStep firstStep = getFirstNonSkippedStep(workflow, request.getRequester());
+        if (firstStep == null) {
+            log.warn("All steps are skipped for request {} — auto-completing workflow", request.getId());
+            return null;
+        }
+
         RequestWorkflowInstance instance = RequestWorkflowInstance.builder()
                 .request(request)
                 .workflow(workflow)
-                .currentStepOrder(1)
+                .currentStepOrder(firstStep.getStepOrder())
                 .status(InstanceStatus.IN_PROGRESS)
                 .build();
         instance = instanceRepository.save(instance);
 
-        notifyAndLogStep(instance, workflow.getSteps().get(0), request);
+        notifyAndLogStep(instance, firstStep, request);
         return instance;
+    }
+
+    /**
+     * Resets a previously rejected workflow instance and restarts from step 1.
+     * Called when an officer resubmits an amended request after rejection.
+     * The old REJECTED instance is marked SUPERSEDED; a fresh IN_PROGRESS instance is created.
+     */
+    @Transactional
+    public RequestWorkflowInstance resetAndRestartWorkflow(Request request) {
+        // Supersede any existing instances for this request
+        instanceRepository.findByRequestId(request.getId())
+                .forEach(old -> {
+                    old.setStatus(InstanceStatus.SUPERSEDED);
+                    instanceRepository.save(old);
+                });
+
+        // Also clear old pending step logs so the timeline stays clean
+        stepLogRepository.findByRequestId(request.getId())
+                .stream()
+                .filter(l -> l.getAction() == StepLogAction.PENDING)
+                .forEach(l -> {
+                    l.setAction(StepLogAction.SUPERSEDED);
+                    stepLogRepository.save(l);
+                });
+
+        return startWorkflow(request);
     }
 
     /**
@@ -99,7 +136,7 @@ public class WorkflowEngineService {
      */
     @Transactional
     public void processStepAction(Long requestId, Long actorId, String action, String comment) throws NotFoundException {
-        Optional<RequestWorkflowInstance> instanceOpt = instanceRepository.findByRequestId(requestId);
+        Optional<RequestWorkflowInstance> instanceOpt = instanceRepository.findTopByRequestIdOrderByIdDesc(requestId);
         if (instanceOpt.isEmpty()) {
             // No workflow instance — this request was created before the workflow engine was deployed.
             // Legacy fallback: just set status and return.
@@ -152,11 +189,22 @@ public class WorkflowEngineService {
     }
 
     /**
-     * Returns the current workflow instance for a request, if any.
+     * Returns the current (most recent) workflow instance for a request, if any.
      */
     @Transactional(readOnly = true)
     public Optional<RequestWorkflowInstance> getInstance(Long requestId) {
-        return instanceRepository.findByRequestId(requestId);
+        return instanceRepository.findTopByRequestIdOrderByIdDesc(requestId);
+    }
+
+    /**
+     * Returns true if a workflow instance is currently IN_PROGRESS for the given request.
+     * Used by downstream services to decide whether to delegate to the engine.
+     */
+    @Transactional(readOnly = true)
+    public boolean hasActiveInstance(Long requestId) {
+        return instanceRepository.findTopByRequestIdOrderByIdDesc(requestId)
+                .map(i -> i.getStatus() == InstanceStatus.IN_PROGRESS)
+                .orElse(false);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -258,8 +306,8 @@ public class WorkflowEngineService {
         // Fan out completion notifications configured on the just-finished step
         sendCompletionNotifications(currentStep, request);
 
-        // Find next step
-        ApprovalStep nextStep = getNextStep(workflow, currentStep.getStepOrder());
+        // Find next non-skipped step
+        ApprovalStep nextStep = getNextNonSkippedStep(workflow, currentStep.getStepOrder(), request.getRequester());
 
         if (nextStep == null) {
             // All steps completed
@@ -326,15 +374,41 @@ public class WorkflowEngineService {
     }
 
     private void updateRequestStatus(Request request, ApprovalStep step) throws NotFoundException {
-        String statusCode;
-        switch (step.getStepType()) {
-            case ISSUANCE -> statusCode = STATUS_ISSUED;
-            case ACKNOWLEDGE_RECEIPT -> statusCode = STATUS_ACKNOWLEDGED;
-            default -> statusCode = STATUS_APPROVED;
+        String statusCode = resolveStatusCode(step);
+        Status status;
+        try {
+            status = statusService.findByStatusCode(statusCode);
+        } catch (NotFoundException e) {
+            log.warn("Status '{}' not found — falling back to requestApproved", statusCode);
+            status = statusService.findByStatusCode(STATUS_APPROVED);
         }
-        Status status = statusService.findByStatusCode(statusCode);
         request.setStatus(status);
         requestRepository.save(request);
+    }
+
+    private String resolveStatusCode(ApprovalStep step) {
+        return switch (step.getStepType()) {
+            case ISSUANCE          -> STATUS_ISSUED;
+            case ACKNOWLEDGE_RECEIPT -> STATUS_ACKNOWLEDGED;
+            case REQUEST_APPROVAL  -> resolveApprovalStatusCode(step.getApproverType());
+            default                -> STATUS_APPROVED;
+        };
+    }
+
+    /**
+     * Maps the approver type of a REQUEST_APPROVAL step to a distinct status code
+     * so each approval stage is uniquely identifiable. Falls back to the generic
+     * requestApproved for approver types that don't map to a named role in the chain
+     * (GROUP_EMAIL, SPECIFIC_USER, ADMIN, REQUESTER).
+     */
+    private String resolveApprovalStatusCode(StepApproverType approverType) {
+        return switch (approverType) {
+            case DIRECT_SUPERVISOR -> STATUS_MANAGER_APPROVED;
+            case DEPT_HEAD         -> STATUS_HOD_APPROVED;
+            case BOM               -> STATUS_BOM_APPROVED;
+            case BRANCH_MANAGER    -> STATUS_BRANCH_MANAGER_APPROVED;
+            default                -> STATUS_APPROVED;
+        };
     }
 
     private void notifyAndLogStep(RequestWorkflowInstance instance, ApprovalStep step, Request request) {
@@ -493,10 +567,35 @@ public class WorkflowEngineService {
                 .orElseThrow(() -> new NotFoundException("Step " + order + " not found in workflow"));
     }
 
-    private ApprovalStep getNextStep(ApprovalWorkflow workflow, int currentOrder) {
+    /**
+     * Returns true when the requester's effective roles intersect the step's
+     * {@code skipIfRequesterRoles} set, meaning this step must be skipped.
+     */
+    private boolean shouldSkipStep(ApprovalStep step, User requester) {
+        if (step.getSkipIfRequesterRoles() == null || step.getSkipIfRequesterRoles().isEmpty()) {
+            return false;
+        }
+        Set<Long> requesterRoleIds = requester.getEffectiveRoleIds();
+        return step.getSkipIfRequesterRoles().stream()
+                .anyMatch(role -> requesterRoleIds.contains(role.getId()));
+    }
+
+    /** Returns the first step (by order) that is not skipped for this requester. */
+    private ApprovalStep getFirstNonSkippedStep(ApprovalWorkflow workflow, User requester) {
+        return workflow.getSteps().stream()
+                .sorted(java.util.Comparator.comparingInt(ApprovalStep::getStepOrder))
+                .filter(step -> !shouldSkipStep(step, requester))
+                .findFirst()
+                .orElse(null);
+    }
+
+    /** Returns the next step after {@code currentOrder} that is not skipped for this requester. */
+    private ApprovalStep getNextNonSkippedStep(ApprovalWorkflow workflow, int currentOrder, User requester) {
         return workflow.getSteps().stream()
                 .filter(s -> s.getStepOrder() > currentOrder)
-                .min((a, b) -> Integer.compare(a.getStepOrder(), b.getStepOrder()))
+                .sorted(java.util.Comparator.comparingInt(ApprovalStep::getStepOrder))
+                .filter(step -> !shouldSkipStep(step, requester))
+                .findFirst()
                 .orElse(null);
     }
 

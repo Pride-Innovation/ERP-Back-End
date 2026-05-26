@@ -104,6 +104,7 @@ public class DataInitializer {
     private final AssetTypeCommoditySeeder assetTypeCommoditySeeder;
     private final SupplierCommoditySeeder supplierCommoditySeeder;
     private final RoleSeeder roleSeeder;
+    private final RolePermissionSeeder rolePermissionSeeder;
     private final TitleSeeder titleSeeder;
     private final BranchHeadOfficeSeeder branchHeadOfficeSeeder;
     private final AssetCategoryFeatureSeeder assetCategoryFeatureSeeder;
@@ -152,6 +153,7 @@ public class DataInitializer {
             assetTypeCommoditySeeder.seedAssetTypesAndCommodities();
             supplierCommoditySeeder.seedSuppliersAndCommodityLinks();
             roleSeeder.seedRoles();
+            rolePermissionSeeder.seedRolePermissions();
             titleSeeder.seedTitles();
 
             // Phase F backfills (idempotent — only fill fields that are unset).

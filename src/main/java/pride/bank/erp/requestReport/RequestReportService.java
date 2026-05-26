@@ -29,6 +29,7 @@ import pride.bank.erp.user.User;
 import pride.bank.erp.user.UserRepository;
 import pride.bank.erp.user.UserService;
 
+import pride.bank.erp.exception.BusinessRuleException;
 import pride.bank.erp.workflowinstance.WorkflowEngineService;
 import java.util.List;
 
@@ -51,21 +52,43 @@ public class RequestReportService {
 
     @Transactional
     public RequestDTO approveRequest(RequestReportDTO body)
-            throws NotFoundException {
+            throws NotFoundException, BusinessRuleException {
         Request request = requestService.findRequest(body.getRequestId());
+
+        // Guard: an officer must not approve or reject their own request.
+        if (body.getApproverId() != null
+                && request.getRequester() != null
+                && body.getApproverId().equals(request.getRequester().getId())) {
+            throw new BusinessRuleException("You cannot approve or reject your own request.");
+        }
+
         User approver = userService.findUser(body.getApproverId());
-        Status status = statusService.findOneStatus(body.getStatusId());
 
-        // Map status to workflow action string
-        String workflowAction = resolveWorkflowAction(status.getStatus());
+        // Resolve workflow action — prefer explicit string over legacy statusId lookup.
+        // This avoids failures when auto-generated IDs differ between environments.
+        String workflowAction;
+        Status status;
+        if (body.getWorkflowAction() != null && !body.getWorkflowAction().isBlank()) {
+            workflowAction = body.getWorkflowAction().toUpperCase();
+            String statusCode = "REJECTED".equals(workflowAction) ? "requestRejected" : "requestApproved";
+            status = statusService.findByStatusCode(statusCode);
+        } else {
+            status = statusService.findOneStatus(body.getStatusId());
+            workflowAction = resolveWorkflowAction(status.getStatus());
+        }
 
-        // Advance workflow step (handles status update, next-approver assignment, emails, notifications)
-        workflowEngineService.processStepAction(
-                body.getRequestId(),
-                body.getApproverId(),
-                workflowAction,
-                body.getComment()
-        );
+        if (workflowEngineService.hasActiveInstance(body.getRequestId())) {
+            // Workflow mode: engine handles status update, next-approver assignment, and notifications
+            workflowEngineService.processStepAction(
+                    body.getRequestId(),
+                    body.getApproverId(),
+                    workflowAction,
+                    body.getComment()
+            );
+        } else {
+            // Legacy mode: update status directly and route notifications
+            handleStatusUpdate(request, status, body.getComment());
+        }
 
         // Persist the approval report record for audit purposes
         RequestReport requestReport = RequestReport.builder()
@@ -76,7 +99,7 @@ public class RequestReportService {
                 .build();
         RequestReport response = requestReportRepository.save(requestReport);
 
-        // Reload request to pick up status changes made by the workflow engine
+        // Reload request to pick up any status changes
         request = requestService.findRequest(body.getRequestId());
         response.setMessage("Workflow step processed: " + workflowAction);
 

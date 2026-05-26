@@ -21,6 +21,7 @@ import pride.bank.erp.notification.Email;
 import pride.bank.erp.request.Request;
 import pride.bank.erp.request.RequestDTO;
 import pride.bank.erp.request.RequestRepository;
+import pride.bank.erp.workflowinstance.WorkflowEngineService;
 import pride.bank.erp.request.RequestService;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
@@ -37,6 +38,7 @@ public class IssuanceApprovalRecordService {
     private final CurrentUserService currentUserService;
     private final Email emailService;
     private final UserBuilder userBuilder;
+    private final WorkflowEngineService workflowEngineService;
 
     /**
      * Creates an approval record for an issuance and updates the issuance status to "Approved".
@@ -50,31 +52,42 @@ public class IssuanceApprovalRecordService {
             throws NotFoundException {
 
         Issuance issuance = issuanceService.findOne(issuanceApprovalRecordDTO.getIssuanceId());
-        Status approvedIssuanceStatus = statusService.findOneStatus(issuanceApprovalRecordDTO.getStatusId()); // 4L = Issuance Approved
         Request request = requestService.findRequest(issuanceApprovalRecordDTO.getRequestId());
 
-        issuance.setStatus(approvedIssuanceStatus);
-        request.setStatus(approvedIssuanceStatus);
-
-        issuanceRepository.save(issuance); // Persist updated issuance status
-
+        // Persist the audit record (always, regardless of workflow mode)
         IssuanceApprovalRecord record = IssuanceApprovalRecord.builder()
                 .issuance(issuance)
                 .request(request)
                 .user(currentUserService.getCurrentUser())
                 .comment(issuanceApprovalRecordDTO.getComment())
                 .build();
-
         issuanceApprovalRecordRepository.save(record);
-        Request response = requestRepository.save(request); // Persist updated request status
 
-        // Notify Officer For Issuance Approval
-        notifyIndividual(
-                request.getRequester().getEmail(),
-                issuanceApprovalRecordDTO.getComment(),
-                request,
-                request.getRequester().getFirstName()
-        );
+        if (workflowEngineService.hasActiveInstance(request.getId())) {
+            // Workflow mode: engine handles status update and next-step notification
+            workflowEngineService.processStepAction(
+                    request.getId(),
+                    currentUserService.getCurrentUser().getId(),
+                    "APPROVED",
+                    issuanceApprovalRecordDTO.getComment()
+            );
+        } else {
+            // Legacy mode: set status directly and notify requester manually
+            Status approvedIssuanceStatus = statusService.findOneStatus(issuanceApprovalRecordDTO.getStatusId());
+            issuance.setStatus(approvedIssuanceStatus);
+            request.setStatus(approvedIssuanceStatus);
+            issuanceRepository.save(issuance);
+            requestRepository.save(request);
+            notifyIndividual(
+                    request.getRequester().getEmail(),
+                    issuanceApprovalRecordDTO.getComment(),
+                    request,
+                    request.getRequester().getFirstName()
+            );
+        }
+
+        // Reload to reflect any status changes made by the engine
+        Request response = requestService.findRequest(issuanceApprovalRecordDTO.getRequestId());
 
         return RequestDTO
                 .builder()

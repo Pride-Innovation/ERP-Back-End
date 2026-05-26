@@ -21,6 +21,7 @@ import pride.bank.erp.request.RequestRepository;
 import pride.bank.erp.request.RequestService;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
+import pride.bank.erp.workflowinstance.WorkflowEngineService;
 
 @Service
 @RequiredArgsConstructor
@@ -32,6 +33,7 @@ public class AcknowledgeRequestReceiptService {
     private final CurrentUserService currentUserService;
     private final Email emailService;
     private final UserBuilder userBuilder;
+    private final WorkflowEngineService workflowEngineService;
 
     @Transactional
     public RequestDTO createAcknowledgeRequestReceipt(
@@ -39,27 +41,39 @@ public class AcknowledgeRequestReceiptService {
     ) throws NotFoundException {
 
         Request request = requestService.findRequest(acknowledgeRequestReceiptDTO.getRequestId());
-        Status status = statusService.findOneStatus(acknowledgeRequestReceiptDTO.getStatusId());
 
-        request.setStatus(status);
-        requestRepository.save(request);
-
+        // Persist the audit record first (always, regardless of workflow mode)
         AcknowledgeRequestReceipt acknowledgeRequestReceipt = AcknowledgeRequestReceipt
                 .builder()
                 .request(request)
                 .user(currentUserService.getCurrentUser())
                 .comment(acknowledgeRequestReceiptDTO.getComment())
                 .build();
+        acknowledgeRequestReceiptRepository.save(acknowledgeRequestReceipt);
 
-        AcknowledgeRequestReceipt response = acknowledgeRequestReceiptRepository.save(acknowledgeRequestReceipt);
+        if (workflowEngineService.hasActiveInstance(request.getId())) {
+            // Workflow mode: engine handles status update, next-step notification and emails
+            workflowEngineService.processStepAction(
+                    request.getId(),
+                    currentUserService.getCurrentUser().getId(),
+                    "ACKNOWLEDGED",
+                    acknowledgeRequestReceiptDTO.getComment()
+            );
+        } else {
+            // Legacy mode: set status directly and notify requester manually
+            Status status = statusService.findOneStatus(acknowledgeRequestReceiptDTO.getStatusId());
+            request.setStatus(status);
+            requestRepository.save(request);
+            notifyIndividual(
+                    request.getRequester().getEmail(),
+                    acknowledgeRequestReceipt.getComment(),
+                    request,
+                    request.getRequester().getFirstName()
+            );
+        }
 
-        // Notify the Requester
-        notifyIndividual(
-                request.getRequester().getEmail(),
-                acknowledgeRequestReceipt.getComment(),
-                request,
-                request.getRequester().getFirstName()
-        );
+        // Reload to reflect any status changes made by the engine
+        request = requestService.findRequest(acknowledgeRequestReceiptDTO.getRequestId());
 
         return RequestDTO
                 .builder()

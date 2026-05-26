@@ -39,6 +39,7 @@ import pride.bank.erp.store.StoreService;
 import pride.bank.erp.user.User;
 import pride.bank.erp.user.UserRepository;
 import pride.bank.erp.user.UserService;
+import pride.bank.erp.workflowinstance.WorkflowEngineService;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -73,6 +74,7 @@ public class IssuanceService {
     private final UserRepository userRepository;
     private final UserBuilder userBuilder;
     private final StoreRepository storeRepository;
+    private final WorkflowEngineService workflowEngineService;
 
     @Transactional
     public IssuanceDAO issueCommodities(IssuanceDTO request) throws NotFoundException {
@@ -164,14 +166,22 @@ public class IssuanceService {
             addIssuedCommodities(savedIssuance, request.getCommodities());
         }
 
-        // Update request status
-        updateRequestStatus(request);
-
-        // Send notification
-        notifyIndividual(
-                request.getComment() != null ? request.getComment() : "Please approve this issued request",
-                requestDetails
-        );
+        if (workflowEngineService.hasActiveInstance(requestDetails.getId())) {
+            // Workflow mode: engine sets status and notifies the next approver
+            workflowEngineService.processStepAction(
+                    requestDetails.getId(),
+                    currentUser.getId(),
+                    "ISSUED",
+                    request.getComment() != null ? request.getComment() : "Items have been issued."
+            );
+        } else {
+            // Legacy mode: set status directly and notify manually
+            updateRequestStatus(request);
+            notifyIndividual(
+                    request.getComment() != null ? request.getComment() : "Please approve this issued request",
+                    requestDetails
+            );
+        }
 
         return buildIssuanceResponse(savedIssuance);
     }

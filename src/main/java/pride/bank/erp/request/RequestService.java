@@ -259,6 +259,10 @@ public class RequestService {
         Request existingRequest = findRequest(requestId);
         Status status = statusService.findByStatusCode("requestCreated");
 
+        // Track whether the request is being resubmitted after a rejection
+        boolean isResubmission = existingRequest.getStatus() != null
+                && "requestRejected".equalsIgnoreCase(existingRequest.getStatus().getStatus());
+
         // Get current user and determine branch
         User requester = currentUserService.getCurrentUser();
         Long requesterBranchId = requester.getBranch() != null ? requester.getBranch().getId() : null;
@@ -299,6 +303,26 @@ public class RequestService {
         List<RequestCommodity> requestCommodities = requestCommodityRepository.findByRequestId(savedRequest.getId());
         List<CommodityWithQuantityDTO> commodities = commodityWithQuantityDTO(requestCommodities);
         savedRequest.setCommodities(commodities);
+
+        // Restart the workflow engine for resubmitted requests so the approval chain begins fresh
+        if (isResubmission) {
+            log.info("Request {} is being resubmitted after rejection — restarting workflow", requestId);
+            RequestWorkflowInstance resubmitInstance = workflowEngineService.resetAndRestartWorkflow(savedRequest);
+            if (resubmitInstance == null) {
+                // No workflow configured — fall back to legacy supervisor routing
+                try {
+                    User supervisor = findSupervisorToApproveRequest();
+                    if (supervisor != null) {
+                        savedRequest.setCurrentApprover(supervisor);
+                        savedRequest = requestRepository.save(savedRequest);
+                        log.info("Legacy fallback: set currentApprover to {} for resubmitted request {}",
+                                supervisor.getEmail(), requestId);
+                    }
+                } catch (Exception ex) {
+                    log.warn("Could not resolve supervisor for resubmitted request {}: {}", requestId, ex.getMessage());
+                }
+            }
+        }
 
         log.info("Request updated successfully with ID: {}", savedRequest.getId());
         RequestCommodityReports data = generateRequestReportsAndCommodities(savedRequest);
@@ -363,7 +387,8 @@ public class RequestService {
             String approver,
             Boolean deleted,
             LocalDateTime startDate,
-            LocalDateTime endDate
+            LocalDateTime endDate,
+            Long currentApproverId
     ) {
         try {
             log.debug("Fetching requests with filters - page: {}, status: {}", pageNumber, status);
@@ -392,6 +417,7 @@ public class RequestService {
                     .endDate(endDate)
                     .currentUserId(currentUserService.getCurrentUser().getId())
                     .isAdmin(determineIfUserIsAdmin())
+                    .currentApproverId(currentApproverId)
                     .build();
 
             Page<Request> requestPageResult = requestSearchDao.findAllWithFilters(requestPage, requestSearchCriteria);
@@ -988,12 +1014,13 @@ public class RequestService {
         Role role = currentUser.getTitle().getRole();
         System.out.println("Current User Role::: " + role.getName());
         return switch (role.getName()) {
-            case "Officer" -> "OFFICER";
-            case "Manager" -> "MANAGER";
-            case "Admin Officer" -> "ADMIN_OFFICER";
-            case "Admin Manager" -> "ADMIN_MANAGER";
-            case "Branch Operations Manager" -> "BOM";
-            case "Branch Manager" -> "BM";
+            case "OFFICER", "Officer" -> "OFFICER";
+            case "MANAGER", "Manager" -> "MANAGER";
+            case "HEAD_OF_DEPARTMENT", "Head Of Department", "Head of Department" -> "HOD";
+            case "ADMIN_OFFICER", "Admin Officer" -> "ADMIN_OFFICER";
+            case "ADMIN_MANAGER", "Admin Manager" -> "ADMIN_MANAGER";
+            case "BOM", "BRANCH_OPERATIONS_MANAGER", "Branch Operations Manager" -> "BOM";
+            case "BM", "BRANCH_MANAGER", "Branch Manager" -> "BM";
             default -> "";
         };
     }
@@ -1037,7 +1064,7 @@ public class RequestService {
         List<Long> result = switch (userRole) {
             case "OFFICER" -> List.of(currentUserService.getCurrentUser().getId());
 
-            case "MANAGER" -> getManagerAndSubordinateUserIds();
+            case "MANAGER", "HOD" -> getManagerAndSubordinateUserIds();
 
             case "ADMIN_OFFICER" -> {
                 if (pendingIssuedOrDashboard) {

@@ -33,4 +33,5 @@ public class RequestSearchCriteria {
     private LocalDateTime endDate;
     private Long currentUserId;
     private Boolean isAdmin;
+    private Long currentApproverId;
 }

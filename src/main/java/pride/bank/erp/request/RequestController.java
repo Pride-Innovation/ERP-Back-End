@@ -63,7 +63,9 @@ public class RequestController {
 
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
-            LocalDateTime endDate
+            LocalDateTime endDate,
+
+            @RequestParam(required = false) Long currentApproverId
     ) {
         System.out.println("Request information!!!");
         Page<RequestDTO> requests = requestService.fetchAllRequests(
@@ -81,7 +83,8 @@ public class RequestController {
                 approver,
                 deleted,
                 startDate,
-                endDate
+                endDate,
+                currentApproverId
         );
         return new ResponseEntity<>(requests, HttpStatus.OK);
     }

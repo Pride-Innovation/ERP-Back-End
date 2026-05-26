@@ -5,5 +5,7 @@ public enum StepLogAction {
     APPROVED,
     REJECTED,
     ISSUED,
-    ACKNOWLEDGED
+    ACKNOWLEDGED,
+    /** Marks a log entry that was pending when the officer resubmitted a rejected request. */
+    SUPERSEDED
 }
