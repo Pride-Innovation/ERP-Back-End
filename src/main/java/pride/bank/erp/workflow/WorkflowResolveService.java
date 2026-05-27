@@ -13,6 +13,7 @@ import pride.bank.erp.branch.Branch;
 import pride.bank.erp.branch.BranchRepository;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.role.Role;
+import pride.bank.erp.title.Title;
 import pride.bank.erp.user.User;
 import pride.bank.erp.user.UserRepository;
 
@@ -113,6 +114,13 @@ public class WorkflowResolveService {
                         .skipReason("Requester is a " + skipMatch.getName())
                         .build();
             }
+            // Dynamic skip: SUPERVISOR step auto-skips when the officer has no supervisor in their chain
+            if (step.getApproverType() == StepApproverType.SUPERVISOR
+                    && resolveSupervisor(requester) == null) {
+                return b.skipped(true)
+                        .skipReason("Officer has no supervisor in their reporting chain")
+                        .build();
+            }
         }
 
         if (requester == null) {
@@ -137,6 +145,7 @@ public class WorkflowResolveService {
     private User resolveApprover(ApprovalStep step, User requester) {
         User candidate = switch (step.getApproverType()) {
             case DIRECT_SUPERVISOR -> resolveDirectSupervisor(requester);
+            case SUPERVISOR        -> resolveSupervisor(requester);
             case DEPT_HEAD -> (requester.getDepartment() != null)
                     ? requester.getDepartment().getHeadOfDepartment() : null;
             case BOM -> (requester.getBranch() != null)
@@ -180,6 +189,17 @@ public class WorkflowResolveService {
         return supervisors.isEmpty() ? null : supervisors.get(0);
     }
 
+    private User resolveSupervisor(User requester) {
+        if (requester.getTitle() == null || requester.getTitle().getReportsTo() == null) return null;
+        Title reportsToTitle = requester.getTitle().getReportsTo();
+        if (reportsToTitle.getRole() == null) return null;
+        if (!"SUPERVISOR".equalsIgnoreCase(reportsToTitle.getRole().getName())) return null;
+        Long branchId = (requester.getBranch() != null) ? requester.getBranch().getId() : null;
+        if (branchId == null) return null;
+        List<User> candidates = userRepository.findByTitleIdAndBranchId(reportsToTitle.getId(), branchId);
+        return candidates.isEmpty() ? null : candidates.get(0);
+    }
+
     private String resolveFallbackEmail(ApprovalStep step, User requester) {
         // 1) If the step explicitly opts into dynamic CC, honour that and stop.
         String dynamicCc = resolveCcEmail(step, requester);
@@ -188,7 +208,8 @@ public class WorkflowResolveService {
         }
         // 2) Implicit fallback for dept-managed approvers (legacy behaviour).
         boolean deptManaged = step.getApproverType() == StepApproverType.DEPT_HEAD
-                || step.getApproverType() == StepApproverType.DIRECT_SUPERVISOR;
+                || step.getApproverType() == StepApproverType.DIRECT_SUPERVISOR
+                || step.getApproverType() == StepApproverType.SUPERVISOR;
         if (deptManaged && requester.getDepartment() != null
                 && requester.getDepartment().getManagersGroupEmail() != null
                 && !requester.getDepartment().getManagersGroupEmail().isBlank()) {

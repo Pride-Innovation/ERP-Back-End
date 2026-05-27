@@ -30,6 +30,7 @@ public class StatusSeeder {
         ensureStatus("HOD Approved",               "hodApproved",            "hodapproved");
         ensureStatus("BOM Approved",               "bomApproved",            "bomapproved");
         ensureStatus("Branch Manager Approved",    "branchManagerApproved",  "branchmanagerapproved");
+        ensureStatus("Supervisor Approved",        "supervisorApproved",     "supervisorapproved");
         log.info("Status seeding complete");
     }
 

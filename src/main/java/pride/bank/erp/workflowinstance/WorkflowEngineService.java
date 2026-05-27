@@ -11,6 +11,7 @@ import pride.bank.erp.availability.LeaveRepository;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.notification.Email;
 import pride.bank.erp.request.Request;
+import pride.bank.erp.title.Title;
 import pride.bank.erp.request.RequestRepository;
 import pride.bank.erp.requestCommodity.RequestCommodity;
 import pride.bank.erp.requestCommodity.RequestCommodityRepository;
@@ -43,6 +44,7 @@ public class WorkflowEngineService {
     private static final String STATUS_HOD_APPROVED          = "hodApproved";
     private static final String STATUS_BOM_APPROVED          = "bomApproved";
     private static final String STATUS_BRANCH_MANAGER_APPROVED = "branchManagerApproved";
+    private static final String STATUS_SUPERVISOR_APPROVED     = "supervisorApproved";
     private static final String STATUS_ISSUED                = "issued";
     private static final String STATUS_ACKNOWLEDGED          = "receiptAcknowledged";
 
@@ -404,6 +406,7 @@ public class WorkflowEngineService {
     private String resolveApprovalStatusCode(StepApproverType approverType) {
         return switch (approverType) {
             case DIRECT_SUPERVISOR -> STATUS_MANAGER_APPROVED;
+            case SUPERVISOR        -> STATUS_SUPERVISOR_APPROVED;
             case DEPT_HEAD         -> STATUS_HOD_APPROVED;
             case BOM               -> STATUS_BOM_APPROVED;
             case BRANCH_MANAGER    -> STATUS_BRANCH_MANAGER_APPROVED;
@@ -515,6 +518,7 @@ public class WorkflowEngineService {
     public User resolveApprover(ApprovalStep step, Request request) {
         User candidate = switch (step.getApproverType()) {
             case DIRECT_SUPERVISOR -> resolveDirectSupervisor(request.getRequester());
+            case SUPERVISOR        -> resolveSupervisor(request.getRequester());
             case DEPT_HEAD -> (request.getRequester().getDepartment() != null)
                     ? request.getRequester().getDepartment().getHeadOfDepartment() : null;
             case BOM -> (request.getRequester().getBranch() != null)
@@ -556,6 +560,24 @@ public class WorkflowEngineService {
         return supervisors.isEmpty() ? null : supervisors.get(0);
     }
 
+    /**
+     * Resolves the supervisor for a SUPERVISOR-type step.
+     * The supervisor is the user whose title is the requester's reportsTo title,
+     * but ONLY when that title carries the "SUPERVISOR" role.
+     * Returns null when the officer has no supervisor in their chain,
+     * which causes shouldSkipStep() to auto-skip the step at runtime.
+     */
+    private User resolveSupervisor(User requester) {
+        if (requester.getTitle() == null || requester.getTitle().getReportsTo() == null) return null;
+        Title reportsToTitle = requester.getTitle().getReportsTo();
+        if (reportsToTitle.getRole() == null) return null;
+        if (!"SUPERVISOR".equalsIgnoreCase(reportsToTitle.getRole().getName())) return null;
+        Long branchId = (requester.getBranch() != null) ? requester.getBranch().getId() : null;
+        if (branchId == null) return null;
+        List<User> candidates = userRepository.findByTitleIdAndBranchId(reportsToTitle.getId(), branchId);
+        return candidates.isEmpty() ? null : candidates.get(0);
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Step navigation
     // ─────────────────────────────────────────────────────────────────────────
@@ -568,10 +590,17 @@ public class WorkflowEngineService {
     }
 
     /**
-     * Returns true when the requester's effective roles intersect the step's
-     * {@code skipIfRequesterRoles} set, meaning this step must be skipped.
+     * Returns true when this step must be skipped for the given requester.
+     *
+     * Two skip conditions are checked:
+     * 1. SUPERVISOR type — auto-skip when the officer has no supervisor in their chain.
+     * 2. Role-based skip — requester's effective roles intersect skipIfRequesterRoles.
      */
     private boolean shouldSkipStep(ApprovalStep step, User requester) {
+        if (step.getApproverType() == StepApproverType.SUPERVISOR
+                && resolveSupervisor(requester) == null) {
+            return true;
+        }
         if (step.getSkipIfRequesterRoles() == null || step.getSkipIfRequesterRoles().isEmpty()) {
             return false;
         }

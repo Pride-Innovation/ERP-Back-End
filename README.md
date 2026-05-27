@@ -53,7 +53,7 @@ runtime — no error, just no email.
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Step Name                   | Human-readable label shown on the timeline.                                                                                                                                          |
 | Step Type                   | `Approve Request`, `Acknowledge Request`, `Issue Asset`, `Acknowledge Receipt`. Drives email wording and status transitions.                                                         |
-| Approver Type               | Who must act. Options: Direct Supervisor, Department Head, Branch Operations Manager, Branch Manager, Admin, Group Email, Specific User, **Requester**.                              |
+| Approver Type               | Who must act. Options: Direct Supervisor, **Supervisor**, Department Head, Branch Operations Manager, Branch Manager, Admin, Group Email, Specific User, **Requester**.              |
 | Group Email                 | Shown only when Approver Type = `Group Email`. Static team mailbox (e.g. `infrastructure@yourbank.com`).                                                                             |
 | Specific User ID            | Shown only when Approver Type = `Specific User`.                                                                                                                                     |
 | CC / Notify whom            | How the CC mailbox is resolved. Options: `Requester's managers group (dynamic)`, `Requester`, `Requester's direct supervisor`, `Admin`, `Specific email address`, `No CC`.            |
@@ -65,19 +65,37 @@ runtime — no error, just no email.
 
 ### Dynamic resolution at runtime
 
-| Source                          | Resolves to                                                                                                                            |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| Direct Supervisor               | The user whose title is `requester.title.reportsTo`, **filtered to the same branch** as the requester.                                  |
-| Department Head                 | `requester.department.headOfDepartment`.                                                                                               |
-| Branch Operations Manager       | `requester.branch.branchOperationsManager`.                                                                                            |
-| Branch Manager                  | `requester.branch.branchManager`.                                                                                                      |
-| Admin                           | Configured by `application.admin.email`.                                                                                               |
-| Requester                       | The user who raised the request.                                                                                                       |
-| Requester's direct supervisor   | Same as Direct Supervisor above.                                                                                                       |
-| Requester's managers group      | `requester.department.managersGroupEmail` when the requester is at Head Office, otherwise `requester.branch.managersGroupEmail`.       |
+| Source                          | Resolves to                                                                                                                                                                        |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Direct Supervisor               | The user whose title is `requester.title.reportsTo`, **filtered to the same branch** as the requester.                                                                              |
+| Supervisor                      | Same title-chain lookup as Direct Supervisor, but **only** resolves when `requester.title.reportsTo` carries the `SUPERVISOR` role. **Auto-skipped** at runtime if no match.       |
+| Department Head                 | `requester.department.headOfDepartment`.                                                                                                                                           |
+| Branch Operations Manager       | `requester.branch.branchOperationsManager`.                                                                                                                                        |
+| Branch Manager                  | `requester.branch.branchManager`.                                                                                                                                                  |
+| Admin                           | Configured by `application.admin.email`.                                                                                                                                           |
+| Requester                       | The user who raised the request.                                                                                                                                                   |
+| Requester's direct supervisor   | Same as Direct Supervisor above.                                                                                                                                                   |
+| Requester's managers group      | `requester.department.managersGroupEmail` when the requester is at Head Office, otherwise `requester.branch.managersGroupEmail`.                                                   |
 
 If a resolved approver is on leave and has an acting user assigned, the workflow
 automatically routes to the acting user.
+
+#### Supervisor step — auto-skip behaviour
+
+The `Supervisor` approver type is designed for branch workflows where some
+officers report directly to a Manager while others have an intermediate
+Supervisor in the chain.
+
+- **Step present in workflow + officer has a supervisor** → routes to the supervisor (status set to `Supervisor Approved`).
+- **Step present in workflow + officer has no supervisor** → step is automatically skipped; the request advances to the next step without any action required.
+- **Step not in the workflow at all** → supervisor is never involved, regardless of the officer's title hierarchy.
+
+The resolver checks at runtime by walking `requester.title.reportsTo` and
+confirming that title carries the `SUPERVISOR` role. If the chain resolves to
+`null` for any reason (no `reportsTo`, role mismatch, no user found in that
+branch), the step is silently skipped. This means one workflow definition can
+cover all officers in a branch — those with supervisors and those without — with
+no special configuration per officer.
 
 ---
 
@@ -141,7 +159,47 @@ Operations Manager and the Branch Manager.
 
 ---
 
-## 5. How the resolver picks a workflow
+## 5. Workflow C — Computers (Branches with Supervisor tier)
+
+Use this variant when some branch officers have an intermediate Supervisor title
+between Officer and Manager. The `Supervisor` step is placed between the Direct
+Supervisor step and the BOM step. Officers who report directly to a Manager
+(no Supervisor in their chain) will have this step silently skipped; for them
+the flow is identical to Workflow B.
+
+### Header
+
+| Field            | Value                                                                                          |
+| ---------------- | ---------------------------------------------------------------------------------------------- |
+| Workflow Name    | `Computers — Branches (with Supervisor)`                                                       |
+| Description      | Branch flow with optional Supervisor tier. Supervisor step auto-skips when officer has none.   |
+| Asset Categories | `Computers`                                                                                    |
+| Branch           | *(blank — or pin to a specific branch if only one branch uses this structure)*                 |
+| Branch Scope     | `Branch Only`                                                                                  |
+| Requester roles  | *(empty)*                                                                                      |
+| Priority         | `15` *(lower than Workflow B so it takes precedence for the same branch scope)*                |
+| Active           | `On`                                                                                           |
+
+### Steps
+
+| # | Step Name                            | Step Type             | Approver Type             | Static Group Email           | CC / Notify whom                     | Notify on completion                 | Escalation | Skip if role                     |
+| - | ------------------------------------ | --------------------- | ------------------------- | ---------------------------- | ------------------------------------ | ------------------------------------ | ---------- | -------------------------------- |
+| 1 | Supervisor Approval                  | Approve Request       | **Supervisor**            | —                            | Requester's managers group (dynamic) | —                                    | 24         | Manager, BOM, Branch Manager     |
+| 2 | Manager Approval                     | Approve Request       | Direct Supervisor         | —                            | Requester's managers group (dynamic) | —                                    | 48         | Manager, BOM, Branch Manager     |
+| 3 | BOM Recommendation                   | Approve Request       | Branch Operations Manager | —                            | Requester's managers group (dynamic) | —                                    | 48         | BOM, Branch Manager              |
+| 4 | Branch Manager Approval              | Approve Request       | Branch Manager            | —                            | Requester's managers group (dynamic) | —                                    | 48         | Branch Manager                   |
+| 5 | Infrastructure Acknowledges          | Acknowledge Request   | Group Email               | `infrastructure@yourbank.com`| No CC                                | —                                    | 24         | —                                |
+| 6 | Issue Asset                          | Issue Asset           | Group Email               | `infrastructure@yourbank.com`| No CC                                | —                                    | 72         | —                                |
+| 7 | Manager Approves Issuance            | Issue Asset           | Direct Supervisor         | —                            | Requester's managers group (dynamic) | —                                    | 24         | —                                |
+| 8 | Acknowledge Receipt                  | Acknowledge Receipt   | **Requester**             | —                            | No CC                                | Admin, Requester's direct supervisor | 48         | —                                |
+
+> **Note:** Step 1 (`Supervisor Approval`) is automatically skipped at runtime for officers whose
+> `title.reportsTo` title does not carry the `SUPERVISOR` role. No manual configuration is needed
+> per officer — the engine handles it dynamically on every submission.
+
+---
+
+## 7. How the resolver picks a workflow
 
 When a request is submitted, the engine matches active workflows on:
 
@@ -157,7 +215,7 @@ no collisions.
 
 ---
 
-## 6. Replicating for other categories
+## 8. Replicating for other categories
 
 To create the equivalent workflow for **Furniture**, **IT Equipment**, **Fleet**,
 etc.:
