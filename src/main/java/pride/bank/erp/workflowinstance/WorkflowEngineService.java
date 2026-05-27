@@ -84,7 +84,7 @@ public class WorkflowEngineService {
             return null;
         }
 
-        ApprovalStep firstStep = getFirstNonSkippedStep(workflow, request.getRequester());
+        ApprovalStep firstStep = getFirstNonSkippedStep(workflow, request);
         if (firstStep == null) {
             log.warn("All steps are skipped for request {} — auto-completing workflow", request.getId());
             return null;
@@ -309,7 +309,7 @@ public class WorkflowEngineService {
         sendCompletionNotifications(currentStep, request);
 
         // Find next non-skipped step
-        ApprovalStep nextStep = getNextNonSkippedStep(workflow, currentStep.getStepOrder(), request.getRequester());
+        ApprovalStep nextStep = getNextNonSkippedStep(workflow, currentStep.getStepOrder(), request);
 
         if (nextStep == null) {
             // All steps completed
@@ -590,17 +590,56 @@ public class WorkflowEngineService {
     }
 
     /**
-     * Returns true when this step must be skipped for the given requester.
+     * Returns true when this step must be skipped for the given request.
      *
-     * Two skip conditions are checked:
-     * 1. SUPERVISOR type — auto-skip when the officer has no supervisor in their chain.
-     * 2. Role-based skip — requester's effective roles intersect skipIfRequesterRoles.
+     * Four skip conditions are evaluated in order:
+     *
+     * 1. SUPERVISOR type — always auto-skip when the officer has no supervisor in their chain.
+     *    A SUPERVISOR step with no supervisor to route to is meaningless regardless of the
+     *    optional flag.
+     *
+     * 2. DIRECT_SUPERVISOR type — skip when the officer's immediate reportsTo title carries the
+     *    SUPERVISOR role.  Both SUPERVISOR and DIRECT_SUPERVISOR resolve via the same
+     *    requester.title.reportsTo link; when that title is a SUPERVISOR, the SUPERVISOR step
+     *    (condition 1) already owns that approval tier.  Routing DIRECT_SUPERVISOR to the same
+     *    person afterwards would either duplicate the approval or — in the common branch scenario
+     *    of Officer → Supervisor → BOM — stall the request by sending it back to the Supervisor
+     *    who already approved.  Workflows that need a Supervisor to approve must use the
+     *    SUPERVISOR approver type; DIRECT_SUPERVISOR is strictly for when the officer reports
+     *    directly to a Manager (no Supervisor tier exists).
+     *
+     * 3. Optional step — skip any step marked optional=true when its approver cannot be
+     *    resolved.  Covers vacant Manager / BOM / Branch-Manager positions: rather than
+     *    stalling with currentApprover=null the step is silently bypassed.
+     *
+     * 4. Role-based skip — requester's effective roles intersect skipIfRequesterRoles.
      */
-    private boolean shouldSkipStep(ApprovalStep step, User requester) {
+    private boolean shouldSkipStep(ApprovalStep step, Request request) {
+        User requester = request.getRequester();
+
+        // 1. SUPERVISOR auto-skip
         if (step.getApproverType() == StepApproverType.SUPERVISOR
                 && resolveSupervisor(requester) == null) {
             return true;
         }
+
+        // 2. DIRECT_SUPERVISOR skip when the officer's reportsTo is a SUPERVISOR title
+        if (step.getApproverType() == StepApproverType.DIRECT_SUPERVISOR) {
+            Title reportsTo = (requester.getTitle() != null)
+                    ? requester.getTitle().getReportsTo() : null;
+            if (reportsTo != null
+                    && reportsTo.getRole() != null
+                    && "SUPERVISOR".equalsIgnoreCase(reportsTo.getRole().getName())) {
+                return true;
+            }
+        }
+
+        // 3. Optional step auto-skip
+        if (step.isOptional() && resolveApprover(step, request) == null) {
+            return true;
+        }
+
+        // 4. Role-based skip
         if (step.getSkipIfRequesterRoles() == null || step.getSkipIfRequesterRoles().isEmpty()) {
             return false;
         }
@@ -609,21 +648,21 @@ public class WorkflowEngineService {
                 .anyMatch(role -> requesterRoleIds.contains(role.getId()));
     }
 
-    /** Returns the first step (by order) that is not skipped for this requester. */
-    private ApprovalStep getFirstNonSkippedStep(ApprovalWorkflow workflow, User requester) {
+    /** Returns the first step (by order) that is not skipped for this request. */
+    private ApprovalStep getFirstNonSkippedStep(ApprovalWorkflow workflow, Request request) {
         return workflow.getSteps().stream()
                 .sorted(java.util.Comparator.comparingInt(ApprovalStep::getStepOrder))
-                .filter(step -> !shouldSkipStep(step, requester))
+                .filter(step -> !shouldSkipStep(step, request))
                 .findFirst()
                 .orElse(null);
     }
 
-    /** Returns the next step after {@code currentOrder} that is not skipped for this requester. */
-    private ApprovalStep getNextNonSkippedStep(ApprovalWorkflow workflow, int currentOrder, User requester) {
+    /** Returns the next step after {@code currentOrder} that is not skipped for this request. */
+    private ApprovalStep getNextNonSkippedStep(ApprovalWorkflow workflow, int currentOrder, Request request) {
         return workflow.getSteps().stream()
                 .filter(s -> s.getStepOrder() > currentOrder)
                 .sorted(java.util.Comparator.comparingInt(ApprovalStep::getStepOrder))
-                .filter(step -> !shouldSkipStep(step, requester))
+                .filter(step -> !shouldSkipStep(step, request))
                 .findFirst()
                 .orElse(null);
     }
