@@ -22,7 +22,6 @@ import pride.bank.erp.commodity.CommodityService;
 import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.exception.BadRequestException;
 import pride.bank.erp.exception.NotFoundException;
-import pride.bank.erp.helper.ExtractNumberFromEmailAddress;
 import pride.bank.erp.issuedCommodity.IssuedCommodity;
 import pride.bank.erp.issuedCommodity.IssuedCommodityRepository;
 import pride.bank.erp.notification.Email;
@@ -570,11 +569,10 @@ public class IssuanceService {
             Request request
     ) throws NotFoundException {
 
-        ExtractNumberFromEmailAddress cleanedEmail = new ExtractNumberFromEmailAddress(getAdminManager().getEmail());
         String msg = "Please review this issuance request for your approval.";
 
         emailService.sendEmailVerification(
-                cleanedEmail.getCleanedEmail(), // This must be Admin Manager Email or Branch Manager Email
+                getAdminManager().getEmail(), // This must be Admin Manager Email or Branch Manager Email
                 format("Stores Request ID: %s", request.getId()),
                 null,
                 getAdminManager().getFirstName(),

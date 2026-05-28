@@ -12,7 +12,6 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pride.bank.erp.config.JwtService;
-import pride.bank.erp.helper.ExtractNumberFromEmailAddress;
 import pride.bank.erp.notification.Email;
 import pride.bank.erp.user.User;
 import pride.bank.erp.user.UserRepository;
@@ -39,10 +38,8 @@ public class PasswordResetService {
 
     private Map<String, Object> sendResetPasswordEmail(User user) {
         String token = jwtService.generateToken(user);
-        ExtractNumberFromEmailAddress cleanedEmail = new ExtractNumberFromEmailAddress(user.getEmail());
-
         boolean emailSent = emailService.sendEmailVerification(
-                cleanedEmail.getCleanedEmail(),
+                user.getEmail(),
                 "Password Reset",
                 token,
                 "Reset Your Password",

@@ -24,7 +24,6 @@ import pride.bank.erp.commodity.Commodity;
 import pride.bank.erp.commodity.CommodityService;
 import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.exception.NotFoundException;
-import pride.bank.erp.helper.ExtractNumberFromEmailAddress;
 import pride.bank.erp.helper.FileUpload;
 import pride.bank.erp.notification.Email;
 import pride.bank.erp.status.Status;
@@ -598,10 +597,9 @@ public class AssetService {
     }
 
     private void notifyUserAfterAssignment(User user, Asset asset) {
-        ExtractNumberFromEmailAddress cleanedEmail = new ExtractNumberFromEmailAddress(user.getEmail());
         String assetName = asset.getAssetName() + " " + "(" + asset.getEngravedNumber() + ")";
         email.sendEmailVerification(
-                cleanedEmail.getCleanedEmail(),
+                user.getEmail(),
                 "Account Verification",
                 user.getFirstName(),
                 "Notification",

@@ -18,6 +18,7 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import pride.bank.erp.helper.ExtractNumberFromEmailAddress;
 import pride.bank.erp.request.CommodityWithQuantityDTO;
 import pride.bank.erp.request.Request;
 import pride.bank.erp.stock.Stock;
@@ -46,12 +47,6 @@ public class Email {
 
     @Value("${application.security.jwt.expiration}")
     private long tokenExpirationTime;
-
-    @Value("${application.mail.recipient.strip-digits:false}")
-    private boolean stripDigitsFromRecipient;
-
-    @Value("${application.mail.recipient.strip-digits.domains:pridebank.co.ug}")
-    private String stripDigitsDomainsCsv;
 
     // Brand colors
     private static final String TEAL_PRIMARY = "#05544B";
@@ -844,40 +839,19 @@ public class Email {
     }
 
     /**
-     * Maps a stored recipient address to the one actually used at SMTP send time.
-     * When {@code application.mail.recipient.strip-digits=true} AND the address belongs to a
-     * domain in {@code application.mail.recipient.strip-digits.domains}, every digit in the
-     * local part is removed. Used so the team can populate the DB with sodong1@…, sodong2@…
-     * (to keep the email-unique constraint happy) while every actual notification lands in
-     * the single real mailbox sodong@pridebank.co.ug. Addresses on other domains pass through
-     * unchanged so a misconfiguration in prod can never merge external recipients.
+     * The single place recipient addresses are cleaned before SMTP send. Trailing
+     * digits in the local part are stripped (see {@link ExtractNumberFromEmailAddress}),
+     * so addresses stored as sodong1@…, sodong2@… — kept distinct to satisfy the
+     * email-unique constraint — all resolve to the single real mailbox sodong@….
+     * Both {@code sendEmailVerification} and {@code sendWorkflowEmail} route through
+     * here, so callers pass the raw stored address and never clean it themselves.
      */
     private String cleanRecipient(String email) {
-        if (!stripDigitsFromRecipient || email == null) return email;
-
-        int at = email.lastIndexOf('@');
-        if (at <= 0 || at == email.length() - 1) return email;
-
-        String local = email.substring(0, at);
-        String domain = email.substring(at + 1);
-
-        if (!isCleanableDomain(domain)) return email;
-
-        String cleanedLocal = local.replaceAll("\\d", "");
-        if (cleanedLocal.isEmpty() || cleanedLocal.equals(local)) return email;
-
-        String cleaned = cleanedLocal + "@" + domain;
-        logger.debug("Recipient rewritten for SMTP: {} -> {}", email, cleaned);
-        return cleaned;
-    }
-
-    private boolean isCleanableDomain(String domain) {
-        if (stripDigitsDomainsCsv == null || stripDigitsDomainsCsv.isBlank()) return false;
-        String d = domain.toLowerCase();
-        for (String allowed : stripDigitsDomainsCsv.split(",")) {
-            if (d.equals(allowed.trim().toLowerCase())) return true;
+        String cleaned = new ExtractNumberFromEmailAddress(email).getCleanedEmail();
+        if (!Objects.equals(email, cleaned)) {
+            logger.debug("Recipient rewritten for SMTP: {} -> {}", email, cleaned);
         }
-        return false;
+        return cleaned;
     }
 
     private String getWorkflowEmailContent(

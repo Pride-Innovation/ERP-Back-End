@@ -12,7 +12,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.exception.NotFoundException;
-import pride.bank.erp.helper.ExtractNumberFromEmailAddress;
 import pride.bank.erp.issuance.Issuance;
 import pride.bank.erp.issuance.IssuanceRepository;
 import pride.bank.erp.issuance.IssuanceService;
@@ -146,10 +145,8 @@ public class IssuanceApprovalRecordService {
             Request request,
             String requesterName
     ) {
-        ExtractNumberFromEmailAddress cleanedEmail = new ExtractNumberFromEmailAddress(email);
-
         emailService.sendEmailVerification(
-                cleanedEmail.getCleanedEmail(), // Notify the requester
+                email, // Notify the requester
                 String.format("Stores Request ID: %s", request.getId()),
                 null,
                 requesterName,

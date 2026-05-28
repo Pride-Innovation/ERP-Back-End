@@ -28,7 +28,6 @@ import pride.bank.erp.grnCommodity.GrnCommodityRepository;
 import pride.bank.erp.grnReport.GrnReport;
 import pride.bank.erp.grnReport.GrnReportRepository;
 import pride.bank.erp.helper.DeleteResponse;
-import pride.bank.erp.helper.ExtractNumberFromEmailAddress;
 import pride.bank.erp.notification.Email;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
@@ -657,9 +656,8 @@ public class StockService {
             String updaterName,
             String commoditySummary
     ) {
-        ExtractNumberFromEmailAddress cleanedEmail = new ExtractNumberFromEmailAddress(email);
         emailService.sendEmailVerification(
-                cleanedEmail.getCleanedEmail(),
+                email,
                 String.format("Stock LPO ID: %s", stock.getLpoNumber()),
                 null,
                 updaterName,

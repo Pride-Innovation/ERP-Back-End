@@ -27,7 +27,6 @@ import pride.bank.erp.department.Department;
 import pride.bank.erp.department.DepartmentRepository;
 import pride.bank.erp.exception.BadRequestException;
 import pride.bank.erp.exception.NotFoundException;
-import pride.bank.erp.helper.ExtractNumberFromEmailAddress;
 import pride.bank.erp.helper.FileUpload;
 import pride.bank.erp.helper.PasswordGenerator;
 import pride.bank.erp.notification.Email;
@@ -113,12 +112,11 @@ public class UserService {
                 .build();
 
         String token = jwtService.generateToken(newUser);
-        ExtractNumberFromEmailAddress cleanedEmail = new ExtractNumberFromEmailAddress(newUser.getEmail());
         String recipientFullName = user.getFirstName() + " " + user.getLastName();
 
         boolean emailSent = emailService
                 .sendEmailVerification(
-                        cleanedEmail.getCleanedEmail(),
+                        newUser.getEmail(),
                         "Welcome to Pride Bank — Verify Your Account",
                         token,
                         "Account Verification",
@@ -455,9 +453,8 @@ public class UserService {
         userRepository.save(user);
 
         String recipientFullName = firstName + " " + lastName;
-        ExtractNumberFromEmailAddress cleanedEmail = new ExtractNumberFromEmailAddress(dto.getEmail());
         emailService.sendEmailVerification(
-                cleanedEmail.getCleanedEmail(),
+                dto.getEmail(),
                 "Welcome to Pride Bank — Verify Your Account",
                 null,
                 "Account Verification",

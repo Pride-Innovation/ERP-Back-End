@@ -94,7 +94,16 @@ public class RequestSearchDao {
             predicates.add(requestRoot.get("status").get("id").in(requestSearchCriteria.getStatusIds()));
         }
 
-        if (Objects.nonNull(requestSearchCriteria.getRequesterIds()) && !requestSearchCriteria.getRequesterIds().isEmpty()) {
+        // The role-based subordinate restriction (requesterIds) is for the general
+        // listings. When an explicit approver is targeted — the approval inbox passes
+        // currentApproverId — visibility must be governed solely by "are you the
+        // assigned approver?", because the workflow engine already decided who must act.
+        // Layering the subordinate restriction on top would hide a request from an
+        // approver who sits more than one title-level above the requester (e.g. a HoD,
+        // or a manager above a supervisor), so skip it whenever currentApproverId is set.
+        if (Objects.isNull(requestSearchCriteria.getCurrentApproverId())
+                && Objects.nonNull(requestSearchCriteria.getRequesterIds())
+                && !requestSearchCriteria.getRequesterIds().isEmpty()) {
             predicates.add(requestRoot.get("requester").get("id").in(requestSearchCriteria.getRequesterIds()));
         }
 

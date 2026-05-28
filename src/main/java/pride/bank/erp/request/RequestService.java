@@ -27,7 +27,6 @@ import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.exception.ValidationException;
 import pride.bank.erp.helper.Constants;
 import pride.bank.erp.helper.DeleteResponse;
-import pride.bank.erp.helper.ExtractNumberFromEmailAddress;
 import pride.bank.erp.helper.FileUpload;
 import pride.bank.erp.issuance.UserBuilder;
 import pride.bank.erp.notification.Email;
@@ -969,10 +968,8 @@ public class RequestService {
      */
     private String notifySupervisor(String email, Request request, String name) {
         try {
-            ExtractNumberFromEmailAddress cleanedEmail = new ExtractNumberFromEmailAddress(email);
-
             boolean emailStatus = emailService.sendEmailVerification(
-                    cleanedEmail.getCleanedEmail(),
+                    email,
                     String.format("Action Required – Request Pending Processing: ( #%s )", request.getId()),
                     null,
                     name,

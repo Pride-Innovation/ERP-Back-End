@@ -12,7 +12,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.exception.NotFoundException;
-import pride.bank.erp.helper.ExtractNumberFromEmailAddress;
 import pride.bank.erp.issuance.UserBuilder;
 import pride.bank.erp.notification.Email;
 import pride.bank.erp.request.Request;
@@ -127,10 +126,8 @@ public class AcknowledgeRequestReceiptService {
             Request request,
             String requesterName
     ) {
-        ExtractNumberFromEmailAddress cleanedEmail = new ExtractNumberFromEmailAddress(email);
-
         emailService.sendEmailVerification(
-                cleanedEmail.getCleanedEmail(),
+                email,
                 String.format("Stores Request ID: %s", request.getId()),
                 null,
                 requesterName,
