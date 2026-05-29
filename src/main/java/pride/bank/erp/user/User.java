@@ -31,6 +31,7 @@ import pride.bank.erp.request.Request;
 import pride.bank.erp.role.Role;
 import pride.bank.erp.title.Title;
 import pride.bank.erp.token.Token;
+import pride.bank.erp.unit.Unit;
 
 import java.time.LocalDateTime;
 import java.util.Collection;
@@ -126,6 +127,15 @@ public class User implements UserDetails {
     // @OnDelete(action = OnDeleteAction.CASCADE)
     @NotAudited
     private Department department;
+
+    /**
+     * Optional unit the user belongs to (Head Office). Drives in-app visibility of
+     * group-email workflow steps that target the unit's mailbox.
+     */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "unit_id")
+    @NotAudited
+    private Unit unit;
 
     /**
      * Optional secondary roles in addition to the role implied by {@link #title}.

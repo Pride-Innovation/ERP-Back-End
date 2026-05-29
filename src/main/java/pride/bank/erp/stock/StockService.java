@@ -486,7 +486,6 @@ public class StockService {
                 .build();
     }
 
-    @Transactional
     private void addCommoditiesToStock(Stock stock, List<StockCommodityDTO> stockCommodities)
             throws NotFoundException {
         for (StockCommodityDTO dto : stockCommodities) {
@@ -544,7 +543,6 @@ public class StockService {
      * Assumptions:
      * - Status ID 8 represents "Active" or similar initial asset status.
      */
-    @Transactional
     private void createAssetsFromStock(Stock stock) throws NotFoundException {
         List<StockCommodity> stockCommodities = stockCommodityRepository.findByStockId(stock.getId());
 

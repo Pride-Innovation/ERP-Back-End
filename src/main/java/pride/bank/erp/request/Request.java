@@ -26,6 +26,7 @@ import pride.bank.erp.requestCommodity.RequestCommodity;
 import pride.bank.erp.requestReport.RequestReport;
 import pride.bank.erp.requestReport.RequestReportDAO;
 import pride.bank.erp.status.Status;
+import pride.bank.erp.unit.Unit;
 import pride.bank.erp.user.User;
 
 import java.time.LocalDateTime;
@@ -93,6 +94,16 @@ public class Request {
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "current_approver_id")
     private User currentApprover;
+
+    /**
+     * The unit currently responsible for the request, when the active step targets a unit's
+     * group mailbox. Lets unit members see and act on the request in their pending inbox even
+     * though there is no single individual approver.
+     */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "current_unit_id")
+    @NotAudited
+    private Unit currentUnit;
 
     /** Primary asset category for the request; drives workflow resolution and custom attribute validation. */
     @ManyToOne(fetch = FetchType.EAGER)

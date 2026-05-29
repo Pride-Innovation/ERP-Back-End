@@ -31,6 +31,7 @@ public class StatusSeeder {
         ensureStatus("BOM Approved",               "bomApproved",            "bomapproved");
         ensureStatus("Branch Manager Approved",    "branchManagerApproved",  "branchmanagerapproved");
         ensureStatus("Supervisor Approved",        "supervisorApproved",     "supervisorapproved");
+        ensureStatus("Unit Acknowledged",          "unitAcknowledged",       "unitacknowledged");
         log.info("Status seeding complete");
     }
 

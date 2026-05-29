@@ -17,6 +17,8 @@ import pride.bank.erp.requestCommodity.RequestCommodity;
 import pride.bank.erp.requestCommodity.RequestCommodityRepository;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
+import pride.bank.erp.unit.Unit;
+import pride.bank.erp.unit.UnitRepository;
 import pride.bank.erp.user.User;
 import pride.bank.erp.user.UserRepository;
 import pride.bank.erp.workflow.ApprovalStep;
@@ -27,6 +29,7 @@ import pride.bank.erp.workflow.StepApproverType;
 import pride.bank.erp.workflow.WorkflowBranchScope;
 import pride.bank.erp.workflow.WorkflowResolveService;
 
+import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -47,6 +50,7 @@ public class WorkflowEngineService {
     private static final String STATUS_SUPERVISOR_APPROVED     = "supervisorApproved";
     private static final String STATUS_ISSUED                = "issued";
     private static final String STATUS_ACKNOWLEDGED          = "receiptAcknowledged";
+    private static final String STATUS_UNIT_ACKNOWLEDGED     = "unitAcknowledged";
 
     private final ApprovalWorkflowRepository workflowRepository;
     private final RequestWorkflowInstanceRepository instanceRepository;
@@ -54,6 +58,7 @@ public class WorkflowEngineService {
     private final RequestRepository requestRepository;
     private final RequestCommodityRepository requestCommodityRepository;
     private final UserRepository userRepository;
+    private final UnitRepository unitRepository;
     private final LeaveRepository leaveRepository;
     private final StatusService statusService;
     private final Email emailService;
@@ -207,6 +212,62 @@ public class WorkflowEngineService {
         return instanceRepository.findTopByRequestIdOrderByIdDesc(requestId)
                 .map(i -> i.getStatus() == InstanceStatus.IN_PROGRESS)
                 .orElse(false);
+    }
+
+    /**
+     * Escalation reminder for a single workflow instance. Re-sends the pending step's email
+     * to whoever it was originally sent to (the current approver, or a group mailbox) once the
+     * step's {@code escalationHours} have elapsed since it became pending — or since the last
+     * reminder, so reminders repeat each window until the step is actioned.
+     * {@code escalationHours = 0} disables reminders for the step. Runs in its own transaction
+     * (called per-instance by {@link WorkflowEscalationScheduler}) so one failure can't abort the sweep.
+     */
+    @Transactional
+    public void sendReminderIfDue(Long instanceId) {
+        RequestWorkflowInstance instance = instanceRepository.findById(instanceId).orElse(null);
+        if (instance == null || instance.getStatus() != InstanceStatus.IN_PROGRESS) return;
+
+        RequestStepLog pending = stepLogRepository
+                .findPendingByInstanceAndStep(instance.getId(), instance.getCurrentStepOrder())
+                .orElse(null);
+        if (pending == null) return;
+
+        String recipient = pending.getActorEmail();
+        if (recipient == null || recipient.isBlank()) return; // nobody to remind
+
+        ApprovalStep step;
+        try {
+            step = getStepByOrder(instance.getWorkflow(), instance.getCurrentStepOrder());
+        } catch (NotFoundException e) {
+            return;
+        }
+
+        int escalationHours = step.getEscalationHours();
+        if (escalationHours <= 0) return; // escalation disabled for this step
+
+        LocalDateTime since = (pending.getLastReminderAt() != null)
+                ? pending.getLastReminderAt()
+                : pending.getCreateDate();
+        if (since == null || LocalDateTime.now().isBefore(since.plusHours(escalationHours))) {
+            return; // not due yet
+        }
+
+        Request request = instance.getRequest();
+        String greeting = (pending.getActor() != null) ? pending.getActor().getFirstName() : "Team";
+        emailService.sendWorkflowEmail(
+                recipient,
+                "Reminder: " + actionRequiredSubject(step, request),
+                greeting,
+                step.getStepName() + " – Reminder",
+                buildStepInstructions(step, request),
+                request,
+                step,
+                "PENDING"
+        );
+        pending.setLastReminderAt(LocalDateTime.now());
+        stepLogRepository.save(pending);
+        log.info("Escalation reminder sent for request {} step {} to {}",
+                request.getId(), instance.getCurrentStepOrder(), recipient);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -392,8 +453,8 @@ public class WorkflowEngineService {
         return switch (step.getStepType()) {
             case ISSUANCE          -> STATUS_ISSUED;
             case ACKNOWLEDGE_RECEIPT -> STATUS_ACKNOWLEDGED;
+            case ACKNOWLEDGE_REQUEST -> STATUS_UNIT_ACKNOWLEDGED;
             case REQUEST_APPROVAL  -> resolveApprovalStatusCode(step.getApproverType());
-            default                -> STATUS_APPROVED;
         };
     }
 
@@ -416,7 +477,8 @@ public class WorkflowEngineService {
 
     private void notifyAndLogStep(RequestWorkflowInstance instance, ApprovalStep step, Request request) {
         User approver = resolveApprover(step, request);
-        String approverEmail = (approver != null) ? approver.getEmail() : step.getGroupEmail();
+        String approverEmail = resolveStepRecipientEmail(step, request, approver);
+        Unit stepUnit = resolveStepUnit(step);
 
         // Create pending log
         RequestStepLog pendingLog = RequestStepLog.builder()
@@ -429,11 +491,12 @@ public class WorkflowEngineService {
                 .build();
         stepLogRepository.save(pendingLog);
 
-        // Update currentApprover on request
-        if (approver != null) {
-            request.setCurrentApprover(approver);
-            requestRepository.save(request);
-        }
+        // Point the request at whoever must act now: an individual approver (when there is one)
+        // and/or a unit (when the step routes to a unit mailbox). Clearing the other side keeps
+        // the inbox accurate — a unit step shouldn't appear assigned to a stale individual.
+        request.setCurrentApprover(approver);
+        request.setCurrentUnit(stepUnit);
+        requestRepository.save(request);
 
         // Send email to approver (or group)
         if (approverEmail != null) {
@@ -465,7 +528,8 @@ public class WorkflowEngineService {
             );
         }
 
-        // In-app notification for individual approver
+        // In-app notification: an individual approver, otherwise every member of the target unit.
+        String link = frontEndUrl + "/assets-mgt/asset-request/view?id=" + request.getId();
         if (approver != null) {
             notificationService.createAndPush(
                     approver,
@@ -473,9 +537,31 @@ public class WorkflowEngineService {
                     "Request \"" + request.getName() + "\" is awaiting your action: " + step.getStepName(),
                     "STEP_PENDING",
                     request.getId(),
-                    frontEndUrl + "/assets-mgt/asset-request/view?id=" + request.getId()
+                    link
             );
+        } else if (stepUnit != null) {
+            for (User member : userRepository.findByUnit_Id(stepUnit.getId())) {
+                notificationService.createAndPush(
+                        member,
+                        step.getStepName() + " Needed",
+                        "Request \"" + request.getName() + "\" is awaiting your unit (" + stepUnit.getName() + "): " + step.getStepName(),
+                        "STEP_PENDING",
+                        request.getId(),
+                        link
+                );
+            }
         }
+    }
+
+    /**
+     * Resolves the unit a step routes to: a {@code GROUP_EMAIL} step whose address matches a
+     * unit's group mailbox. Returns null for any other step type or when no unit owns the email.
+     */
+    private Unit resolveStepUnit(ApprovalStep step) {
+        if (step.getApproverType() != StepApproverType.GROUP_EMAIL) return null;
+        String email = step.getGroupEmail();
+        if (email == null || email.isBlank()) return null;
+        return unitRepository.findByGroupEmailIgnoreCase(email.trim()).orElse(null);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -519,6 +605,7 @@ public class WorkflowEngineService {
         User candidate = switch (step.getApproverType()) {
             case DIRECT_SUPERVISOR -> resolveDirectSupervisor(request.getRequester());
             case SUPERVISOR        -> resolveSupervisor(request.getRequester());
+            case MANAGER           -> resolveManager(request.getRequester());
             case DEPT_HEAD -> (request.getRequester().getDepartment() != null)
                     ? request.getRequester().getDepartment().getHeadOfDepartment() : null;
             case BOM -> (request.getRequester().getBranch() != null)
@@ -561,21 +648,58 @@ public class WorkflowEngineService {
     }
 
     /**
-     * Resolves the supervisor for a SUPERVISOR-type step.
-     * The supervisor is the user whose title is the requester's reportsTo title,
-     * but ONLY when that title carries the "SUPERVISOR" role.
-     * Returns null when the officer has no supervisor in their chain,
-     * which causes shouldSkipStep() to auto-skip the step at runtime.
+     * Resolves the supervisor for a SUPERVISOR-type step: the nearest ancestor title
+     * (walking reportsTo) carrying the SUPERVISOR role, held by a user in the requester's
+     * branch. Returns null when the officer has no supervisor in their chain, which causes
+     * shouldSkipStep() to auto-skip the step at runtime.
      */
     private User resolveSupervisor(User requester) {
-        if (requester.getTitle() == null || requester.getTitle().getReportsTo() == null) return null;
-        Title reportsToTitle = requester.getTitle().getReportsTo();
-        if (reportsToTitle.getRole() == null) return null;
-        if (!"SUPERVISOR".equalsIgnoreCase(reportsToTitle.getRole().getName())) return null;
+        return firstHolderInBranch(nearestAncestorTitleByRole(requester, "SUPERVISOR"), requester);
+    }
+
+    /**
+     * Resolves the line manager for a MANAGER-type step: the nearest ancestor title
+     * (walking reportsTo) carrying the MANAGER role, held by a user in the requester's
+     * branch. Returns null when no such user is found — callers then fall back to the
+     * requester's managers-group email so any manager can act.
+     */
+    private User resolveManager(User requester) {
+        return firstHolderInBranch(nearestAncestorTitleByRole(requester, "MANAGER"), requester);
+    }
+
+    /**
+     * Walks the requester's reporting line (title.reportsTo) upward and returns the
+     * nearest ancestor title whose role matches {@code roleName}, or null if none.
+     * Cycle- and depth-guarded so malformed title data can never loop forever.
+     */
+    private Title nearestAncestorTitleByRole(User requester, String roleName) {
+        if (requester == null || requester.getTitle() == null) return null;
+        Title current = requester.getTitle().getReportsTo();
+        Set<Long> visited = new HashSet<>();
+        int guard = 0;
+        while (current != null && guard++ < 30) {
+            if (current.getId() != null && !visited.add(current.getId())) break;
+            if (current.getRole() != null && roleName.equalsIgnoreCase(current.getRole().getName())) {
+                return current;
+            }
+            current = current.getReportsTo();
+        }
+        return null;
+    }
+
+    /** First user holding {@code title} in the requester's branch (no leave substitution here). */
+    private User firstHolderInBranch(Title title, User requester) {
+        if (title == null || title.getId() == null) return null;
         Long branchId = (requester.getBranch() != null) ? requester.getBranch().getId() : null;
         if (branchId == null) return null;
-        List<User> candidates = userRepository.findByTitleIdAndBranchId(reportsToTitle.getId(), branchId);
-        return candidates.isEmpty() ? null : candidates.get(0);
+        List<User> holders = userRepository.findByTitleIdAndBranchId(title.getId(), branchId);
+        return holders.isEmpty() ? null : holders.get(0);
+    }
+
+    /** Managers' group mailbox for the requester: department group at HO, branch group otherwise. */
+    private String managersGroupEmail(User requester) {
+        return workflowResolveService.resolveEmailForSource(
+                NotifyGroupSource.REQUESTER_MANAGERS_GROUP, requester);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -592,60 +716,75 @@ public class WorkflowEngineService {
     /**
      * Returns true when this step must be skipped for the given request.
      *
-     * Four skip conditions are evaluated in order:
+     * Two independent reasons to skip:
      *
-     * 1. SUPERVISOR type — always auto-skip when the officer has no supervisor in their chain.
-     *    A SUPERVISOR step with no supervisor to route to is meaningless regardless of the
-     *    optional flag.
+     * 1. Role-based skip — the requester themselves holds a role listed in
+     *    {@code skipIfRequesterRoles} (e.g. don't make a Branch Manager approve their own
+     *    request).
      *
-     * 2. DIRECT_SUPERVISOR type — skip when the officer's immediate reportsTo title carries the
-     *    SUPERVISOR role.  Both SUPERVISOR and DIRECT_SUPERVISOR resolve via the same
-     *    requester.title.reportsTo link; when that title is a SUPERVISOR, the SUPERVISOR step
-     *    (condition 1) already owns that approval tier.  Routing DIRECT_SUPERVISOR to the same
-     *    person afterwards would either duplicate the approval or — in the common branch scenario
-     *    of Officer → Supervisor → BOM — stall the request by sending it back to the Supervisor
-     *    who already approved.  Workflows that need a Supervisor to approve must use the
-     *    SUPERVISOR approver type; DIRECT_SUPERVISOR is strictly for when the officer reports
-     *    directly to a Manager (no Supervisor tier exists).
-     *
-     * 3. Optional step — skip any step marked optional=true when its approver cannot be
-     *    resolved.  Covers vacant Manager / BOM / Branch-Manager positions: rather than
-     *    stalling with currentApprover=null the step is silently bypassed.
-     *
-     * 4. Role-based skip — requester's effective roles intersect skipIfRequesterRoles.
+     * 2. No-recipient skip ("skip and continue") — the tier this step targets has nobody to
+     *    route to for this particular requester, so the request advances to the next step
+     *    instead of stalling. This is what lets a single workflow serve every reporting
+     *    shape: a missing Supervisor / Manager / HoD / BOM / Branch-Manager tier is simply
+     *    bypassed. See {@link #stepHasRecipient}.
      */
     private boolean shouldSkipStep(ApprovalStep step, Request request) {
-        User requester = request.getRequester();
+        return matchesSkipRole(step, request.getRequester())
+                || !stepHasRecipient(step, request);
+    }
 
-        // 1. SUPERVISOR auto-skip
-        if (step.getApproverType() == StepApproverType.SUPERVISOR
-                && resolveSupervisor(requester) == null) {
-            return true;
-        }
-
-        // 2. DIRECT_SUPERVISOR skip when the officer's reportsTo is a SUPERVISOR title
-        if (step.getApproverType() == StepApproverType.DIRECT_SUPERVISOR) {
-            Title reportsTo = (requester.getTitle() != null)
-                    ? requester.getTitle().getReportsTo() : null;
-            if (reportsTo != null
-                    && reportsTo.getRole() != null
-                    && "SUPERVISOR".equalsIgnoreCase(reportsTo.getRole().getName())) {
-                return true;
-            }
-        }
-
-        // 3. Optional step auto-skip
-        if (step.isOptional() && resolveApprover(step, request) == null) {
-            return true;
-        }
-
-        // 4. Role-based skip
+    /** True when the requester's own role is one the step should bypass. */
+    private boolean matchesSkipRole(ApprovalStep step, User requester) {
         if (step.getSkipIfRequesterRoles() == null || step.getSkipIfRequesterRoles().isEmpty()) {
             return false;
         }
         Set<Long> requesterRoleIds = requester.getEffectiveRoleIds();
         return step.getSkipIfRequesterRoles().stream()
                 .anyMatch(role -> requesterRoleIds.contains(role.getId()));
+    }
+
+    /**
+     * True if the step can route to someone for this requester — an individual approver, a
+     * static group mailbox, or (for MANAGER) the requester's managers-group. When false the
+     * step is skipped and the workflow continues to the next step.
+     */
+    private boolean stepHasRecipient(ApprovalStep step, Request request) {
+        User requester = request.getRequester();
+        switch (step.getApproverType()) {
+            case MANAGER:
+                // Only meaningful when the requester actually has a manager tier in their chain.
+                if (nearestAncestorTitleByRole(requester, "MANAGER") == null) return false;
+                return resolveApprover(step, request) != null || notBlank(managersGroupEmail(requester));
+            case GROUP_EMAIL:
+                return notBlank(step.getGroupEmail());
+            case DIRECT_SUPERVISOR: {
+                // Legacy semantics: a DIRECT_SUPERVISOR step is owned by a SUPERVISOR step when the
+                // immediate report is itself a supervisor, so bypass it in that case.
+                Title reportsTo = (requester.getTitle() != null) ? requester.getTitle().getReportsTo() : null;
+                if (reportsTo != null && reportsTo.getRole() != null
+                        && "SUPERVISOR".equalsIgnoreCase(reportsTo.getRole().getName())) {
+                    return false;
+                }
+                return resolveApprover(step, request) != null;
+            }
+            default:
+                // SUPERVISOR, DEPT_HEAD, BOM, BRANCH_MANAGER, ADMIN, SPECIFIC_USER, REQUESTER
+                return resolveApprover(step, request) != null;
+        }
+    }
+
+    /** The email a step should notify when no individual approver resolved. */
+    private String resolveStepRecipientEmail(ApprovalStep step, Request request, User approver) {
+        if (approver != null) return approver.getEmail();
+        if (step.getApproverType() == StepApproverType.MANAGER) {
+            // Manager tier exists but no individual resolved → any manager in the group can act.
+            return managersGroupEmail(request.getRequester());
+        }
+        return step.getGroupEmail();
+    }
+
+    private boolean notBlank(String s) {
+        return s != null && !s.isBlank();
     }
 
     /** Returns the first step (by order) that is not skipped for this request. */

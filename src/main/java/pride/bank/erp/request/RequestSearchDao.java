@@ -188,10 +188,21 @@ public class RequestSearchDao {
         }
 
         if (Objects.nonNull(requestSearchCriteria.getCurrentApproverId())) {
-            predicates.add(criteriaBuilder.equal(
+            // The approval inbox shows what's assigned to me as an individual approver OR routed
+            // to a unit I belong to (group-email steps set currentUnit instead of an individual).
+            Predicate byApprover = criteriaBuilder.equal(
                     requestRoot.get("currentApprover").get("id"),
                     requestSearchCriteria.getCurrentApproverId()
-            ));
+            );
+            if (Objects.nonNull(requestSearchCriteria.getCurrentUnitId())) {
+                Predicate byUnit = criteriaBuilder.equal(
+                        requestRoot.get("currentUnit").get("id"),
+                        requestSearchCriteria.getCurrentUnitId()
+                );
+                predicates.add(criteriaBuilder.or(byApprover, byUnit));
+            } else {
+                predicates.add(byApprover);
+            }
         }
 
         // Filter Admin data for the requests listing

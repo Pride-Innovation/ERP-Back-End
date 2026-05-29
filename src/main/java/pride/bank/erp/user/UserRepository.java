@@ -32,6 +32,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     List<User> findByTitleId(Long tileId);
 
+    /** Members of a unit — used to notify everyone in a unit when a request is routed to it. */
+    List<User> findByUnit_Id(Long unitId);
+
     @Query("SELECT u.id FROM User u WHERE u.title.id IN :titleIds")
     List<Long> findUserIdsByTitleIds(@Param("titleIds") List<Long> titleIds);
 

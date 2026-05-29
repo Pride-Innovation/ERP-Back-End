@@ -13,4 +13,7 @@ public interface RequestWorkflowInstanceRepository extends JpaRepository<Request
     Optional<RequestWorkflowInstance> findTopByRequestIdOrderByIdDesc(Long requestId);
 
     List<RequestWorkflowInstance> findByRequestId(Long requestId);
+
+    /** All instances in a given status — used by the escalation sweep to find pending work. */
+    List<RequestWorkflowInstance> findByStatus(InstanceStatus status);
 }

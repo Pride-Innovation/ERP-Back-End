@@ -36,6 +36,7 @@ public class UserResponseDTO {
     private Long lastModifiedBy;
 
     private DepartmentSummary department;
+    private UnitSummary unit;
     private BranchSummary branch;
     private TitleSummary title;
     private TitleSummary actingTitle;
@@ -49,6 +50,16 @@ public class UserResponseDTO {
         private Long id;
         private String name;
         private String shortCode;
+    }
+
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    @Builder
+    public static class UnitSummary {
+        private Long id;
+        private String name;
+        private String groupEmail;
     }
 
     @Data
@@ -131,6 +142,11 @@ public class UserResponseDTO {
                         .id(user.getDepartment().getId())
                         .name(user.getDepartment().getName())
                         .shortCode(user.getDepartment().getShortCode())
+                        .build())
+                .unit(user.getUnit() == null ? null : UnitSummary.builder()
+                        .id(user.getUnit().getId())
+                        .name(user.getUnit().getName())
+                        .groupEmail(user.getUnit().getGroupEmail())
                         .build())
                 .branch(user.getBranch() == null ? null : BranchSummary.builder()
                         .id(user.getBranch().getId())

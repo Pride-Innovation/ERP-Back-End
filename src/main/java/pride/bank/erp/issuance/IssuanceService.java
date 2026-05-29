@@ -274,7 +274,6 @@ public class IssuanceService {
      * @param branchId    The branch ID to check
      * @throws NotFoundException If a commodity is not found in the store
      */
-    @Transactional(readOnly = true)
     private void validateCommoditiesInStore(List<IssuanceCommodityDTO> commodities, Long branchId)
             throws NotFoundException {
 
@@ -302,7 +301,6 @@ public class IssuanceService {
      * @param branchId    The branch ID
      * @throws NotFoundException If a commodity is not found
      */
-    @Transactional
     private void reduceCommoditiesFromStore(List<IssuanceCommodityDTO> commodities, Long branchId)
             throws NotFoundException {
 
@@ -328,7 +326,6 @@ public class IssuanceService {
      * @param commodities The commodities that were issued
      * @throws NotFoundException If a commodity is not found
      */
-    @Transactional
     private void addIssuedCommodities(Issuance issuance, List<IssuanceCommodityDTO> commodities)
             throws NotFoundException {
         for (IssuanceCommodityDTO dto : commodities) {
@@ -392,7 +389,6 @@ public class IssuanceService {
      * @param user   The user to assign the assets to
      * @throws NotFoundException If an asset or status is not found
      */
-    @Transactional
     private void updateAssetAssignedToStatusAndStatus(List<IssueAssetsDTO> assets, User user) throws NotFoundException {
         Status assignedStatus = statusService.findOneStatus(4L);
         if (assignedStatus == null) {
@@ -454,7 +450,6 @@ public class IssuanceService {
      * @param request The request information
      * @throws NotFoundException If the request is not found
      */
-    @Transactional
     private void updateRequestStatus(IssuanceDTO request)
             throws NotFoundException {
         Request requestDetails = requestService.findRequest(request.getRequestId());
@@ -472,7 +467,6 @@ public class IssuanceService {
      * @param statusBefore The status before assignment
      * @param statusAfter  The status after assignment
      */
-    @Transactional
     private void trackAssetAssignmentHistory(Asset asset, User newUser, Status statusBefore, Status statusAfter) {
         AssetAssignmentHistory activeHistory = assetAssignmentHistoryRepository
                 .findActiveByAssetId(asset.getId());

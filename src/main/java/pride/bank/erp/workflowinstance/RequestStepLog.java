@@ -49,6 +49,9 @@ public class RequestStepLog {
     @Column(columnDefinition = "TEXT")
     private String comment;
 
+    /** When the most recent escalation reminder was sent for this pending step (null = none yet). */
+    private LocalDateTime lastReminderAt;
+
     @CreatedDate
     @Column(updatable = false)
     private LocalDateTime createDate;

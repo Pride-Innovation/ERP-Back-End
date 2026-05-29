@@ -61,6 +61,8 @@ public class UserDTO {
     private Long title;
 
     private Long department;
+    /** Optional unit (Head Office) the user belongs to. */
+    private Long unit;
     private boolean isEnabled;
     private boolean isAccountNonLocked;
     private boolean blocked;

@@ -25,6 +25,8 @@ import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.config.JwtService;
 import pride.bank.erp.department.Department;
 import pride.bank.erp.department.DepartmentRepository;
+import pride.bank.erp.unit.Unit;
+import pride.bank.erp.unit.UnitRepository;
 import pride.bank.erp.exception.BadRequestException;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.FileUpload;
@@ -56,6 +58,7 @@ public class UserService {
     private final TitleService titleService;
     private final BranchRepository branchRepository;
     private final DepartmentRepository departmentRepository;
+    private final UnitRepository unitRepository;
     private final FileUpload fileUpload;
     private final CurrentUserService currentUserService;
     private final LeaveRepository leaveRepository;
@@ -88,6 +91,11 @@ public class UserService {
             department = departmentRepository.findById(user.getDepartment()).orElse(null);
         }
 
+        Unit unit = null;
+        if (user.getUnit() != null) {
+            unit = unitRepository.findById(user.getUnit()).orElse(null);
+        }
+
         // Default availability to 'present' when not supplied
         String availability = (user.getAvailability() != null && !user.getAvailability().isBlank())
                 ? user.getAvailability()
@@ -105,6 +113,7 @@ public class UserService {
                 .title(title)
                 .branch(branch)
                 .department(department)
+                .unit(unit)
                 .isEnabled(false)
                 .blocked(false)
                 .isAccountNonLocked(true)
@@ -172,6 +181,11 @@ public class UserService {
             department = departmentRepository.findById(request.getDepartment()).orElse(null);
         }
 
+        Unit unit = null;
+        if (request.getUnit() != null) {
+            unit = unitRepository.findById(request.getUnit()).orElse(null);
+        }
+
         user.setFirstName(request.getFirstName());
         user.setLastName(request.getLastName());
         user.setOtherName(request.getOtherName());
@@ -180,6 +194,7 @@ public class UserService {
         user.setAvailability(request.getAvailability());
         user.setTitle(title);
         user.setDepartment(department);
+        user.setUnit(unit);
         user.setEnabled(request.isEnabled());
         user.setAccountNonLocked(request.isAccountNonLocked());
         user.setEmail(request.getEmail());

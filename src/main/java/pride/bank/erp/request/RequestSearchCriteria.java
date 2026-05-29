@@ -34,4 +34,6 @@ public class RequestSearchCriteria {
     private Long currentUserId;
     private Boolean isAdmin;
     private Long currentApproverId;
+    /** The logged-in user's unit id — so the approval inbox also shows requests routed to their unit. */
+    private Long currentUnitId;
 }

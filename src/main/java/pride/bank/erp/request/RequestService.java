@@ -117,8 +117,17 @@ public class RequestService {
             throw new IllegalStateException("Current user could not be identified.");
         }
 
-        Long requesterBranchId = requester.getBranch() != null ? requester.getBranch().getId() : null;
-        boolean isHeadOfficeUser = requester.getBranch() != null && requester.getBranch().isHeadOffice();
+        // A request cannot be routed without a branch: the workflow resolver keys
+        // off the requester's branch (Head Office vs branch) and branch-scoped
+        // approvers (supervisor, BOM, branch manager) can't be resolved otherwise.
+        if (requester.getBranch() == null) {
+            throw new BusinessRuleException(
+                    "Your branch has not been configured. Please contact the system administrator "
+                            + "to set up your branch before making a request.");
+        }
+
+        Long requesterBranchId = requester.getBranch().getId();
+        boolean isHeadOfficeUser = requester.getBranch().isHeadOffice();
 
         log.info("Request from user at branch ID: {}, isHeadOfficeUser: {}", requesterBranchId, isHeadOfficeUser);
 
@@ -264,7 +273,7 @@ public class RequestService {
 
         // Get current user and determine branch
         User requester = currentUserService.getCurrentUser();
-        Long requesterBranchId = requester.getBranch() != null ? requester.getBranch().getId() : null;
+//        Long requesterBranchId = requester.getBranch() != null ? requester.getBranch().getId() : null;
         boolean isHeadOfficeUser = requester.getBranch() != null && requester.getBranch().isHeadOffice();
 
         // Enforce business rules for mixed item types
@@ -417,6 +426,8 @@ public class RequestService {
                     .currentUserId(currentUserService.getCurrentUser().getId())
                     .isAdmin(determineIfUserIsAdmin())
                     .currentApproverId(currentApproverId)
+                    .currentUnitId(currentUserService.getCurrentUser().getUnit() != null
+                            ? currentUserService.getCurrentUser().getUnit().getId() : null)
                     .build();
 
             Page<Request> requestPageResult = requestSearchDao.findAllWithFilters(requestPage, requestSearchCriteria);
@@ -894,7 +905,6 @@ public class RequestService {
     /**
      * Adds commodities to a request
      */
-    @Transactional
     private void addCommoditiesToRequest(Request request, List<RequestCommodityDTO> requestCommodities)
             throws NotFoundException {
         try {
@@ -934,7 +944,6 @@ public class RequestService {
     /**
      * Finds the supervisor who should approve the request
      */
-    @Transactional(readOnly = true)
     private User findSupervisorToApproveRequest() throws NotFoundException {
         User requester = currentUserService.getCurrentUser();
 
@@ -1026,7 +1035,6 @@ public class RequestService {
      * Returns a list of user IDs that includes the current user (manager)
      * and all users whose titles report (directly or indirectly) to the manager's title.
      */
-    @Transactional(readOnly = true)
     private List<Long> getManagerAndSubordinateUserIds() {
         User currentUser = currentUserService.getCurrentUser();
         if (currentUser == null || currentUser.getTitle() == null) {

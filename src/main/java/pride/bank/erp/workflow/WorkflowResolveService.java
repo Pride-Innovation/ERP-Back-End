@@ -106,38 +106,34 @@ public class WorkflowResolveService {
                 .approverType(step.getApproverType())
                 .optional(step.isOptional());
 
-        // Skip check (only meaningful when we have a requester)
-        if (requester != null) {
-            Role skipMatch = firstIntersectingRole(step.getSkipIfRequesterRoles(), requester.getEffectiveRoleIds());
-            if (skipMatch != null) {
-                return b.skipped(true)
-                        .skipReason("Requester is a " + skipMatch.getName())
-                        .build();
-            }
-            // Dynamic skip: SUPERVISOR step auto-skips when the officer has no supervisor in their chain
-            if (step.getApproverType() == StepApproverType.SUPERVISOR
-                    && resolveSupervisor(requester) == null) {
-                return b.skipped(true)
-                        .skipReason("Officer has no supervisor in their reporting chain")
-                        .build();
-            }
-        }
-
         if (requester == null) {
             // Labels only: spec says return labels + skip flags, no per-user resolution.
             return b.skipped(false).build();
         }
 
-        // Resolve approver based on type
+        // Role-based skip — requester holds a role this step should bypass.
+        Role skipMatch = firstIntersectingRole(step.getSkipIfRequesterRoles(), requester.getEffectiveRoleIds());
+        if (skipMatch != null) {
+            return b.skipped(true)
+                    .skipReason("Requester is a " + skipMatch.getName())
+                    .build();
+        }
+
+        // Resolve approver + the email the step would actually notify.
         User approver = resolveApprover(step, requester);
-        String approverName = (approver != null) ? buildName(approver) : null;
-        String approverEmail = (approver != null) ? approver.getEmail() : step.getGroupEmail();
-        String fallbackEmail = resolveFallbackEmail(step, requester);
+        String approverEmail = stepRecipientEmail(step, requester, approver);
+
+        // No-recipient skip ("skip and continue") — mirrors the runtime engine so the
+        // preview shows the same path the request will actually take.
+        String skipReason = noRecipientReason(step, requester, approver, approverEmail);
+        if (skipReason != null) {
+            return b.skipped(true).skipReason(skipReason).build();
+        }
 
         return b
-                .approverName(approverName)
+                .approverName((approver != null) ? buildName(approver) : null)
                 .approverEmail(approverEmail)
-                .fallbackEmail(fallbackEmail)
+                .fallbackEmail(resolveFallbackEmail(step, requester))
                 .skipped(false)
                 .build();
     }
@@ -146,6 +142,7 @@ public class WorkflowResolveService {
         User candidate = switch (step.getApproverType()) {
             case DIRECT_SUPERVISOR -> resolveDirectSupervisor(requester);
             case SUPERVISOR        -> resolveSupervisor(requester);
+            case MANAGER           -> resolveManager(requester);
             case DEPT_HEAD -> (requester.getDepartment() != null)
                     ? requester.getDepartment().getHeadOfDepartment() : null;
             case BOM -> (requester.getBranch() != null)
@@ -190,14 +187,82 @@ public class WorkflowResolveService {
     }
 
     private User resolveSupervisor(User requester) {
-        if (requester.getTitle() == null || requester.getTitle().getReportsTo() == null) return null;
-        Title reportsToTitle = requester.getTitle().getReportsTo();
-        if (reportsToTitle.getRole() == null) return null;
-        if (!"SUPERVISOR".equalsIgnoreCase(reportsToTitle.getRole().getName())) return null;
+        return firstHolderInBranch(nearestAncestorTitleByRole(requester, "SUPERVISOR"), requester);
+    }
+
+    private User resolveManager(User requester) {
+        return firstHolderInBranch(nearestAncestorTitleByRole(requester, "MANAGER"), requester);
+    }
+
+    /**
+     * Walks the requester's reporting line (title.reportsTo) upward and returns the nearest
+     * ancestor title whose role matches {@code roleName}, or null. Cycle/depth guarded.
+     */
+    private Title nearestAncestorTitleByRole(User requester, String roleName) {
+        if (requester == null || requester.getTitle() == null) return null;
+        Title current = requester.getTitle().getReportsTo();
+        Set<Long> visited = new HashSet<>();
+        int guard = 0;
+        while (current != null && guard++ < 30) {
+            if (current.getId() != null && !visited.add(current.getId())) break;
+            if (current.getRole() != null && roleName.equalsIgnoreCase(current.getRole().getName())) {
+                return current;
+            }
+            current = current.getReportsTo();
+        }
+        return null;
+    }
+
+    /** First user holding {@code title} in the requester's branch (no leave substitution here). */
+    private User firstHolderInBranch(Title title, User requester) {
+        if (title == null || title.getId() == null) return null;
         Long branchId = (requester.getBranch() != null) ? requester.getBranch().getId() : null;
         if (branchId == null) return null;
-        List<User> candidates = userRepository.findByTitleIdAndBranchId(reportsToTitle.getId(), branchId);
-        return candidates.isEmpty() ? null : candidates.get(0);
+        List<User> holders = userRepository.findByTitleIdAndBranchId(title.getId(), branchId);
+        return holders.isEmpty() ? null : holders.get(0);
+    }
+
+    /** The email a step would notify when no individual approver resolves. */
+    private String stepRecipientEmail(ApprovalStep step, User requester, User approver) {
+        if (approver != null) return approver.getEmail();
+        if (step.getApproverType() == StepApproverType.MANAGER) {
+            return resolveEmailForSource(NotifyGroupSource.REQUESTER_MANAGERS_GROUP, requester);
+        }
+        return step.getGroupEmail();
+    }
+
+    /** A human-readable skip reason if the step has no recipient for this requester, else null. */
+    private String noRecipientReason(ApprovalStep step, User requester, User approver, String approverEmail) {
+        switch (step.getApproverType()) {
+            case MANAGER:
+                if (nearestAncestorTitleByRole(requester, "MANAGER") == null)
+                    return "Officer has no manager tier in their reporting chain";
+                return (approver == null && blankToNull(approverEmail) == null)
+                        ? "No manager resolved and no managers-group email configured" : null;
+            case GROUP_EMAIL:
+                return blankToNull(step.getGroupEmail()) == null ? "No group email configured" : null;
+            case DIRECT_SUPERVISOR: {
+                Title reportsTo = (requester.getTitle() != null) ? requester.getTitle().getReportsTo() : null;
+                if (reportsTo != null && reportsTo.getRole() != null
+                        && "SUPERVISOR".equalsIgnoreCase(reportsTo.getRole().getName()))
+                    return "Immediate report is a Supervisor (handled by the Supervisor step)";
+                return approver == null ? "No direct supervisor found in branch" : null;
+            }
+            case SUPERVISOR:
+                return approver == null ? "Officer has no supervisor in their reporting chain" : null;
+            case DEPT_HEAD:
+                return approver == null ? "No Head of Department assigned" : null;
+            case BOM:
+                return approver == null ? "No Branch Operations Manager assigned" : null;
+            case BRANCH_MANAGER:
+                return approver == null ? "No Branch Manager assigned" : null;
+            case ADMIN:
+                return approver == null ? "Admin user not configured" : null;
+            case SPECIFIC_USER:
+                return approver == null ? "Specific user not found" : null;
+            default:
+                return null;
+        }
     }
 
     private String resolveFallbackEmail(ApprovalStep step, User requester) {

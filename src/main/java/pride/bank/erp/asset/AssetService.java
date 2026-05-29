@@ -585,7 +585,6 @@ public class AssetService {
         assetAssignmentHistoryRepository.save(assetAssignmentHistory);
     }
 
-    @Transactional
     private void addEndDateForPreviousAssignedTo(Long assetId, Long userId) {
         AssetAssignmentHistory record = assetAssignmentHistoryRepository
                 .findByUserIdAndAssetId(userId, assetId).orElse(null);
