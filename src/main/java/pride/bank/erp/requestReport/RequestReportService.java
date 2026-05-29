@@ -11,7 +11,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import pride.bank.erp.acknowledgeIssuanceReceipt.AcknowledgeIssuanceReceiptService;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.issuance.UserBuilder;
 import pride.bank.erp.notification.Email;
@@ -30,6 +29,7 @@ import pride.bank.erp.user.UserService;
 
 import pride.bank.erp.exception.BusinessRuleException;
 import pride.bank.erp.workflowinstance.WorkflowEngineService;
+
 import java.util.List;
 
 @Service
@@ -63,7 +63,7 @@ public class RequestReportService {
 
         User approver = userService.findUser(body.getApproverId());
 
-        // Resolve workflow action — prefer explicit string over legacy statusId lookup.
+        // Resolve workflow action — prefer explicit string to legacy statusId lookup.
         // This avoids failures when auto-generated IDs differ between environments.
         String workflowAction;
         Status status;
