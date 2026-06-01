@@ -57,7 +57,7 @@ public class AssetCategoryFeatureSeeder {
     private static final Map<String, List<AttributeSeed>> CATEGORY_ATTRIBUTES = Map.of(
             "Computers", List.of(
                     new AttributeSeed("warranty_months", "Warranty (months)", AttributeDataType.NUMBER, null,
-                            true, "Vendor-supplied warranty period"),
+                            false, "Vendor-supplied warranty period"),
                     new AttributeSeed("form_factor", "Form Factor", AttributeDataType.SELECT,
                             List.of("Laptop", "Desktop", "Workstation"), false, null),
                     new AttributeSeed("intended_user", "Intended User", AttributeDataType.TEXT, null,

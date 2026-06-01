@@ -20,6 +20,7 @@ import pride.bank.erp.helper.Constants;
 import pride.bank.erp.helper.DeleteResponse;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -120,6 +121,12 @@ public class AssetTypeService {
     /**
      * Replace-semantics: the incoming list fully overwrites the asset type's custom attributes.
      * Order in the payload determines displayOrder (1..n).
+     *
+     * <p>Implemented as a diff/merge against the existing rows (matched by {@code key}) rather than
+     * clear-then-rebuild. The naive {@code collection.clear(); add(new)} flow tripped the unique
+     * constraint on {@code (asset_type_id, key)} because Hibernate flushes the new INSERTs before
+     * the orphan DELETEs — yielding a 409 "Duplicate entry" the moment any attribute kept its key.
+     * Merging in place also preserves the original row ids, which is friendlier to history/audits.</p>
      */
     @Transactional
     public List<AssetTypeCustomAttributeDTO> updateCustomAttributes(Long id, List<AssetTypeCustomAttributeDTO> attributes)
@@ -128,21 +135,35 @@ public class AssetTypeService {
         List<AssetTypeCustomAttributeDTO> safe = attributes == null ? new ArrayList<>() : attributes;
         validateCustomAttributes(safe);
 
-        assetType.getCustomAttributes().clear();
+        // Index existing rows by key so we can update in place rather than re-insert.
+        Map<String, AssetTypeCustomAttribute> existingByKey = new HashMap<>();
+        for (AssetTypeCustomAttribute a : assetType.getCustomAttributes()) {
+            existingByKey.put(a.getKey(), a);
+        }
+
+        Set<String> incomingKeys = new HashSet<>();
         int order = 1;
         for (AssetTypeCustomAttributeDTO dto : safe) {
-            AssetTypeCustomAttribute entity = AssetTypeCustomAttribute.builder()
-                    .assetType(assetType)
-                    .key(dto.getKey().trim())
-                    .label(dto.getLabel().trim())
-                    .dataType(dto.getDataType())
-                    .options(dto.getDataType() == AttributeDataType.SELECT ? dto.getOptions() : null)
-                    .required(dto.isRequired())
-                    .displayOrder(order++)
-                    .helperText(StringUtils.hasText(dto.getHelperText()) ? dto.getHelperText().trim() : null)
-                    .build();
-            assetType.getCustomAttributes().add(entity);
+            String key = dto.getKey().trim();
+            incomingKeys.add(key);
+            AssetTypeCustomAttribute entity = existingByKey.get(key);
+            if (entity == null) {
+                entity = AssetTypeCustomAttribute.builder()
+                        .assetType(assetType)
+                        .key(key)
+                        .build();
+                assetType.getCustomAttributes().add(entity);
+            }
+            entity.setLabel(dto.getLabel().trim());
+            entity.setDataType(dto.getDataType());
+            entity.setOptions(dto.getDataType() == AttributeDataType.SELECT ? dto.getOptions() : null);
+            entity.setRequired(dto.isRequired());
+            entity.setDisplayOrder(order++);
+            entity.setHelperText(StringUtils.hasText(dto.getHelperText()) ? dto.getHelperText().trim() : null);
         }
+
+        // Drop any rows whose key is no longer in the payload — orphanRemoval will DELETE them.
+        assetType.getCustomAttributes().removeIf(a -> !incomingKeys.contains(a.getKey()));
 
         AssetType saved = assetTypeRepository.save(assetType);
         return saved.getCustomAttributes().stream().map(this::toCustomAttributeDTO).toList();

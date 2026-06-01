@@ -119,8 +119,18 @@ public class RequestSearchDao {
             predicates.add(criteriaBuilder.lessThanOrEqualTo(requestRoot.get("createDate"), requestSearchCriteria.getEndDate()));
         }
 
+        // Legacy stationery / non-stationery scope rules. These predate the workflow engine
+        // and were the only way admins/BOMs got visibility into branch requests. Now that the
+        // engine can route any branch request to a specific approver via currentApprover, those
+        // rules wrongly hide assigned requests from the approver (e.g. a BOM listed as the
+        // currentApprover for a branch Computers request — non-stationery — would never see it
+        // because neither side of `requester.branch=HO OR isBranchStationery=true` is true).
+        // Skip both gates when the inbox is explicitly targeting an approver — the engine's
+        // assignment is the authority in that case.
+
         // Ensure that Admin can review non stationery requests of branches
-        if (Objects.nonNull(requestSearchCriteria.getIsBranchNonStationery())) {
+        if (Objects.isNull(requestSearchCriteria.getCurrentApproverId())
+                && Objects.nonNull(requestSearchCriteria.getIsBranchNonStationery())) {
             Expression<Long> branchIdPath = requestRoot.get("requester").get("branch").get("id");
 
             Predicate isHeadOffice = criteriaBuilder.equal(branchIdPath, 1L);
@@ -134,7 +144,8 @@ public class RequestSearchDao {
         }
 
         // Ensure that BOM can review stationery requests of their branches
-        if (Objects.nonNull(requestSearchCriteria.getIsBranchStationery())) {
+        if (Objects.isNull(requestSearchCriteria.getCurrentApproverId())
+                && Objects.nonNull(requestSearchCriteria.getIsBranchStationery())) {
             Expression<Long> branchIdPath = requestRoot.get("requester").get("branch").get("id");
 
             Predicate isHeadOffice = criteriaBuilder.equal(branchIdPath, 1L);

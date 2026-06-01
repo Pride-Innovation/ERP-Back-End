@@ -8,6 +8,7 @@ Managing Director
 package pride.bank.erp.user;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
 import lombok.AllArgsConstructor;
@@ -49,6 +50,12 @@ import java.util.stream.Collectors;
 @Table(name = "users", uniqueConstraints = {@UniqueConstraint(columnNames = "email")})
 @EntityListeners(AuditingEntityListener.class)
 @Audited
+// Hibernate hands ManyToOne associations back as ByteBuddy proxies that carry an internal
+// hibernateLazyInitializer/handler field. Jackson has no serializer for that, so the moment a
+// proxy User gets written (e.g. RequestDTO.currentApprover from /requests) the response 500s.
+// Telling Jackson to skip those two fields makes the entity safe to serialize whether it's a
+// real instance or a proxy.
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class User implements UserDetails {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
