@@ -24,14 +24,19 @@ import pride.bank.erp.user.UserRepository;
 import pride.bank.erp.workflow.ApprovalStep;
 import pride.bank.erp.workflow.ApprovalWorkflow;
 import pride.bank.erp.workflow.ApprovalWorkflowRepository;
+import pride.bank.erp.workflow.ApproverChainResolver;
 import pride.bank.erp.workflow.NotifyGroupSource;
+import pride.bank.erp.workflow.ResolvedApprover;
 import pride.bank.erp.workflow.StepApproverType;
+import pride.bank.erp.workflow.StepType;
 import pride.bank.erp.workflow.WorkflowBranchScope;
 import pride.bank.erp.workflow.WorkflowResolveService;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -64,6 +69,7 @@ public class WorkflowEngineService {
     private final Email emailService;
     private final AppNotificationService notificationService;
     private final WorkflowResolveService workflowResolveService;
+    private final ApproverChainResolver approverChainResolver;
 
     @Value("${application.admin.email}")
     private String adminEmail;
@@ -476,8 +482,16 @@ public class WorkflowEngineService {
     }
 
     private void notifyAndLogStep(RequestWorkflowInstance instance, ApprovalStep step, Request request) {
-        User approver = resolveApprover(step, request);
-        String approverEmail = resolveStepRecipientEmail(step, request, approver);
+        // Ladder-role approval steps resolve via the shared reportsTo chain (an individual holder,
+        // or the managers' group when a manager is unavailable). Everything else keeps the
+        // existing per-step resolution.
+        ResolvedApprover ladderStop = isLadderApprovalStep(step)
+                ? ladderApprovalChain(instance.getWorkflow(), request).get(step.getStepOrder())
+                : null;
+        User approver = (ladderStop != null) ? ladderStop.getApprover() : resolveApprover(step, request);
+        String approverEmail = (ladderStop != null && ladderStop.isGroup())
+                ? ladderStop.getGroupEmail()
+                : resolveStepRecipientEmail(step, request, approver);
         Unit stepUnit = resolveStepUnit(step);
 
         // Create pending log
@@ -715,22 +729,53 @@ public class WorkflowEngineService {
 
     /**
      * Returns true when this step must be skipped for the given request.
-     *
+     * <p>
      * Two independent reasons to skip:
-     *
+     * <p>
      * 1. Role-based skip — the requester themselves holds a role listed in
      *    {@code skipIfRequesterRoles} (e.g. don't make a Branch Manager approve their own
      *    request).
-     *
+     * <p>
      * 2. No-recipient skip ("skip and continue") — the tier this step targets has nobody to
      *    route to for this particular requester, so the request advances to the next step
      *    instead of stalling. This is what lets a single workflow serve every reporting
      *    shape: a missing Supervisor / Manager / HoD / BOM / Branch-Manager tier is simply
      *    bypassed. See {@link #stepHasRecipient}.
      */
-    private boolean shouldSkipStep(ApprovalStep step, Request request) {
+    private boolean shouldSkipStep(ApprovalStep step, Request request, Set<Integer> ladderChainStepOrders) {
+        // Ladder-role approval steps are governed entirely by the resolved chain: a step is
+        // active only when the resolver placed an approver (or group) on it. This is what skips
+        // a tier that is absent from the requester's reporting line, and stops the chain at the
+        // workflow's terminal role.
+        if (isLadderApprovalStep(step)) {
+            return !ladderChainStepOrders.contains(step.getStepOrder());
+        }
         return matchesSkipRole(step, request.getRequester())
                 || !stepHasRecipient(step, request);
+    }
+
+    /** True for a REQUEST_APPROVAL step whose approver is a reporting-line role (resolved via the chain). */
+    private boolean isLadderApprovalStep(ApprovalStep step) {
+        if (step.getStepType() != StepType.REQUEST_APPROVAL) return false;
+        return switch (step.getApproverType()) {
+            case SUPERVISOR, MANAGER, DEPT_HEAD, BOM, BRANCH_MANAGER -> true;
+            default -> false; // DIRECT_SUPERVISOR / GROUP_EMAIL / ADMIN / SPECIFIC_USER / REQUESTER
+        };
+    }
+
+    /**
+     * The resolved approval chain keyed by the source step's order. Each chain stop maps 1:1
+     * onto the workflow's ladder-role approval step that produced it (the no-intersection
+     * fallback stop is carried by the terminal approval step).
+     */
+    private Map<Integer, ResolvedApprover> ladderApprovalChain(ApprovalWorkflow workflow, Request request) {
+        Map<Integer, ResolvedApprover> byOrder = new HashMap<>();
+        for (ResolvedApprover stop : approverChainResolver.resolve(request.getRequester(), workflow)) {
+            if (stop.getSourceStep() != null) {
+                byOrder.put(stop.getSourceStep().getStepOrder(), stop);
+            }
+        }
+        return byOrder;
     }
 
     /** True when the requester's own role is one the step should bypass. */
@@ -789,19 +834,21 @@ public class WorkflowEngineService {
 
     /** Returns the first step (by order) that is not skipped for this request. */
     private ApprovalStep getFirstNonSkippedStep(ApprovalWorkflow workflow, Request request) {
+        Set<Integer> chainOrders = ladderApprovalChain(workflow, request).keySet();
         return workflow.getSteps().stream()
                 .sorted(java.util.Comparator.comparingInt(ApprovalStep::getStepOrder))
-                .filter(step -> !shouldSkipStep(step, request))
+                .filter(step -> !shouldSkipStep(step, request, chainOrders))
                 .findFirst()
                 .orElse(null);
     }
 
     /** Returns the next step after {@code currentOrder} that is not skipped for this request. */
     private ApprovalStep getNextNonSkippedStep(ApprovalWorkflow workflow, int currentOrder, Request request) {
+        Set<Integer> chainOrders = ladderApprovalChain(workflow, request).keySet();
         return workflow.getSteps().stream()
                 .filter(s -> s.getStepOrder() > currentOrder)
                 .sorted(java.util.Comparator.comparingInt(ApprovalStep::getStepOrder))
-                .filter(step -> !shouldSkipStep(step, request))
+                .filter(step -> !shouldSkipStep(step, request, chainOrders))
                 .findFirst()
                 .orElse(null);
     }
