@@ -35,6 +35,7 @@ import pride.bank.erp.requestCommodity.RequestCommodityDTO;
 import pride.bank.erp.requestCommodity.RequestCommodityRepository;
 import pride.bank.erp.requestReport.RequestReport;
 import pride.bank.erp.requestReport.RequestReportDAO;
+import pride.bank.erp.requestReport.RequestReportRepository;
 import pride.bank.erp.role.Role;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
@@ -79,6 +80,7 @@ public class RequestService {
     private final UserBuilder userBuilder;
     private final WorkflowEngineService workflowEngineService;
     private final AssetTypeService assetTypeService;
+    private final RequestReportRepository requestReportRepository;
 
     /**
      * Creates a new request with commodities while enforcing business rules:
@@ -315,6 +317,17 @@ public class RequestService {
         // Restart the workflow engine for resubmitted requests so the approval chain begins fresh
         if (isResubmission) {
             log.info("Request {} is being resubmitted after rejection — restarting workflow", requestId);
+
+            // Record the resubmission in the approval history so the audit trail keeps
+            // both the earlier rejection and the requester's follow-up update. Without
+            // this, restarting the workflow would leave no trace of the user's action.
+            requestReportRepository.save(RequestReport.builder()
+                    .approver(requester)
+                    .request(savedRequest)
+                    .status(status) // requestCreated
+                    .comment("Request updated and resubmitted by the requester.")
+                    .build());
+
             RequestWorkflowInstance resubmitInstance = workflowEngineService.resetAndRestartWorkflow(savedRequest);
             if (resubmitInstance == null) {
                 // No workflow configured — fall back to legacy supervisor routing
