@@ -36,4 +36,7 @@ public class ResolvedApprovalStepDTO {
     private boolean skipped;
     private String skipReason;
     private boolean optional;
+
+    /** Free-text note explaining how this stop resolved (e.g. routed to managers' group, fallback). */
+    private String note;
 }
