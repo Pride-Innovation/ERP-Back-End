@@ -13,7 +13,6 @@ import pride.bank.erp.branch.Branch;
 import pride.bank.erp.branch.BranchRepository;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.role.Role;
-import pride.bank.erp.title.Title;
 import pride.bank.erp.user.User;
 import pride.bank.erp.user.UserRepository;
 
@@ -29,7 +28,8 @@ import java.util.Set;
  * and computes per-step approver / fallback / skip metadata.
  *
  * <p>Used by both the inline request-form preview ("This goes to Jane Doe → …")
- * and the admin "Test workflow" panel.
+ * and the admin "Test workflow" panel. Approval routing is delegated to
+ * {@link ApproverChainResolver} so the preview always matches what the engine will do.
  */
 @Service
 @RequiredArgsConstructor
@@ -41,6 +41,7 @@ public class WorkflowResolveService {
     private final UserRepository userRepository;
     private final BranchRepository branchRepository;
     private final LeaveRepository leaveRepository;
+    private final ApproverChainResolver approverChainResolver;
 
     @Value("${application.admin.email:}")
     private String adminEmail;
@@ -81,207 +82,130 @@ public class WorkflowResolveService {
 
         ApprovalWorkflow chosen = candidates.get(0);
 
-        List<ResolvedApprovalStepDTO> resolved = new ArrayList<>();
-        for (ApprovalStep step : chosen.getSteps()) {
-            resolved.add(resolveStep(step, requester));
-        }
-
         return ResolvedApprovalWorkflowDTO.builder()
                 .workflowId(chosen.getId())
                 .workflowName(chosen.getName())
                 .fulfilmentGroupEmail(category.getOwnerGroupEmail())
-                .resolvedSteps(resolved)
+                .resolvedSteps(buildResolvedSteps(chosen, requester))
                 .build();
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Per-step resolution
+    // Resolved-step assembly
     // ─────────────────────────────────────────────────────────────────────────
 
-    private ResolvedApprovalStepDTO resolveStep(ApprovalStep step, User requester) {
+    /**
+     * Builds the resolved step list: the approval chain comes from {@link ApproverChainResolver}
+     * (active stops + bypassed tiers), followed by the workflow's non-approval steps
+     * (acknowledge / issuance / receipt) resolved as configured.
+     */
+    private List<ResolvedApprovalStepDTO> buildResolvedSteps(ApprovalWorkflow workflow, User requester) {
+        List<ResolvedApprovalStepDTO> out = new ArrayList<>();
+        List<ApprovalStep> steps = workflow.getSteps().stream()
+                .sorted(java.util.Comparator.comparingInt(ApprovalStep::getStepOrder))
+                .toList();
+
+        // No requester → labels only (spec: return labels + types, no per-user resolution).
+        if (requester == null) {
+            int order = 1;
+            for (ApprovalStep step : steps) {
+                out.add(ResolvedApprovalStepDTO.builder()
+                        .stepOrder(order++)
+                        .stepName(step.getStepName())
+                        .stepType(step.getStepType())
+                        .approverType(step.getApproverType())
+                        .optional(step.isOptional())
+                        .skipped(false)
+                        .build());
+            }
+            return out;
+        }
+
+        int order = 1;
+        ApproverChainResolver.Outcome outcome = approverChainResolver.resolveDetailed(requester, workflow);
+        for (ResolvedApprover stop : outcome.getStops()) {
+            out.add(approvalStop(stop, order++));
+        }
+        for (ApproverChainResolver.SkippedTier sk : outcome.getSkipped()) {
+            out.add(skippedTier(sk, order++));
+        }
+        for (ApprovalStep step : steps) {
+            if (step.getStepType() == StepType.REQUEST_APPROVAL) continue;
+            out.add(postApprovalStep(step, requester, order++));
+        }
+        return out;
+    }
+
+    private ResolvedApprovalStepDTO approvalStop(ResolvedApprover stop, int order) {
+        ApprovalStep step = stop.getSourceStep();
         ResolvedApprovalStepDTO.ResolvedApprovalStepDTOBuilder b = ResolvedApprovalStepDTO.builder()
-                .stepOrder(step.getStepOrder())
+                .stepOrder(order)
+                .stepName(step != null ? step.getStepName() : "Approval")
+                .stepType(StepType.REQUEST_APPROVAL)
+                .approverType(step != null ? step.getApproverType() : null)
+                .optional(step != null && step.isOptional())
+                .skipped(false)
+                .note(stop.getNote());
+        if (stop.isGroup()) {
+            b.approverEmail(stop.getGroupEmail());
+        } else if (stop.getApprover() != null) {
+            b.approverName(buildName(stop.getApprover())).approverEmail(stop.getApprover().getEmail());
+        }
+        return b.build();
+    }
+
+    private ResolvedApprovalStepDTO skippedTier(ApproverChainResolver.SkippedTier sk, int order) {
+        return ResolvedApprovalStepDTO.builder()
+                .stepOrder(order)
+                .stepName(sk.getStepName())
+                .stepType(StepType.REQUEST_APPROVAL)
+                .approverType(sk.getApproverType())
+                .skipped(true)
+                .skipReason(sk.getReason())
+                .build();
+    }
+
+    private ResolvedApprovalStepDTO postApprovalStep(ApprovalStep step, User requester, int order) {
+        ResolvedApprovalStepDTO.ResolvedApprovalStepDTOBuilder b = ResolvedApprovalStepDTO.builder()
+                .stepOrder(order)
                 .stepName(step.getStepName())
                 .stepType(step.getStepType())
                 .approverType(step.getApproverType())
-                .optional(step.isOptional());
-
-        if (requester == null) {
-            // Labels only: spec says return labels + skip flags, no per-user resolution.
-            return b.skipped(false).build();
-        }
-
-        // Role-based skip — requester holds a role this step should bypass.
-        Role skipMatch = firstIntersectingRole(step.getSkipIfRequesterRoles(), requester.getEffectiveRoleIds());
-        if (skipMatch != null) {
-            return b.skipped(true)
-                    .skipReason("Requester is a " + skipMatch.getName())
-                    .build();
-        }
-
-        // Resolve approver + the email the step would actually notify.
-        User approver = resolveApprover(step, requester);
-        String approverEmail = stepRecipientEmail(step, requester, approver);
-
-        // No-recipient skip ("skip and continue") — mirrors the runtime engine so the
-        // preview shows the same path the request will actually take.
-        String skipReason = noRecipientReason(step, requester, approver, approverEmail);
-        if (skipReason != null) {
-            return b.skipped(true).skipReason(skipReason).build();
-        }
-
-        return b
-                .approverName((approver != null) ? buildName(approver) : null)
-                .approverEmail(approverEmail)
-                .fallbackEmail(resolveFallbackEmail(step, requester))
+                .optional(step.isOptional())
                 .skipped(false)
-                .build();
-    }
+                .fallbackEmail(resolveCcEmail(step, requester));
 
-    private User resolveApprover(ApprovalStep step, User requester) {
-        User candidate = switch (step.getApproverType()) {
-            case DIRECT_SUPERVISOR -> resolveDirectSupervisor(requester);
-            case SUPERVISOR        -> resolveSupervisor(requester);
-            case MANAGER           -> resolveManager(requester);
-            case DEPT_HEAD -> (requester.getDepartment() != null)
-                    ? requester.getDepartment().getHeadOfDepartment() : null;
-            case BOM -> (requester.getBranch() != null)
-                    ? requester.getBranch().getBranchOperationsManager() : null;
-            case BRANCH_MANAGER -> (requester.getBranch() != null)
-                    ? requester.getBranch().getBranchManager() : null;
-            case ADMIN -> (adminEmail != null && !adminEmail.isBlank())
-                    ? userRepository.findByEmail(adminEmail).orElse(null) : null;
-            case SPECIFIC_USER -> (step.getSpecificUserId() != null)
-                    ? userRepository.findById(step.getSpecificUserId()).orElse(null) : null;
-            case GROUP_EMAIL -> null;
-            case REQUESTER -> requester;
-        };
-        return substituteIfOnLeave(candidate);
-    }
-
-    /**
-     * If the resolved approver is currently on leave and has assigned an acting
-     * user, route to the acting user instead. Otherwise return the candidate
-     * unchanged. Keeps the request flowing while the original approver is away
-     * without losing the audit trail of who actually acted.
-     */
-    private User substituteIfOnLeave(User candidate) {
-        if (candidate == null || candidate.getId() == null) return candidate;
-        Optional<Leave> active = leaveRepository.findActiveLeaveByUser(candidate.getId());
-        if (active.isPresent() && active.get().getActingUser() != null) {
-            return active.get().getActingUser();
-        }
-        return candidate;
-    }
-
-    private User resolveDirectSupervisor(User requester) {
-        if (requester.getTitle() == null || requester.getTitle().getReportsTo() == null) {
-            return null;
-        }
-        Long supervisorTitleId = requester.getTitle().getReportsTo().getId();
-        Long branchId = (requester.getBranch() != null) ? requester.getBranch().getId() : null;
-        if (branchId == null) return null;
-
-        List<User> supervisors = userRepository.findByTitleIdAndBranchId(supervisorTitleId, branchId);
-        return supervisors.isEmpty() ? null : supervisors.get(0);
-    }
-
-    private User resolveSupervisor(User requester) {
-        return firstHolderInBranch(nearestAncestorTitleByRole(requester, "SUPERVISOR"), requester);
-    }
-
-    private User resolveManager(User requester) {
-        return firstHolderInBranch(nearestAncestorTitleByRole(requester, "MANAGER"), requester);
-    }
-
-    /**
-     * Walks the requester's reporting line (title.reportsTo) upward and returns the nearest
-     * ancestor title whose role matches {@code roleName}, or null. Cycle/depth guarded.
-     */
-    private Title nearestAncestorTitleByRole(User requester, String roleName) {
-        if (requester == null || requester.getTitle() == null) return null;
-        Title current = requester.getTitle().getReportsTo();
-        Set<Long> visited = new HashSet<>();
-        int guard = 0;
-        while (current != null && guard++ < 30) {
-            if (current.getId() != null && !visited.add(current.getId())) break;
-            if (current.getRole() != null && roleName.equalsIgnoreCase(current.getRole().getName())) {
-                return current;
-            }
-            current = current.getReportsTo();
-        }
-        return null;
-    }
-
-    /** First user holding {@code title} in the requester's branch (no leave substitution here). */
-    private User firstHolderInBranch(Title title, User requester) {
-        if (title == null || title.getId() == null) return null;
-        Long branchId = (requester.getBranch() != null) ? requester.getBranch().getId() : null;
-        if (branchId == null) return null;
-        List<User> holders = userRepository.findByTitleIdAndBranchId(title.getId(), branchId);
-        return holders.isEmpty() ? null : holders.get(0);
-    }
-
-    /** The email a step would notify when no individual approver resolves. */
-    private String stepRecipientEmail(ApprovalStep step, User requester, User approver) {
-        if (approver != null) return approver.getEmail();
-        if (step.getApproverType() == StepApproverType.MANAGER) {
-            return resolveEmailForSource(NotifyGroupSource.REQUESTER_MANAGERS_GROUP, requester);
-        }
-        return step.getGroupEmail();
-    }
-
-    /** A human-readable skip reason if the step has no recipient for this requester, else null. */
-    private String noRecipientReason(ApprovalStep step, User requester, User approver, String approverEmail) {
         switch (step.getApproverType()) {
-            case MANAGER:
-                if (nearestAncestorTitleByRole(requester, "MANAGER") == null)
-                    return "Officer has no manager tier in their reporting chain";
-                return (approver == null && blankToNull(approverEmail) == null)
-                        ? "No manager resolved and no managers-group email configured" : null;
-            case GROUP_EMAIL:
-                return blankToNull(step.getGroupEmail()) == null ? "No group email configured" : null;
-            case DIRECT_SUPERVISOR: {
-                Title reportsTo = (requester.getTitle() != null) ? requester.getTitle().getReportsTo() : null;
-                if (reportsTo != null && reportsTo.getRole() != null
-                        && "SUPERVISOR".equalsIgnoreCase(reportsTo.getRole().getName()))
-                    return "Immediate report is a Supervisor (handled by the Supervisor step)";
-                return approver == null ? "No direct supervisor found in branch" : null;
+            case GROUP_EMAIL -> b.approverEmail(blankToNull(step.getGroupEmail()));
+            case REQUESTER -> b.approverName(buildName(requester)).approverEmail(requester.getEmail());
+            case ADMIN -> b.approverEmail(blankToNull(adminEmail));
+            case SPECIFIC_USER -> {
+                User u = (step.getSpecificUserId() != null)
+                        ? userRepository.findById(step.getSpecificUserId()).orElse(null) : null;
+                if (u != null) {
+                    b.approverName(buildName(u)).approverEmail(u.getEmail());
+                } else {
+                    b.skipped(true).skipReason("Specific user not found");
+                }
             }
-            case SUPERVISOR:
-                return approver == null ? "Officer has no supervisor in their reporting chain" : null;
-            case DEPT_HEAD:
-                return approver == null ? "No Head of Department assigned" : null;
-            case BOM:
-                return approver == null ? "No Branch Operations Manager assigned" : null;
-            case BRANCH_MANAGER:
-                return approver == null ? "No Branch Manager assigned" : null;
-            case ADMIN:
-                return approver == null ? "Admin user not configured" : null;
-            case SPECIFIC_USER:
-                return approver == null ? "Specific user not found" : null;
-            default:
-                return null;
+            default -> {
+                // Hierarchy approver on a non-chain step (e.g. issuance approval) — resolve one rung.
+                ResolvedApprover one = approverChainResolver.resolveSingleApprover(requester, step.getApproverType());
+                if (one == null) {
+                    b.skipped(true).skipReason("No approver resolved on the reporting line");
+                } else if (one.isGroup()) {
+                    b.approverEmail(one.getGroupEmail()).note(one.getNote());
+                } else {
+                    b.approverName(buildName(one.getApprover())).approverEmail(one.getApprover().getEmail()).note(one.getNote());
+                }
+            }
         }
+        return b.build();
     }
 
-    private String resolveFallbackEmail(ApprovalStep step, User requester) {
-        // 1) If the step explicitly opts into dynamic CC, honour that and stop.
-        String dynamicCc = resolveCcEmail(step, requester);
-        if (dynamicCc != null) {
-            return dynamicCc;
-        }
-        // 2) Implicit fallback for dept-managed approvers (legacy behaviour).
-        boolean deptManaged = step.getApproverType() == StepApproverType.DEPT_HEAD
-                || step.getApproverType() == StepApproverType.DIRECT_SUPERVISOR
-                || step.getApproverType() == StepApproverType.SUPERVISOR;
-        if (deptManaged && requester.getDepartment() != null
-                && requester.getDepartment().getManagersGroupEmail() != null
-                && !requester.getDepartment().getManagersGroupEmail().isBlank()) {
-            return requester.getDepartment().getManagersGroupEmail();
-        }
-        return null;
-    }
+    // ─────────────────────────────────────────────────────────────────────────
+    // CC / completion email resolution (also used by the runtime engine)
+    // ─────────────────────────────────────────────────────────────────────────
 
     /**
      * Resolves the actual CC email for a step at runtime, honouring
@@ -338,13 +262,38 @@ public class WorkflowResolveService {
         }
     }
 
-    private static String blankToNull(String s) {
-        return (s == null || s.isBlank()) ? null : s;
-    }
-
     // ─────────────────────────────────────────────────────────────────────────
     // Helpers
     // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Resolves the requester's immediate supervisor: the holder of {@code title.reportsTo}
+     * in the requester's branch. Used for the {@code REQUESTER_DIRECT_SUPERVISOR} notify target.
+     */
+    private User resolveDirectSupervisor(User requester) {
+        if (requester.getTitle() == null || requester.getTitle().getReportsTo() == null) {
+            return null;
+        }
+        Long supervisorTitleId = requester.getTitle().getReportsTo().getId();
+        Long branchId = (requester.getBranch() != null) ? requester.getBranch().getId() : null;
+        if (branchId == null) return null;
+
+        List<User> supervisors = userRepository.findByTitleIdAndBranchId(supervisorTitleId, branchId);
+        return supervisors.isEmpty() ? null : supervisors.get(0);
+    }
+
+    /**
+     * If the resolved user is currently on leave and has assigned an acting user, route to the
+     * acting user instead; otherwise return the candidate unchanged.
+     */
+    private User substituteIfOnLeave(User candidate) {
+        if (candidate == null || candidate.getId() == null) return candidate;
+        Optional<Leave> active = leaveRepository.findActiveLeaveByUser(candidate.getId());
+        if (active.isPresent() && active.get().getActingUser() != null) {
+            return active.get().getActingUser();
+        }
+        return candidate;
+    }
 
     private Branch resolveBranch(Long branchId, User requester) {
         if (branchId != null) {
@@ -357,19 +306,8 @@ public class WorkflowResolveService {
         return null;
     }
 
-    private Role firstIntersectingRole(Set<Role> roles, Set<Long> roleIds) {
-        if (roles == null || roles.isEmpty() || roleIds == null || roleIds.isEmpty()) {
-            return null;
-        }
-        for (Role role : roles) {
-            if (role != null && role.getId() != null && roleIds.contains(role.getId())) {
-                return role;
-            }
-        }
-        return null;
-    }
-
     private String buildName(User user) {
+        if (user == null) return null;
         StringBuilder sb = new StringBuilder();
         if (user.getFirstName() != null) sb.append(user.getFirstName());
         if (user.getLastName() != null) {
@@ -406,5 +344,9 @@ public class WorkflowResolveService {
             }
         }
         return String.join("/", names);
+    }
+
+    private static String blankToNull(String s) {
+        return (s == null || s.isBlank()) ? null : s;
     }
 }
