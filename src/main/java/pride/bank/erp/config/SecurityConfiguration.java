@@ -67,7 +67,12 @@ public class SecurityConfiguration {
                                         "/swagger-ui.html",
                                         "/v3/api-docs/**",
                                         "/v3/api-docs",
-                                        "/ws/**"  // WebSocket endpoint
+                                        "/ws/**",  // WebSocket endpoint
+                                        // The container ERROR dispatch re-enters the filter chain with no
+                                        // authentication (stateless). Without permitting /error, every
+                                        // controller error (400/500) is masked as a 403 "Full authentication
+                                        // is required" instead of surfacing the real status and message.
+                                        "/error"
                                 )
                                 .permitAll()
                                 // User Routes
