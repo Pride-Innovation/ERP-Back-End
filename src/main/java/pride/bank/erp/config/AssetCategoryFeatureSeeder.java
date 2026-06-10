@@ -53,6 +53,20 @@ public class AssetCategoryFeatureSeeder {
     );
     private static final String DEFAULT_OWNER_EMAIL = "fulfilment-default@bank.example";
 
+    /**
+     * Durable categories whose stocked items should auto-create trackable assets.
+     * Consumables / services (Stationery, Cleaning, Healthcare, Kitchen, etc.) are
+     * intentionally excluded. Admins can override per category in the UI afterwards.
+     */
+    private static final Set<String> ASSET_TRACKING_CATEGORIES = Set.of(
+            "Computers",
+            "Equipment",
+            "Furniture",
+            "Vehicle/Fleet",
+            "Security",
+            "Financial & Banking Equipment"
+    );
+
     /** Category-name → default custom attributes (only seeded when the category currently has none). */
     private static final Map<String, List<AttributeSeed>> CATEGORY_ATTRIBUTES = Map.of(
             "Computers", List.of(
@@ -76,6 +90,7 @@ public class AssetCategoryFeatureSeeder {
         List<AssetType> all = assetTypeRepository.findAll();
         for (AssetType assetType : all) {
             applyOwnerGroupEmail(assetType);
+            applyAssetTracking(assetType);
             applyDefaultAttributes(assetType);
             assetTypeRepository.save(assetType);
         }
@@ -88,6 +103,17 @@ public class AssetCategoryFeatureSeeder {
         }
         String email = CATEGORY_OWNER_EMAILS.getOrDefault(assetType.getName(), DEFAULT_OWNER_EMAIL);
         assetType.setOwnerGroupEmail(email);
+    }
+
+    /**
+     * Backfills {@code tracksAssets} for durable categories. Only ever flips false → true
+     * for known durable categories, so an admin who deliberately disabled tracking is not
+     * clobbered on the next boot.
+     */
+    private void applyAssetTracking(AssetType assetType) {
+        if (!assetType.isTracksAssets() && ASSET_TRACKING_CATEGORIES.contains(assetType.getName())) {
+            assetType.setTracksAssets(true);
+        }
     }
 
     private void applyDefaultAttributes(AssetType assetType) {

@@ -9,7 +9,6 @@ package pride.bank.erp.stock;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Sort;
@@ -37,6 +36,8 @@ import pride.bank.erp.stockCommodity.StockCommodityRepository;
 import pride.bank.erp.store.StoreService;
 import pride.bank.erp.supplier.Supplier;
 import pride.bank.erp.supplier.SupplierService;
+import pride.bank.erp.config.CurrentUserService;
+import pride.bank.erp.user.User;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -60,12 +61,13 @@ public class StockService {
     private final GrnReportRepository grnReportRepository;
     private final GrnCommodityRepository grnCommodityRepository;
     private final Email emailService;
+    private final CurrentUserService currentUserService;
 
-    @Value("${it-team.email.address}")
-    private String itTeamEmailAddress;
-
-    @Value("${admin-team.email.address}")
-    private String adminTeamEmailAddress;
+    // Status codes (stable across re-seeds) — replace brittle magic numeric IDs.
+    private static final String STATUS_REQUIRE_UPDATE  = "requireUpdate";
+    private static final String STATUS_STOCK_PENDING   = "stockPending";
+    private static final String STATUS_STOCK_COMPLETED = "stockCompleted";
+    private static final Long HEAD_OFFICE_BRANCH_ID = 1L;
 
     @Transactional
     public Page<StockDAO> fetchAllStocks(
@@ -79,9 +81,7 @@ public class StockService {
             LocalDateTime startDate,
             LocalDateTime endDate
     ) {
-        try {
-
-            StockPage stockPage = StockPage.builder()
+        StockPage stockPage = StockPage.builder()
                     .pageSize(pageSize)
                     .sortDirection(determineSortDirection(sortDirection))
                     .pageNumber(pageNumber)
@@ -124,9 +124,6 @@ public class StockService {
 
             List<StockDAO> stockDAOS = convertToStockDTOList(stocks.getContent());
             return new PageImpl<>(stockDAOS, stocks.getPageable(), stocks.getTotalElements());
-        } catch (Exception ex) {
-            return null;
-        }
     }
 
     private List<StockDAO> convertToStockDTOList(List<Stock> stocks) {
@@ -177,98 +174,114 @@ public class StockService {
             Long supplierID,
             List<StockCommodityDTO> stockCommoditiesRequest
     ) throws NotFoundException {
-        try {
-            Supplier supplier = supplierService.findSupplier(supplierID);
-            if (supplier == null) {
-                throw new NotFoundException("Supplier with ID " + supplierID + " not found.");
-            }
-
-            Branch headOffice = branchService.findBranch(1L);
-            if (headOffice == null) {
-                throw new NotFoundException("Head office branch not found.");
-            }
-
-            if (stockCommoditiesRequest == null || stockCommoditiesRequest.isEmpty()) {
-                throw new IllegalArgumentException("Commodities list must not be null or empty.");
-            }
-
-            Summation summation = calculateSums(stockCommoditiesRequest);
-
-            Status status;
-            if (summation.getDeliveredCommoditiesSummation() == summation.getOrderedCommoditiesSummation()) {
-                status = statusService.findOneStatus(11L); // Completed
-            } else {
-                status = statusService.findOneStatus(10L); // Pending
-            }
-
-            /* By Default, set the stock to be deleted on Creation
-             * The Stock is not disposed by default
-             */
-            Stock stock = Stock
-                    .builder()
-                    .referenceNumber(request.getReferenceNumber())
-                    .totalCost(request.getTotalCost())
-                    .balanceCost(request.getBalanceCost())
-                    .name(request.getName())
-                    .branch(headOffice)
-                    .lpoNumber(request.getLpoNumber())
-                    .grnNumber(request.getGrnNumber())
-                    .status(status)
-                    .canNotBeDeleted(false)
-                    .disposed(false)
-                    .supplier(supplier)
-                    .build();
-
-            Stock savedStock = stockRepository.save(stock);
-            addCommoditiesToStock(savedStock, stockCommoditiesRequest);
-
-            GrnReport grn = GrnReport.builder()
-                    .name(savedStock.getGrnNumber())
-                    .documentPath(null)
-                    .stock(savedStock)
-                    .build();
-            GrnReport savedGrnReport = grnReportRepository.save(grn);
-
-            for (StockCommodityDTO dto : stockCommoditiesRequest) {
-                Commodity commodity = commodityService.findCommodity(dto.getCommodityId());
-                if (commodity == null) {
-                    throw new NotFoundException("Commodity with ID " + dto.getCommodityId() + " not found.");
-                }
-
-                GrnCommodity grnCommodity = GrnCommodity.builder()
-                        .grnReport(savedGrnReport)
-                        .commodity(commodity)
-                        .deliveredQuantity(dto.getDeliveredQuantity())
-                        .orderedQuantity(dto.getOrderedQuantity())
-                        .costPrice(dto.getCostPrice())
-                        .purchasePrice(dto.getPurchasePrice())
-                        .totalDeliveredQuantity(dto.getDeliveredQuantity())
-                        .totalOrderedQuantity(dto.getOrderedQuantity())
-                        .totalCostPrice(dto.getCostPrice())
-                        .totalPurchasePrice(dto.getPurchasePrice())
-                        .build();
-
-                grnCommodityRepository.save(grnCommodity);
-            }
-
-            createAssetsFromStock(savedStock);
-
-            List<StockCommodity> stockCommodities = stockCommodityRepository.findByStockId(savedStock.getId());
-            List<CommodityWithDetailsDao> commodities = commodityWithDetailsDao(stockCommodities);
-
-            storeService.addCommoditiesToStore(commodities, 1L);
-            savedStock.setCommodities(commodities);
-
-            return savedStock;
-
-        } catch (NotFoundException ex) {
-            throw ex;
-        } catch (IllegalArgumentException ex) {
-            throw new RuntimeException("Invalid input: " + ex.getMessage(), ex);
-        } catch (Exception ex) {
-            log.error(ex.getMessage());
-            throw new RuntimeException("Error creating stock: " + ex.getMessage(), ex);
+        if (stockCommoditiesRequest == null || stockCommoditiesRequest.isEmpty()) {
+            throw new IllegalArgumentException("Commodities list must not be null or empty.");
         }
+        validateQuantities(stockCommoditiesRequest);
+
+        Supplier supplier = supplierService.findSupplier(supplierID);
+        if (supplier == null) {
+            throw new NotFoundException("Supplier with ID " + supplierID + " not found.");
+        }
+
+        // Stock against the stocker's own branch (Admin store) rather than always Head Office.
+        Branch branch = resolveStockBranch();
+
+        Summation summation = calculateSums(stockCommoditiesRequest);
+        Status status = summation.getDeliveredCommoditiesSummation() == summation.getOrderedCommoditiesSummation()
+                ? statusService.findByStatusCode(STATUS_STOCK_COMPLETED)
+                : statusService.findByStatusCode(STATUS_STOCK_PENDING);
+
+        // GRN number is authoritative on the server — never trust a client-supplied value.
+        String grnNumber = generateGrnNumber();
+
+        Stock stock = Stock
+                .builder()
+                .referenceNumber(request.getReferenceNumber())
+                .totalCost(request.getTotalCost())
+                .balanceCost(request.getBalanceCost())
+                .name(request.getName())
+                .branch(branch)
+                .lpoNumber(request.getLpoNumber())
+                .grnNumber(grnNumber)
+                .status(status)
+                .canNotBeDeleted(false)   // becomes true once an asset from this stock is edited
+                .disposed(false)
+                .supplier(supplier)
+                .build();
+
+        Stock savedStock = stockRepository.save(stock);
+        addCommoditiesToStock(savedStock, stockCommoditiesRequest);
+
+        GrnReport savedGrnReport = grnReportRepository.save(
+                GrnReport.builder().name(grnNumber).documentPath(null).stock(savedStock).build()
+        );
+
+        for (StockCommodityDTO dto : stockCommoditiesRequest) {
+            Commodity commodity = commodityService.findCommodity(dto.getCommodityId());
+            if (commodity == null) {
+                throw new NotFoundException("Commodity with ID " + dto.getCommodityId() + " not found.");
+            }
+
+            GrnCommodity grnCommodity = GrnCommodity.builder()
+                    .grnReport(savedGrnReport)
+                    .commodity(commodity)
+                    .deliveredQuantity(dto.getDeliveredQuantity())
+                    .orderedQuantity(dto.getOrderedQuantity())
+                    .costPrice(dto.getCostPrice())
+                    .purchasePrice(dto.getPurchasePrice())
+                    .totalDeliveredQuantity(dto.getDeliveredQuantity())
+                    .totalOrderedQuantity(dto.getOrderedQuantity())
+                    .totalCostPrice(dto.getCostPrice())
+                    .totalPurchasePrice(dto.getPurchasePrice())
+                    .build();
+
+            grnCommodityRepository.save(grnCommodity);
+        }
+
+        createAssetsFromStock(savedStock);
+
+        List<StockCommodity> stockCommodities = stockCommodityRepository.findByStockId(savedStock.getId());
+        List<CommodityWithDetailsDao> commodities = commodityWithDetailsDao(stockCommodities);
+
+        storeService.addCommoditiesToStore(commodities, branch.getId());
+        savedStock.setCommodities(commodities);
+
+        return savedStock;
+    }
+
+    /** Validates that every line has non-negative quantities and delivered never exceeds ordered. */
+    private void validateQuantities(List<StockCommodityDTO> lines) {
+        for (StockCommodityDTO dto : lines) {
+            if (dto.getOrderedQuantity() < 0 || dto.getDeliveredQuantity() < 0) {
+                throw new IllegalArgumentException("Quantities cannot be negative.");
+            }
+            if (dto.getDeliveredQuantity() > dto.getOrderedQuantity()) {
+                throw new IllegalArgumentException(
+                        "Delivered quantity cannot exceed ordered quantity for commodity " + dto.getCommodityId() + ".");
+            }
+        }
+    }
+
+    /** Stock is recorded against the current user's branch; falls back to Head Office. */
+    private Branch resolveStockBranch() throws NotFoundException {
+        try {
+            User current = currentUserService.getCurrentUser();
+            if (current != null && current.getBranch() != null && current.getBranch().getId() != null) {
+                return current.getBranch();
+            }
+        } catch (Exception ignored) {
+            // No authenticated user / branch — fall back to Head Office below.
+        }
+        Branch headOffice = branchService.findBranch(HEAD_OFFICE_BRANCH_ID);
+        if (headOffice == null) {
+            throw new NotFoundException("Head office branch not found.");
+        }
+        return headOffice;
+    }
+
+    private String generateGrnNumber() {
+        return "GRN-" + System.currentTimeMillis();
     }
 
 
@@ -308,8 +321,15 @@ public class StockService {
                     .findFirst()
                     .orElseThrow(() -> new NotFoundException("Commodity not found in stock"));
 
+            if (delivery.getDeliveredQuantity() < 0) {
+                throw new IllegalArgumentException("Delivered quantity cannot be negative.");
+            }
             int previousDelivered = existing.getDeliveredQuantity();
             int newDelivered = previousDelivered + delivery.getDeliveredQuantity();
+            if (newDelivered > existing.getOrderedQuantity()) {
+                throw new IllegalArgumentException(
+                        "Total delivered would exceed ordered quantity for commodity " + delivery.getCommodityId() + ".");
+            }
             existing.setDeliveredQuantity(newDelivered);
 
             if (delivery.getCostPrice() != null) {
@@ -329,11 +349,11 @@ public class StockService {
         }
 
         Summation updatedSummation = calculateSumsFromStock(stockId);
-        if (updatedSummation.getDeliveredCommoditiesSummation() == updatedSummation.getOrderedCommoditiesSummation()) {
-            stock.setStatus(statusService.findOneStatus(11L)); // Stock Completed Status
-        } else {
-            stock.setStatus(statusService.findOneStatus(10L)); // Stock Pending Status
-        }
+        stock.setStatus(
+                updatedSummation.getDeliveredCommoditiesSummation() == updatedSummation.getOrderedCommoditiesSummation()
+                        ? statusService.findByStatusCode(STATUS_STOCK_COMPLETED)
+                        : statusService.findByStatusCode(STATUS_STOCK_PENDING)
+        );
         stockRepository.save(stock);
 
         storeService.addCommoditiesToStore(newlyDelivered, stock.getBranch().getId());
@@ -355,34 +375,26 @@ public class StockService {
 
             int deliveredQty = delivery.getDeliveredQuantity();
             int orderedQty = delivery.getOrderedQuantity();
-            Integer costPrice = delivery.getCostPrice();
-            Integer purchasePrice = delivery.getPurchasePrice();
+            // Prices are optional on a top-up delivery — fall back to the line's current unit prices.
+            int unitCostPrice = delivery.getCostPrice() != null
+                    ? delivery.getCostPrice() : stockCommodity.getCostPrice();
+            int unitPurchasePrice = delivery.getPurchasePrice() != null
+                    ? delivery.getPurchasePrice() : stockCommodity.getPurchasePrice();
 
-            /*
-             * We need to subtract the delivered Qty because the
-             * StockCommodity is already updated with new stock at this time
-             */
-            int prevTotalDelivered = stockCommodity.getDeliveredQuantity() - deliveredQty;
-            int prevTotalPrice = stockCommodity.getCostPrice();
-            int prevTotalPurchasePrice = stockCommodity.getPurchasePrice();
-
-            System.out.printf("Previous total delivered: %s", prevTotalDelivered);
-
-            int totalDelivered = prevTotalDelivered + deliveredQty;
-            Integer totalCostPrice = prevTotalPrice + costPrice;
-            Integer totalPurchasePrice = prevTotalPurchasePrice + purchasePrice;
-
+            // This GRN line records THIS delivery; the "total*" fields snapshot the
+            // cumulative position for the commodity after this delivery (quantities are
+            // additive; unit prices are not summed).
             GrnCommodity grnCommodity = GrnCommodity.builder()
                     .grnReport(savedGrnReport)
                     .commodity(commodity)
                     .deliveredQuantity(deliveredQty)
                     .orderedQuantity(orderedQty)
-                    .costPrice(costPrice)
-                    .purchasePrice(purchasePrice)
-                    .totalPurchasePrice(totalPurchasePrice)
-                    .totalCostPrice(totalCostPrice)
-                    .totalOrderedQuantity(orderedQty)
-                    .totalDeliveredQuantity(totalDelivered)
+                    .costPrice(unitCostPrice)
+                    .purchasePrice(unitPurchasePrice)
+                    .totalDeliveredQuantity(stockCommodity.getDeliveredQuantity())
+                    .totalOrderedQuantity(stockCommodity.getOrderedQuantity())
+                    .totalCostPrice(unitCostPrice)
+                    .totalPurchasePrice(unitPurchasePrice)
                     .build();
             grnCommodityRepository.save(grnCommodity);
         }
@@ -411,6 +423,7 @@ public class StockService {
      *                           stocking
      */
 
+    @Transactional
     public Stock updateStock(
             Long stockID,
             Stock request,
@@ -419,23 +432,84 @@ public class StockService {
             List<StockCommodityDTO> stockCommoditiesRequest
     ) throws NotFoundException {
         Stock stock = findOneStock(stockID);
-        Status status = statusService.findOneStatus(statusID);
-        Supplier supplier = supplierService.findSupplier(supplierID);
+
+        if (stockCommoditiesRequest == null || stockCommoditiesRequest.isEmpty()) {
+            throw new IllegalArgumentException("Commodities list must not be null or empty.");
+        }
+        validateQuantities(stockCommoditiesRequest);
+
+        if (supplierID != null) {
+            Supplier supplier = supplierService.findSupplier(supplierID);
+            if (supplier == null) {
+                throw new NotFoundException("Supplier with ID " + supplierID + " not found.");
+            }
+            stock.setSupplier(supplier);
+        }
+        if (statusID != null) {
+            stock.setStatus(statusService.findOneStatus(statusID));
+        }
 
         stock.setReferenceNumber(request.getReferenceNumber());
         stock.setTotalCost(request.getTotalCost());
         stock.setBalanceCost(request.getBalanceCost());
-        stock.setStatus(status);
-        stock.setSupplier(supplier);
 
         Stock savedStock = stockRepository.save(stock);
-        stockCommodityRepository.deleteByStockId(stockID);
-        addCommoditiesToStock(savedStock, stockCommoditiesRequest);
+
+        // Merge in place instead of delete-and-recreate so registeredNumber / asset
+        // linkage survives a correction.
+        mergeStockCommodities(savedStock, stockCommoditiesRequest);
 
         List<StockCommodity> stockCommodities = stockCommodityRepository.findByStockId(savedStock.getId());
-        List<CommodityWithDetailsDao> commodities = commodityWithDetailsDao(stockCommodities);
-        savedStock.setCommodities(commodities);
+        savedStock.setCommodities(commodityWithDetailsDao(stockCommodities));
         return savedStock;
+    }
+
+    /**
+     * Non-destructive merge of a stock's commodity lines: existing lines are updated in place
+     * (preserving {@code registeredNumber} and asset linkage), new lines are added, and lines no
+     * longer present are removed only when no assets have been registered from them.
+     */
+    private void mergeStockCommodities(Stock stock, List<StockCommodityDTO> requested) throws NotFoundException {
+        List<StockCommodity> existing = stockCommodityRepository.findByStockId(stock.getId());
+        Map<Long, StockCommodity> existingByCommodity = existing.stream()
+                .collect(Collectors.toMap(sc -> sc.getCommodity().getId(), sc -> sc, (a, b) -> a));
+
+        Set<Long> requestedIds = new HashSet<>();
+        for (StockCommodityDTO dto : requested) {
+            requestedIds.add(dto.getCommodityId());
+            StockCommodity sc = existingByCommodity.get(dto.getCommodityId());
+            if (sc != null) {
+                sc.setOrderedQuantity(dto.getOrderedQuantity());
+                sc.setDeliveredQuantity(dto.getDeliveredQuantity());
+                if (dto.getCostPrice() != null) sc.setCostPrice(dto.getCostPrice());
+                if (dto.getPurchasePrice() != null) sc.setPurchasePrice(dto.getPurchasePrice());
+                stockCommodityRepository.save(sc);
+            } else {
+                Commodity commodity = commodityService.findCommodity(dto.getCommodityId());
+                if (commodity == null) {
+                    throw new NotFoundException("Commodity with ID " + dto.getCommodityId() + " not found.");
+                }
+                stockCommodityRepository.save(StockCommodity.builder()
+                        .commodity(commodity)
+                        .orderedQuantity(dto.getOrderedQuantity())
+                        .deliveredQuantity(dto.getDeliveredQuantity())
+                        .costPrice(dto.getCostPrice() != null ? dto.getCostPrice() : 0)
+                        .purchasePrice(dto.getPurchasePrice() != null ? dto.getPurchasePrice() : 0)
+                        .stock(stock)
+                        .build());
+            }
+        }
+
+        for (StockCommodity sc : existing) {
+            if (!requestedIds.contains(sc.getCommodity().getId())) {
+                if (sc.getRegisteredNumber() > 0) {
+                    throw new IllegalArgumentException(
+                            "Cannot remove commodity " + sc.getCommodity().getName()
+                                    + " because assets have already been registered from it.");
+                }
+                stockCommodityRepository.delete(sc);
+            }
+        }
     }
 
     public Stock findOneStock(Long id) throws NotFoundException {
@@ -546,6 +620,8 @@ public class StockService {
     private void createAssetsFromStock(Stock stock) throws NotFoundException {
         List<StockCommodity> stockCommodities = stockCommodityRepository.findByStockId(stock.getId());
 
+        Status requireUpdateStatus = statusService.findByStatusCode(STATUS_REQUIRE_UPDATE);
+
         // Group by asset type so we can fire one consolidated notification per
         // category to the team responsible (via AssetType.ownerGroupEmail).
         // Map of assetType -> { commodityName -> quantity }
@@ -557,18 +633,14 @@ public class StockService {
 
             if (assetType == null) continue;
 
-            String typeName = assetType.getName();
-            // Asset creation is opt-in by category. Stationery and other
-            // consumable types are intentionally skipped.
-            if (!("IT Equipment".equalsIgnoreCase(typeName)
-                    || "Office Equipment".equalsIgnoreCase(typeName)
-                    || "Fleet".equalsIgnoreCase(typeName))) {
+            // Asset creation is opt-in per category via the tracksAssets flag. Consumables
+            // (Stationery, Cleaning, Healthcare, etc.) leave it false and are skipped.
+            if (!assetType.isTracksAssets()) {
                 continue;
             }
 
             int availableQuantity = stockCommodity.getDeliveredQuantity() - stockCommodity.getRegisteredNumber();
             if (availableQuantity <= 0) {
-                System.out.println("No available quantity to register for commodity: " + commodity.getName());
                 continue;
             }
 
@@ -584,7 +656,7 @@ public class StockService {
                         .costOfTheAsset(String.valueOf(stockCommodity.getCostPrice()))
                         .dateReceipt(stock.getCreateDate().toString())
                         .disposed(false)
-                        .assetStatus(statusService.findOneStatus(9L)) // Require Update After Stocking Status ID
+                        .assetStatus(requireUpdateStatus) // "Require Update After Stocking"
                         .build();
 
                 assetRepository.save(asset);
@@ -611,10 +683,12 @@ public class StockService {
             items.forEach((name, qty) ->
                     summary.append("- ").append(qty).append(" ").append(name).append("<br/>"));
 
-            String recipient = (type.getOwnerGroupEmail() != null && !type.getOwnerGroupEmail().isBlank())
-                    ? type.getOwnerGroupEmail()
-                    : legacyFallbackEmail(type.getName());
-            if (recipient == null) continue;
+            String recipient = type.getOwnerGroupEmail();
+            if (recipient == null || recipient.isBlank()) {
+                log.warn("No ownerGroupEmail configured for asset category '{}' — skipping stocking notification",
+                        type.getName());
+                continue;
+            }
 
             String greeting = "Dear " + type.getName() + " Team,";
             String body = buildAdminEmailBody(
@@ -623,14 +697,6 @@ public class StockService {
             );
             notifyIndividual(recipient, stock, greeting, body);
         }
-    }
-
-    /** Legacy mapping kept until every AssetType has its ownerGroupEmail filled in. */
-    private String legacyFallbackEmail(String typeName) {
-        if ("IT Equipment".equalsIgnoreCase(typeName)) return itTeamEmailAddress;
-        if ("Office Equipment".equalsIgnoreCase(typeName)) return adminTeamEmailAddress;
-        if ("Fleet".equalsIgnoreCase(typeName)) return adminTeamEmailAddress;
-        return null;
     }
 
     private Summation calculateSumsFromStock(Long stockId) {

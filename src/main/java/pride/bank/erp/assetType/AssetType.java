@@ -48,6 +48,19 @@ public class AssetType {
     private String ownerGroupEmail;
 
     /**
+     * Whether stocking items of this category should auto-create trackable {@code Asset}
+     * records (durable goods such as Computers, Furniture, Vehicles). Consumables
+     * (Stationery, Cleaning, Healthcare, etc.) leave this {@code false}.
+     *
+     * <p>Replaces the old hardcoded category-name check in {@code StockService} so the
+     * "stocking creates assets and notifies the owning team" behaviour is configurable
+     * per category.
+     */
+    @Column(name = "tracks_assets", columnDefinition = "BIT NOT NULL DEFAULT 0")
+    @Builder.Default
+    private boolean tracksAssets = false;
+
+    /**
      * Per-field visibility configuration.
      * Each key is a form-field name; each value is one of: "required", "optional", "hidden".
      * Stored as a JSON string in a large-text column.

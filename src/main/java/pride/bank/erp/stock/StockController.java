@@ -47,23 +47,18 @@ public class StockController {
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
             LocalDateTime endDate
     ) {
-        try {
-            Page<StockDAO> response = stockService.fetchAllStocks(
-                    pageSize,
-                    sortDirection,
-                    pageNumber,
-                    sortBy,
-                    lpoNumber,
-                    stockStatusId,
-                    disposed,
-                    startDate,
-                    endDate
-            );
-            return new ResponseEntity<>(response, HttpStatus.OK);
-        } catch (Exception ex) {
-            return null;
-        }
-
+        Page<StockDAO> response = stockService.fetchAllStocks(
+                pageSize,
+                sortDirection,
+                pageNumber,
+                sortBy,
+                lpoNumber,
+                stockStatusId,
+                disposed,
+                startDate,
+                endDate
+        );
+        return new ResponseEntity<>(response, HttpStatus.OK);
     }
 
     @PostMapping("/stocks")
@@ -101,7 +96,7 @@ public class StockController {
                 stockDTO.getStockCommoditiesRequest()
         );
 
-        return new ResponseEntity<>(response, HttpStatus.CREATED);
+        return new ResponseEntity<>(response, HttpStatus.OK);
     }
 
     @GetMapping("/stocks/{stockID}")
