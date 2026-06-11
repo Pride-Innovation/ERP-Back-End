@@ -520,7 +520,7 @@ public class AssetService {
 
     public AssetDAO sendAssetToStore(Long assetID) throws NotFoundException {
         Asset asset = findOne(assetID);
-        Status status = statusService.findOneStatus(12L); // Status ID for sending asset to store
+        Status status = statusService.findByStatusCode("sentToStore"); // Asset sent to store
         asset.setAssetStatus(status);
         asset.setAssignedTo(null);
         return buildAssetDao(assetRepository.save(asset));
@@ -529,7 +529,7 @@ public class AssetService {
     public Map<String, Object> bulkInsertAsset(List<BulkAssetDTO> assetList, Long assetTypeID)
             throws NotFoundException {
         Branch defaultBranch = branchService.findBranch(1L); // Default to Head Office
-        Status status = statusService.findOneStatus(9L); // Status for requiring Updating
+        Status status = statusService.findByStatusCode("requireUpdate"); // Requires detail completion
         AssetType assetType = assetTypeService.findOneAssetType(assetTypeID);
 
         Map<String, Object> data = new HashMap<>();

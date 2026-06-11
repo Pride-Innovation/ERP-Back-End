@@ -54,8 +54,13 @@ import static java.lang.String.format;
 public class IssuanceService {
     private static final Logger logger = Logger.getLogger(IssuanceService.class.getName());
     private static final Long HEAD_OFFICE_ID = 1L;
-    /** Status ID of newly-stocked assets that still need their details filled in. */
-    private static final Long STATUS_REQUIRE_UPDATE = 9L;
+    // Status codes (stable across environments/re-seeds — never reference by id).
+    /** Newly-stocked assets that still need their details filled in. */
+    private static final String CODE_REQUIRE_UPDATE = "requireUpdate";
+    /** An asset that has been issued and assigned to its requester. */
+    private static final String CODE_ASSET_ASSIGNED = "assetAssigned";
+    /** A request whose items have been issued (pending issuance approval). */
+    private static final String CODE_ISSUED = "issued";
 
     private final UserService userService;
     private final IssuanceRepository issuanceRepository;
@@ -78,7 +83,7 @@ public class IssuanceService {
     @Transactional
     public IssuanceDAO issueCommodities(IssuanceDTO request) throws NotFoundException {
         User requester = userService.findUser(request.getRequester());
-        Status status = statusService.findOneStatus(5L);
+        Status status = statusService.findByStatusCode(CODE_ISSUED);
         Request requestDetails = requestService.findRequest(request.getRequestId());
         User currentUser = currentUserService.getCurrentUser();
         Long issuerBranchId = currentUser.getBranch().getId();
@@ -390,10 +395,7 @@ public class IssuanceService {
      * @throws NotFoundException If an asset or status is not found
      */
     private void updateAssetAssignedToStatusAndStatus(List<IssueAssetsDTO> assets, User user) throws NotFoundException {
-        Status assignedStatus = statusService.findOneStatus(4L);
-        if (assignedStatus == null) {
-            throw new NotFoundException("Status with ID 4 not found.");
-        }
+        Status assignedStatus = statusService.findByStatusCode(CODE_ASSET_ASSIGNED);
 
         // Block issuance of any asset still flagged "requires update after stocking" —
         // i.e. the responsible team has not yet filled in the engraved number and
@@ -404,8 +406,7 @@ public class IssuanceService {
             Asset asset = assetService.findOne(asst.getId());
             Status currentStatus = asset.getAssetStatus();
             boolean stillNeedsCompletion = currentStatus != null
-                    && currentStatus.getId() != null
-                    && currentStatus.getId().equals(STATUS_REQUIRE_UPDATE);
+                    && CODE_REQUIRE_UPDATE.equals(currentStatus.getStatus());
             boolean missingEngravedNumber = asset.getEngravedNumber() == null
                     || asset.getEngravedNumber().isBlank();
             if (stillNeedsCompletion || (missingEngravedNumber && stillNeedsCompletion)) {
@@ -428,7 +429,8 @@ public class IssuanceService {
             User oldUser = asset.getAssignedTo();
             Status oldStatus = asset.getAssetStatus();
 
-            if (oldUser != null && oldUser.getId().equals(user.getId()) && oldStatus != null && oldStatus.getId() == 4) {
+            if (oldUser != null && oldUser.getId().equals(user.getId())
+                    && oldStatus != null && CODE_ASSET_ASSIGNED.equals(oldStatus.getStatus())) {
                 continue;
             }
 
@@ -453,7 +455,7 @@ public class IssuanceService {
     private void updateRequestStatus(IssuanceDTO request)
             throws NotFoundException {
         Request requestDetails = requestService.findRequest(request.getRequestId());
-        Status status = statusService.findOneStatus(5L); // Get The Request Issued for Approval Status
+        Status status = statusService.findByStatusCode(CODE_ISSUED); // Request issued, pending issuance approval
         requestDetails.setStatus(status);
         requestRepository.save(requestDetails);
         logger.info("Updated status for request ID: " + request.getRequestId());

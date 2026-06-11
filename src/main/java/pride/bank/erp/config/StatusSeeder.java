@@ -18,6 +18,7 @@ public class StatusSeeder {
         ensureStatus("Request Rejected",       "requestRejected", "requestrejected");
         ensureStatus("Request Approved",       "requestApproved", "requestapproved");
         ensureStatus("Issuance Approved",      "issuanceApproved","issuanceapproved");
+        ensureStatus("Available for Issuance", "issuanceAvailable","issuanceavailable");
         ensureStatus("Issued",                 "issued",          "issued");
         ensureStatus("In Maintenance",         "inMaintenance",   "inmaintenance");
         ensureStatus("Receipt Acknowledged",   "receiptAcknowledged", "receiptacknowledged");
