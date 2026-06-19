@@ -11,8 +11,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pride.bank.erp.config.CurrentUserService;
+import pride.bank.erp.exception.BusinessRuleException;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.issuance.UserBuilder;
+import pride.bank.erp.user.User;
 import pride.bank.erp.notification.Email;
 import pride.bank.erp.request.Request;
 import pride.bank.erp.request.RequestDTO;
@@ -37,15 +39,26 @@ public class AcknowledgeRequestReceiptService {
     @Transactional
     public RequestDTO createAcknowledgeRequestReceipt(
             AcknowledgeRequestReceiptDTO acknowledgeRequestReceiptDTO
-    ) throws NotFoundException {
+    ) throws NotFoundException, BusinessRuleException {
 
         Request request = requestService.findRequest(acknowledgeRequestReceiptDTO.getRequestId());
+
+        // Guard: the requester must never acknowledge their own request, even when they
+        // belong to the fulfilling unit (Admin/Infra) and hold ACKNOWLEDGE_REQUEST permission.
+        // Acknowledgement must be performed by a colleague in the routed unit.
+        User currentUser = currentUserService.getCurrentUser();
+        if (currentUser != null
+                && request.getRequester() != null
+                && currentUser.getId().equals(request.getRequester().getId())) {
+            throw new BusinessRuleException(
+                    "You cannot acknowledge your own request. It must be acknowledged by a colleague in your unit.");
+        }
 
         // Persist the audit record first (always, regardless of workflow mode)
         AcknowledgeRequestReceipt acknowledgeRequestReceipt = AcknowledgeRequestReceipt
                 .builder()
                 .request(request)
-                .user(currentUserService.getCurrentUser())
+                .user(currentUser)
                 .comment(acknowledgeRequestReceiptDTO.getComment())
                 .build();
         acknowledgeRequestReceiptRepository.save(acknowledgeRequestReceipt);
@@ -54,7 +67,7 @@ public class AcknowledgeRequestReceiptService {
             // Workflow mode: engine handles status update, next-step notification and emails
             workflowEngineService.processStepAction(
                     request.getId(),
-                    currentUserService.getCurrentUser().getId(),
+                    currentUser.getId(),
                     "ACKNOWLEDGED",
                     acknowledgeRequestReceiptDTO.getComment()
             );

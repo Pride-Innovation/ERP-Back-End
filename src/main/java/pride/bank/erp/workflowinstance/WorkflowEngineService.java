@@ -573,9 +573,23 @@ public class WorkflowEngineService {
      */
     private Unit resolveStepUnit(ApprovalStep step) {
         if (step.getApproverType() != StepApproverType.GROUP_EMAIL) return null;
+        // Preferred: the step references a unit directly (no string matching, no drift/typos).
+        if (step.getUnit() != null) return step.getUnit();
+        // Legacy fallback: resolve by the free-text group email.
         String email = step.getGroupEmail();
         if (email == null || email.isBlank()) return null;
         return unitRepository.findByGroupEmailIgnoreCase(email.trim()).orElse(null);
+    }
+
+    /**
+     * The group address for a step: read live from the selected unit when present (so editing the
+     * unit's email on the Units page flows through automatically), otherwise the legacy free text.
+     */
+    private String stepGroupEmail(ApprovalStep step) {
+        if (step.getUnit() != null && notBlank(step.getUnit().getGroupEmail())) {
+            return step.getUnit().getGroupEmail();
+        }
+        return step.getGroupEmail();
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -801,7 +815,7 @@ public class WorkflowEngineService {
                 if (nearestAncestorTitleByRole(requester, "MANAGER") == null) return false;
                 return resolveApprover(step, request) != null || notBlank(managersGroupEmail(requester));
             case GROUP_EMAIL:
-                return notBlank(step.getGroupEmail());
+                return notBlank(stepGroupEmail(step));
             case DIRECT_SUPERVISOR: {
                 // Legacy semantics: a DIRECT_SUPERVISOR step is owned by a SUPERVISOR step when the
                 // immediate report is itself a supervisor, so bypass it in that case.
@@ -825,7 +839,7 @@ public class WorkflowEngineService {
             // Manager tier exists but no individual resolved → any manager in the group can act.
             return managersGroupEmail(request.getRequester());
         }
-        return step.getGroupEmail();
+        return stepGroupEmail(step);
     }
 
     private boolean notBlank(String s) {

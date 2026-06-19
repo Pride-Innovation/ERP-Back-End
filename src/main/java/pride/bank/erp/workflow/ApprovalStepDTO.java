@@ -20,6 +20,10 @@ public class ApprovalStepDTO {
     private String stepName;
     private StepType stepType;
     private StepApproverType approverType;
+    /** Selected fulfilment unit for a GROUP_EMAIL step (preferred over groupEmail). */
+    private Long unitId;
+    /** Display name of the selected unit (response only). */
+    private String unitName;
     private String groupEmail;
     private Long specificUserId;
     private String specificUserName;

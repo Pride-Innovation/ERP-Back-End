@@ -101,6 +101,7 @@ public class DataInitializer {
     private final BranchRepository branchRepository;
     private final RegionBranchSeeder regionBranchSeeder;
     private final DepartmentSeeder departmentSeeder;
+    private final UnitSeeder unitSeeder;
     private final AssetTypeCommoditySeeder assetTypeCommoditySeeder;
     private final SupplierCommoditySeeder supplierCommoditySeeder;
     private final RoleSeeder roleSeeder;
@@ -142,6 +143,7 @@ public class DataInitializer {
             Role adminRole = initializeAdminRole(permissions);
             regionBranchSeeder.seedRegionsAndBranches();
             departmentSeeder.seedDepartments();
+            unitSeeder.seedUnits();
             Branch headOfficeBranch = initializeBranch();
             Title superAdminTitle = initializeTitle("Super Admin Title", superAdminRole, headOfficeBranch);
             Title adminTitle = initializeTitle("Admin Title", adminRole, headOfficeBranch);

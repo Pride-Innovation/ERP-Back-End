@@ -7,6 +7,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import pride.bank.erp.role.Role;
+import pride.bank.erp.unit.Unit;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -42,7 +43,16 @@ public class ApprovalStep {
     @Column(nullable = false, columnDefinition = "VARCHAR(30) NOT NULL")
     private StepApproverType approverType;
 
-    /** Used when approverType = GROUP_EMAIL */
+    /**
+     * Preferred routing target for a {@code GROUP_EMAIL} step. When set, the step routes to this
+     * unit directly (immune to email typos / later edits) and the notification address is read live
+     * from the unit. Falls back to {@link #groupEmail} for legacy steps with no unit selected.
+     */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "unit_id")
+    private Unit unit;
+
+    /** Legacy free-text group address. Used only when {@link #unit} is null. */
     private String groupEmail;
 
     /** Used when approverType = SPECIFIC_USER */

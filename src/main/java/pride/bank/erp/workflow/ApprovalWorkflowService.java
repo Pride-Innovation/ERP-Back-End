@@ -5,9 +5,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pride.bank.erp.assetType.AssetType;
 import pride.bank.erp.assetType.AssetTypeRepository;
+import pride.bank.erp.exception.BadRequestException;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.role.Role;
 import pride.bank.erp.role.RoleRepository;
+import pride.bank.erp.unit.Unit;
+import pride.bank.erp.unit.UnitRepository;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -23,6 +26,7 @@ public class ApprovalWorkflowService {
     private final ApprovalStepRepository stepRepository;
     private final AssetTypeRepository assetTypeRepository;
     private final RoleRepository roleRepository;
+    private final UnitRepository unitRepository;
 
     @Transactional(readOnly = true)
     public List<ApprovalWorkflowDTO> findAll() {
@@ -119,16 +123,44 @@ public class ApprovalWorkflowService {
         return new HashSet<>(loaded);
     }
 
+    private Unit loadUnit(Long id) {
+        if (id == null) return null;
+        return unitRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException("Unit " + id + " not found"));
+    }
+
+    /**
+     * A GROUP_EMAIL step must resolve to an address: either a selected unit (preferred) or a
+     * legacy free-text group email. Rejecting an empty one at save time prevents a request from
+     * silently stranding at runtime (currentUnit null → nobody's inbox matches).
+     */
+    private void validateGroupStep(ApprovalStepDTO dto, Unit unit) {
+        if (dto.getApproverType() != StepApproverType.GROUP_EMAIL) return;
+        boolean hasGroupEmail = dto.getGroupEmail() != null && !dto.getGroupEmail().isBlank();
+        if (unit == null && !hasGroupEmail) {
+            throw new BadRequestException(
+                    "Step '" + dto.getStepName() + "': a Group Email step must have a unit selected.");
+        }
+        if (unit != null && (unit.getGroupEmail() == null || unit.getGroupEmail().isBlank())) {
+            throw new BadRequestException(
+                    "Step '" + dto.getStepName() + "': the selected unit '" + unit.getName()
+                            + "' has no group email. Set one on the Units page first.");
+        }
+    }
+
     private void addSteps(ApprovalWorkflow workflow, List<ApprovalStepDTO> stepDTOs) {
         if (stepDTOs == null || stepDTOs.isEmpty()) return;
         int order = 1;
         for (ApprovalStepDTO dto : stepDTOs) {
+            Unit unit = loadUnit(dto.getUnitId());
+            validateGroupStep(dto, unit);
             ApprovalStep step = ApprovalStep.builder()
                     .workflow(workflow)
                     .stepOrder(dto.getStepOrder() > 0 ? dto.getStepOrder() : order)
                     .stepName(dto.getStepName())
                     .stepType(dto.getStepType() != null ? dto.getStepType() : StepType.REQUEST_APPROVAL)
                     .approverType(dto.getApproverType())
+                    .unit(unit)
                     .groupEmail(dto.getGroupEmail())
                     .specificUserId(dto.getSpecificUserId())
                     .notifyGroupEmail(dto.getNotifyGroupEmail())
@@ -192,6 +224,8 @@ public class ApprovalWorkflowService {
                 .stepName(s.getStepName())
                 .stepType(s.getStepType())
                 .approverType(s.getApproverType())
+                .unitId(s.getUnit() != null ? s.getUnit().getId() : null)
+                .unitName(s.getUnit() != null ? s.getUnit().getName() : null)
                 .groupEmail(s.getGroupEmail())
                 .specificUserId(s.getSpecificUserId())
                 .notifyGroupEmail(s.getNotifyGroupEmail())

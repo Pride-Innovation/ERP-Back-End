@@ -176,7 +176,14 @@ public class WorkflowResolveService {
                 .fallbackEmail(resolveCcEmail(step, requester));
 
         switch (step.getApproverType()) {
-            case GROUP_EMAIL -> b.approverEmail(blankToNull(step.getGroupEmail()));
+            case GROUP_EMAIL -> {
+                if (step.getUnit() != null) {
+                    b.approverName(step.getUnit().getName())
+                            .approverEmail(blankToNull(step.getUnit().getGroupEmail()));
+                } else {
+                    b.approverEmail(blankToNull(step.getGroupEmail()));
+                }
+            }
             case REQUESTER -> b.approverName(buildName(requester)).approverEmail(requester.getEmail());
             case ADMIN -> b.approverEmail(blankToNull(adminEmail));
             case SPECIFIC_USER -> {
