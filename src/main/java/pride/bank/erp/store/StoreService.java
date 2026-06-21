@@ -20,59 +20,64 @@ import java.util.*;
 @Service
 @RequiredArgsConstructor
 public class StoreService {
+    private final StoreBalanceRepository storeBalanceRepository;
     private final StoreRepository storeRepository;
     private final BranchService branchService;
     private final CurrentUserService currentUserService;
 
     /**
-     * Adds or updates commodities in the store for a specific branch.
+     * Adds or updates commodities in the ADMIN store of a specific branch.
      * <p>
      * For each commodity in the input list:
-     * - If the commodity already exists in the store for the branch, its quantity is increased.
-     * - If the commodity does not exist in the store, a new record is created with the delivered quantity.
+     * - If a balance already exists for the branch, its quantity is increased.
+     * - Otherwise a new balance is created (linked to the branch's ADMIN {@link Store}).
      *
      * @param commodities a list of CommodityWithDetailsDao objects containing commodity and delivery info
      * @param branchID    the ID of the branch where the commodities should be stored
      * @throws NotFoundException if the branch with the given ID does not exist
      */
-
     @Transactional
     public void addCommoditiesToStore(List<CommodityWithDetailsDao> commodities, Long branchID)
             throws NotFoundException {
         Branch branch = branchService.findBranch(branchID);
+        Store adminStore = resolveAdminStore(branch);
 
         for (CommodityWithDetailsDao dao : commodities) {
             Commodity commodity = dao.getCommodity();
 
-            Store store = storeRepository.findByBranchAndCommodity(branch, commodity)
+            StoreBalance balance = storeBalanceRepository.findByBranchAndCommodity(branch, commodity)
                     .orElse(null);
 
-            if (store != null) {
-                store.setQuantity(store.getQuantity() + dao.getDeliveredQuantity());
+            if (balance != null) {
+                balance.setQuantity(balance.getQuantity() + dao.getDeliveredQuantity());
+                if (balance.getStore() == null) {
+                    balance.setStore(adminStore);
+                }
             } else {
-                store = Store.builder()
+                balance = StoreBalance.builder()
                         .branch(branch)
+                        .store(adminStore)
                         .commodity(commodity)
                         .quantity(dao.getDeliveredQuantity())
                         .build();
             }
 
-            storeRepository.save(store);
+            storeBalanceRepository.save(balance);
         }
     }
 
     /**
-     * Fetches all store entries for a given branch, including the commodity and branch details.
+     * Fetches all balances for a given branch, including the commodity and branch details.
      *
      * @param branchId the ID of the branch to fetch store details for
-     * @return list of Store entities with commodity and branch eagerly loaded
-     * @throws NotFoundException if no store entries are found for the branch
+     * @return list of StoreBalance entities with commodity and branch eagerly loaded
+     * @throws NotFoundException if no balances are found for the branch
      */
     @Transactional(readOnly = true)
-    public List<Store> fetchStoreDetailsPerBranch(Long branchId)
+    public List<StoreBalance> fetchStoreDetailsPerBranch(Long branchId)
             throws NotFoundException {
 
-        List<Store> storeList = storeRepository.findAllByBranchIdWithCommodityAndBranch(branchId);
+        List<StoreBalance> storeList = storeBalanceRepository.findAllByBranchIdWithCommodityAndBranch(branchId);
 
         if (storeList.isEmpty()) {
             throw new NotFoundException(
@@ -84,19 +89,18 @@ public class StoreService {
     }
 
     @Transactional
-    public Page<Store> fetchStoreDetailsPerBranchPerAssetType(Long branchId, Long assetTypeId, Pageable pageable) {
-        return storeRepository
+    public Page<StoreBalance> fetchStoreDetailsPerBranchPerAssetType(Long branchId, Long assetTypeId, Pageable pageable) {
+        return storeBalanceRepository
                 .findByBranchIdAndCommodity_AssetTypeId(branchId, assetTypeId, pageable);
     }
 
 
     /**
-     * Reduces the quantity of commodities in the store for a specific branch.
+     * Reduces the quantity of commodities in the ADMIN store of a specific branch.
      * <p>
      * For each commodity in the input list:
-     * - If the commodity exists in the store for the branch and has sufficient quantity,
-     * its quantity is decreased.
-     * - If the commodity does not exist or quantity is insufficient, an exception is thrown.
+     * - If a balance exists for the branch and has sufficient quantity, its quantity is decreased.
+     * - If no balance exists or quantity is insufficient, an exception is thrown.
      *
      * @param commodities a list of CommodityWithDetailsDao objects containing commodity and quantity to reduce
      * @param branchID    the ID of the branch where the commodities should be reduced
@@ -111,28 +115,28 @@ public class StoreService {
         for (CommodityWithDetailsDao dao : commodities) {
             Commodity commodity = dao.getCommodity();
 
-            Store store = storeRepository.findByBranchAndCommodity(branch, commodity)
+            StoreBalance balance = storeBalanceRepository.findByBranchAndCommodity(branch, commodity)
                     .orElseThrow(() -> new NotFoundException(String.format("Commodity %s not found in store for the store", commodity.getName())));
 
-            int currentQuantity = store.getQuantity();
+            int currentQuantity = balance.getQuantity();
             int quantityToReduce = dao.getDeliveredQuantity();
 
             if (currentQuantity < quantityToReduce) {
                 throw new IllegalArgumentException("Insufficient quantity for commodity: " + commodity.getName());
             }
 
-            store.setQuantity(currentQuantity - quantityToReduce);
-            storeRepository.save(store);
+            balance.setQuantity(currentQuantity - quantityToReduce);
+            storeBalanceRepository.save(balance);
         }
     }
 
     public AssetTypeSummaryView findCommoditiesInStockByAssetType() {
-        return storeRepository.findAssetTypeSummary("Stationery");
+        return storeBalanceRepository.findAssetTypeSummary("Stationery");
     }
 
     public Map<String, Object> getCurrentMonthStationeryForBranch() {
         Long branchId = currentUserService.getCurrentUser().getBranch().getId();
-        List<CommoditySummary> summaries = storeRepository.getStationeryCommoditiesByCurrentMonthByBranch(branchId);
+        List<CommoditySummary> summaries = storeBalanceRepository.getStationeryCommoditiesByCurrentMonthByBranch(branchId);
 
         Map<String, Integer> commodities = new HashMap<>();
         for (CommoditySummary summary : summaries) {
@@ -146,5 +150,27 @@ public class StoreService {
         result.put("commodities", commodities);
 
         return result;
+    }
+
+    /** Resolves the ADMIN store for a branch id, loading the branch first. */
+    @Transactional
+    public Store resolveAdminStore(Long branchId) throws NotFoundException {
+        return resolveAdminStore(branchService.findBranch(branchId));
+    }
+
+    /**
+     * Returns the branch's location-level ADMIN {@link Store}, creating it if absent. The store
+     * seeder normally creates these at startup; this guards against a branch added afterwards.
+     */
+    @Transactional
+    public Store resolveAdminStore(Branch branch) {
+        return storeRepository
+                .findByLocation_IdAndStoreTypeAndDepartmentIsNull(branch.getId(), StoreType.ADMIN)
+                .orElseGet(() -> storeRepository.save(Store.builder()
+                        .location(branch)
+                        .storeType(StoreType.ADMIN)
+                        .name(branch.getName() + " Admin Store")
+                        .active(true)
+                        .build()));
     }
 }

@@ -31,9 +31,11 @@ import pride.bank.erp.request.RequestService;
 import pride.bank.erp.role.Role;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
+import pride.bank.erp.inventory.InventoryService;
 import pride.bank.erp.stock.CommodityWithDetailsDao;
 import pride.bank.erp.store.Store;
-import pride.bank.erp.store.StoreRepository;
+import pride.bank.erp.store.StoreBalance;
+import pride.bank.erp.store.StoreBalanceRepository;
 import pride.bank.erp.store.StoreService;
 import pride.bank.erp.user.User;
 import pride.bank.erp.user.UserRepository;
@@ -77,8 +79,9 @@ public class IssuanceService {
     private final Email emailService;
     private final UserRepository userRepository;
     private final UserBuilder userBuilder;
-    private final StoreRepository storeRepository;
+    private final StoreBalanceRepository storeBalanceRepository;
     private final WorkflowEngineService workflowEngineService;
+    private final InventoryService inventoryService;
 
     @Transactional
     public IssuanceDAO issueCommodities(IssuanceDTO request) throws NotFoundException {
@@ -103,7 +106,7 @@ public class IssuanceService {
             // Check if the request contains mixed item types and validate according to business rules
             validateRequestItemTypes(request.getCommodities(), requesterBranchId);
 
-            // CASE 1: Branch issuing to regular users (only stationery allowed)
+            // CASE 1: Branch issuing to its own users (stationery only) — same location, direct issuance.
             if (!Objects.equals(issuerBranchId, HEAD_OFFICE_ID)) {
                 logger.info("Branch issuing items to user - branch ID: " + issuerBranchId);
 
@@ -113,42 +116,26 @@ public class IssuanceService {
                 // Validate that items are in branch store
                 validateCommoditiesInStore(request.getCommodities(), issuerBranchId);
 
-                // Reduce items from branch store
-                reduceCommoditiesFromStore(request.getCommodities(), issuerBranchId);
+                // Direct issuance: debit the branch's ADMIN store through the inventory ledger.
+                debitFromAdminStore(request.getCommodities(), issuerBranchId);
             }
             // CASE 2: Head Office issuing items
             else {
-                logger.info("Head office issuing items - requester is BOM: " +
-                        isBranchOperationManager(requester));
+                boolean crossLocation = !Objects.equals(requesterBranchId, HEAD_OFFICE_ID);
+                logger.info("Head office issuing items - crossLocation: " + crossLocation
+                        + ", requester is BOM: " + isBranchOperationManager(requester));
 
-                // If head office is issuing to a BOM, add to branch stock
-                if (isBranchOperationManager(requester) && !Objects.equals(requesterBranchId, HEAD_OFFICE_ID)) {
-                    logger.info("Processing BOM request for branch: " + requesterBranchId);
+                // Validate availability at head office regardless of destination.
+                validateCommoditiesInStore(request.getCommodities(), HEAD_OFFICE_ID);
 
-                    // First validate items are available at head office
-                    validateCommoditiesInStore(request.getCommodities(), HEAD_OFFICE_ID);
-
-                    // Convert DTOs to the format needed by store service
-                    List<CommodityWithDetailsDao> commoditiesWithDetails =
-                            commodityWithDetailsDao(request.getCommodities());
-
-                    // Add to requester's branch (for BOM)
-                    storeService.addCommoditiesToStore(commoditiesWithDetails, requesterBranchId);
-
-                    // Reduce from head office
-                    storeService.reduceCommoditiesFromStore(commoditiesWithDetails, HEAD_OFFICE_ID);
-                }
-                // Head office issuing directly to users (any type of item)
-                else {
-                    logger.info("Head office issuing directly to user");
-
-                    // Validate items are available at head office
-                    validateCommoditiesInStore(request.getCommodities(), HEAD_OFFICE_ID);
-
-                    // Reduce from head office
-                    List<CommodityWithDetailsDao> commoditiesWithDetails =
-                            commodityWithDetailsDao(request.getCommodities());
-                    storeService.reduceCommoditiesFromStore(commoditiesWithDetails, HEAD_OFFICE_ID);
+                if (crossLocation) {
+                    // Inter-location fulfilment: the Movement created at issuance approval owns the
+                    // HO→destination transfer (debits HO, credits the destination ADMIN store on
+                    // receipt). No eager move here — that would double-count against the movement.
+                    logger.info("Cross-location issuance; stock transfer deferred to fulfilment movement");
+                } else {
+                    // Same location: direct issuance from the HO ADMIN store.
+                    debitFromAdminStore(request.getCommodities(), HEAD_OFFICE_ID);
                 }
             }
         }
@@ -285,43 +272,37 @@ public class IssuanceService {
         for (IssuanceCommodityDTO dto : commodities) {
             Commodity commodity = commodityService.findCommodity(dto.getCommodityId());
 
-            Store store = storeRepository.findByBranchIdAndCommodityId(branchId, commodity.getId())
+            StoreBalance balance = storeBalanceRepository.findByBranchIdAndCommodityId(branchId, commodity.getId())
                     .orElseThrow(() -> new NotFoundException(
                             String.format("Commodity '%s' not found in store for branch ID %d",
                                     commodity.getName(), branchId)));
 
-            if (store.getQuantity() < dto.getQuantity()) {
+            if (balance.getQuantity() < dto.getQuantity()) {
                 throw new NotFoundException(String.format(
                         "Insufficient stock for commodity '%s'. Available: %d, Requested: %d",
-                        commodity.getName(), store.getQuantity(), dto.getQuantity()));
+                        commodity.getName(), balance.getQuantity(), dto.getQuantity()));
             }
         }
         logger.info("All commodities verified as available in branch " + branchId);
     }
 
     /**
-     * Reduces the quantity of commodities in the specified branch store
+     * Direct issuance: debits the commodities from a branch's ADMIN store through the inventory
+     * ledger ({@link InventoryService}), the single authority over balances. Used only for
+     * same-location issuance — cross-location transfers are owned by the fulfilment movement.
      *
-     * @param commodities The commodities to reduce
-     * @param branchId    The branch ID
-     * @throws NotFoundException If a commodity is not found
+     * @param commodities The commodities to debit
+     * @param branchId    The branch whose ADMIN store is debited
+     * @throws NotFoundException If the branch or a commodity is not found
      */
-    private void reduceCommoditiesFromStore(List<IssuanceCommodityDTO> commodities, Long branchId)
+    private void debitFromAdminStore(List<IssuanceCommodityDTO> commodities, Long branchId)
             throws NotFoundException {
-
+        Store adminStore = storeService.resolveAdminStore(branchId);
         for (IssuanceCommodityDTO dto : commodities) {
             Commodity commodity = commodityService.findCommodity(dto.getCommodityId());
-
-            Store store = storeRepository.findByBranchIdAndCommodityId(branchId, commodity.getId())
-                    .orElseThrow(() -> new IllegalStateException(String.format(
-                            "Unexpected error: Store record for commodity '%s' not found during stock reduction.",
-                            commodity.getName())));
-
-            int updatedQuantity = store.getQuantity() - dto.getQuantity();
-            store.setQuantity(updatedQuantity);
-            storeRepository.save(store);
+            inventoryService.debitConsumable(adminStore, commodity, dto.getQuantity());
         }
-        logger.info("Stock quantities reduced in branch " + branchId);
+        logger.info("Stock quantities reduced in branch " + branchId + " ADMIN store");
     }
 
     /**

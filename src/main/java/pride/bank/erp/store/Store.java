@@ -13,10 +13,26 @@ import org.springframework.data.annotation.LastModifiedBy;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import pride.bank.erp.branch.Branch;
-import pride.bank.erp.commodity.Commodity;
+import pride.bank.erp.department.Department;
 
 import java.time.LocalDateTime;
 
+/**
+ * A physical store at a {@link #location} (CLAUDE.md §4). The on-hand quantities held by a store are
+ * recorded as {@link StoreBalance} rows, and stores are the source/destination of {@code Movement}s.
+ *
+ * <p>Identity is {@code (location, storeType, department)}:
+ * <ul>
+ *   <li>Every location has exactly one location-level {@link StoreType#ADMIN} store
+ *       ({@code department == null}).</li>
+ *   <li>Head Office additionally has one {@link StoreType#IT} and one {@link StoreType#DISPOSAL}
+ *       store.</li>
+ *   <li>A non-null {@link #department} models department-level holdings (§12).</li>
+ * </ul>
+ *
+ * <p>Mapped to the {@code store_container} table: the legacy {@code store} table now backs
+ * {@link StoreBalance} (see that class for the rationale under {@code ddl-auto=update}).
+ */
 @Entity
 @Data
 @NoArgsConstructor
@@ -25,25 +41,40 @@ import java.time.LocalDateTime;
 @EntityListeners(AuditingEntityListener.class)
 @Audited
 @Table(
-        name = "store",
-        uniqueConstraints = @UniqueConstraint(columnNames = {"commodity_id", "branch_id"})
+        name = "store_container",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_store_location_type_department",
+                columnNames = {"location_id", "store_type", "department_id"}
+        )
 )
 public class Store {
 
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
     private Long id;
-    private int quantity;
+
+    /** Human-readable label, e.g. "Gulu Branch Admin Store". */
+    private String name;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "store_type", nullable = false, columnDefinition = "VARCHAR(20) NOT NULL DEFAULT 'ADMIN'")
+    @Builder.Default
+    private StoreType storeType = StoreType.ADMIN;
 
     @ManyToOne(fetch = FetchType.EAGER, optional = false)
-    @JoinColumn(name = "commodity_id", nullable = false)
+    @JoinColumn(name = "location_id", nullable = false)
     @NotAudited
-    private Commodity commodity;
+    private Branch location;
 
-    @ManyToOne(fetch = FetchType.EAGER, optional = false)
-    @JoinColumn(name = "branch_id", nullable = false)
+    /** Non-null only for department-level stores (§12); null for a location-level store. */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "department_id")
     @NotAudited
-    private Branch branch;
+    private Department department;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean active = true;
 
     @CreatedDate
     @Column(updatable = false)

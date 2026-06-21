@@ -24,6 +24,7 @@ import pride.bank.erp.workflowinstance.WorkflowEngineService;
 import pride.bank.erp.request.RequestService;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
+import pride.bank.erp.movement.FulfillmentService;
 
 @Service
 @RequiredArgsConstructor
@@ -38,6 +39,7 @@ public class IssuanceApprovalRecordService {
     private final Email emailService;
     private final UserBuilder userBuilder;
     private final WorkflowEngineService workflowEngineService;
+    private final FulfillmentService fulfillmentService;
 
     /**
      * Creates an approval record for an issuance and updates the issuance status to "Approved".
@@ -84,6 +86,10 @@ public class IssuanceApprovalRecordService {
                     request.getRequester().getFirstName()
             );
         }
+
+        // §6 fulfilment decision: same location → direct issuance (already handled); different
+        // locations → record an inter-location movement for tracking. Never blocks the approval.
+        fulfillmentService.handleIssuanceApproval(request, issuance);
 
         // Reload to reflect any status changes made by the engine
         Request response = requestService.findRequest(issuanceApprovalRecordDTO.getRequestId());

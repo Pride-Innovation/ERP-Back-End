@@ -110,6 +110,7 @@ public class DataInitializer {
     private final BranchHeadOfficeSeeder branchHeadOfficeSeeder;
     private final AssetCategoryFeatureSeeder assetCategoryFeatureSeeder;
     private final StatusSeeder statusSeeder;
+    private final StoreSeeder storeSeeder;
 
     @Value("${application.super.admin.email}")
     private String email;
@@ -162,6 +163,9 @@ public class DataInitializer {
             branchHeadOfficeSeeder.seedHeadOfficeFlag();
             assetCategoryFeatureSeeder.seedFeatures();
             statusSeeder.seedStatuses();
+
+            // Phase 1 (Store foundation): typed stores per location + legacy balance backfill.
+            storeSeeder.seedStoresAndMigrateBalances();
         };
     }
 

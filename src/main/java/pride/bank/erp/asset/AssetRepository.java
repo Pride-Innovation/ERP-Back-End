@@ -65,4 +65,9 @@ public interface AssetRepository extends JpaRepository<Asset, Long> {
             @Param("assetTypeId") Long assetTypeId,
             @Param("startDate") LocalDateTime startDate,
             @Param("endDate") LocalDateTime endDate);
+
+    // ── Store-aware visibility (§11-12): serialized assets currently held by a store ──
+    List<Asset> findByCurrentStore_Id(Long storeId);
+
+    List<Asset> findByCurrentStore_StoreType(pride.bank.erp.store.StoreType storeType);
 }

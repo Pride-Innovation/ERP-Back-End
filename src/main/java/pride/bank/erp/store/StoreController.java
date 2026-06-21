@@ -21,21 +21,21 @@ public class StoreController {
     private final StoreService storeService;
 
     @GetMapping("/store/{branchId}")
-    public ResponseEntity<List<Store>> findStoreListByBranch(@PathVariable Long branchId)
+    public ResponseEntity<List<StoreBalance>> findStoreListByBranch(@PathVariable Long branchId)
             throws NotFoundException {
-        List<Store> response = storeService.fetchStoreDetailsPerBranch(branchId);
+        List<StoreBalance> response = storeService.fetchStoreDetailsPerBranch(branchId);
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
 
     @GetMapping("/store")
-    public ResponseEntity<Page<Store>> fetchStoreDetailsPerBranchPerAssetType(
+    public ResponseEntity<Page<StoreBalance>> fetchStoreDetailsPerBranchPerAssetType(
             @RequestParam Long branchId,
             @RequestParam Long assetTypeId,
             @RequestParam(required = false, defaultValue = "10") int pageSize,
             @RequestParam(required = false, defaultValue = "0") int pageNumber
     ) {
         Pageable pageable = PageRequest.of(pageNumber, pageSize);
-        Page<Store> response = storeService.fetchStoreDetailsPerBranchPerAssetType(
+        Page<StoreBalance> response = storeService.fetchStoreDetailsPerBranchPerAssetType(
                 branchId,
                 assetTypeId,
                 pageable

@@ -24,6 +24,7 @@ import pride.bank.erp.branch.Branch;
 import pride.bank.erp.commodity.Commodity;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.stock.Stock;
+import pride.bank.erp.store.Store;
 import pride.bank.erp.supplier.Supplier;
 import pride.bank.erp.user.User;
 
@@ -83,6 +84,15 @@ public class Asset {
     @JoinColumn(name = "branch_id")
     @NotAudited
     private Branch branch;
+
+    /**
+     * The store currently holding this asset when it is not assigned to a user (e.g. an Admin store,
+     * the IT store while under repair, or the Disposal store). Null while assigned to a user.
+     */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "current_store_id")
+    @NotAudited
+    private Store currentStore;
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "status_id")
