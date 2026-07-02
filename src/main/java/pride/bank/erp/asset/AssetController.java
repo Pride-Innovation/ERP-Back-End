@@ -55,7 +55,9 @@ public class AssetController {
 
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
-            LocalDateTime endDate
+            LocalDateTime endDate,
+
+            @RequestParam(required = false, defaultValue = "false") Boolean dueForDisposal
     ) {
         Page<AssetDAO> response = assetService.fetchAllAssets(
                 pageSize,
@@ -73,7 +75,8 @@ public class AssetController {
                 assignedTo,
                 location,
                 startDate,
-                endDate
+                endDate,
+                dueForDisposal
         );
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
