@@ -48,6 +48,20 @@ public class AssetType {
     private String ownerGroupEmail;
 
     /**
+     * Annual straight-line depreciation rate (percent) for assets of this category.
+     * Used to derive each asset's current net book value on read. Null = no depreciation configured.
+     */
+    @Column(name = "depreciation_rate")
+    private Double depreciationRate;
+
+    /**
+     * Useful life in months. An asset is flagged ready for disposal once the time since its
+     * receipt date reaches this many months. Null/0 = never auto-flagged by age.
+     */
+    @Column(name = "useful_life_months")
+    private Integer usefulLifeMonths;
+
+    /**
      * Whether stocking items of this category should auto-create trackable {@code Asset}
      * records (durable goods such as Computers, Furniture, Vehicles). Consumables
      * (Stationery, Cleaning, Healthcare, etc.) leave this {@code false}.
