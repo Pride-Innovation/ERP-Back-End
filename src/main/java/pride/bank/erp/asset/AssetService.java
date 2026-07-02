@@ -10,6 +10,7 @@ package pride.bank.erp.asset;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -67,6 +68,9 @@ public class AssetService {
     private final FileUpload fileUpload;
     private final Email email;
 
+    /** Upper bound on assets scanned in-memory when computing the derived "due for disposal" list. */
+    private static final int DISPOSAL_SCAN_LIMIT = 10_000;
+
     public Page<AssetDAO> fetchAllAssets(
             int pageSize,
             String sortDirection,
@@ -83,7 +87,8 @@ public class AssetService {
             String assignedTo,
             String location,
             LocalDateTime startDate,
-            LocalDateTime endDate
+            LocalDateTime endDate,
+            Boolean dueForDisposal
     ) {
 
         try {
@@ -108,6 +113,27 @@ public class AssetService {
                     .assignedTo(assignedTo)
                     .location(location)
                     .build();
+
+            // "Due for disposal" is a derived state (depends on the receipt date and the category's
+            // useful life), so it can't be expressed as a DB filter. Scan the matching (non-disposed)
+            // assets, compute each one's disposal status, keep the ones that have reached their useful
+            // life, and paginate the result in memory.
+            if (Boolean.TRUE.equals(dueForDisposal)) {
+                AssetPage scanPage = AssetPage.builder()
+                        .pageSize(DISPOSAL_SCAN_LIMIT)
+                        .sortDirection(determineSortDirection(sortDirection))
+                        .pageNumber(0)
+                        .sortBy(sortBy)
+                        .build();
+                Page<Asset> scan = assetSearchDao.findAllWithFilters(scanPage, assetSearchCriteria);
+                List<AssetDAO> ready = mapToDTOList(scan.getContent()).stream()
+                        .filter(dao -> "Ready for disposal".equals(dao.getDisposalStatus()))
+                        .collect(Collectors.toList());
+
+                int from = Math.min(pageNumber * pageSize, ready.size());
+                int to = Math.min(from + pageSize, ready.size());
+                return new PageImpl<>(ready.subList(from, to), PageRequest.of(pageNumber, pageSize), ready.size());
+            }
 
             Page<Asset> assetPageResult = assetSearchDao.findAllWithFilters(assetPage, assetSearchCriteria);
             List<AssetDAO> dtoList = mapToDTOList(assetPageResult.getContent());
@@ -134,7 +160,7 @@ public class AssetService {
                 .assetDepreciationRate(request.getAssetDepreciationRate())
                 .assetStatus(status)
                 .supplier(supplier)
-                .costOfTheAsset(request.getCostOfTheAsset())
+                .costOfTheAsset(stripGroupingCommas(request.getCostOfTheAsset()))
                 .assetName(request.getAssetName())
                 .dateReceipt(request.getDateReceipt())
                 .assetType(assetType)
@@ -150,7 +176,7 @@ public class AssetService {
                 .macAddress(request.getMacAddress())
                 .ram(request.getRam())
                 .netValueB(request.getNetValueB())
-                .purchaseCost(request.getPurchaseCost())
+                .purchaseCost(stripGroupingCommas(request.getPurchaseCost()))
                 .serialNumber(request.getSerialNumber())
                 .unitOfMeasure(request.getUnitOfMeasure())
                 .cpuSpeed(request.getCpuSpeed())
@@ -251,7 +277,7 @@ public class AssetService {
         asset.setAssetDepreciationRate(request.getAssetDepreciationRate());
         asset.setAssetStatus(status);
         asset.setSupplier(supplier);
-        asset.setCostOfTheAsset(request.getCostOfTheAsset());
+        asset.setCostOfTheAsset(stripGroupingCommas(request.getCostOfTheAsset()));
         asset.setAssetName(request.getAssetName());
         asset.setDateReceipt(request.getDateReceipt());
         asset.setAssetType(assetType);
@@ -267,7 +293,7 @@ public class AssetService {
         asset.setMacAddress(request.getMacAddress());
         asset.setRam(request.getRam());
         asset.setNetValueB(request.getNetValueB());
-        asset.setPurchaseCost(request.getPurchaseCost());
+        asset.setPurchaseCost(stripGroupingCommas(request.getPurchaseCost()));
         asset.setSerialNumber(request.getSerialNumber());
         asset.setUnitOfMeasure(request.getUnitOfMeasure());
         asset.setCpuSpeed(request.getCpuSpeed());
@@ -325,19 +351,141 @@ public class AssetService {
         return assets.stream().map(this::buildAssetDao).toList();
     }
 
+    /** Derived depreciation values returned to the client (display-only / read-only on the form). */
+    private record DepreciationValues(String grossValue, String currentNetBookValue,
+                                      String accumulatedDepreciation, String annualDepreciation,
+                                      String monthlyDepreciation, String rate, String disposalStatus) {}
+
+    /**
+     * Derives an asset's depreciation using the <b>reducing-balance</b> method.
+     * Each year the charge is {@code openingNBV * rate}; the monthly figure is that year's charge ÷ 12.
+     * <ul>
+     *   <li>Net Value = gross (purchase) cost basis</li>
+     *   <li>Detail Net Book Value = current depreciated value (prorated by whole months since receipt)</li>
+     *   <li>Accumulated Depreciation = cost − current NBV</li>
+     *   <li>Annual / Monthly Depreciation = the charge at the current value</li>
+     *   <li>Disposal Status = "Ready for disposal" once the asset's age reaches the category's useful life</li>
+     * </ul>
+     * Disposal is purely age-based (useful life in months) and is evaluated independently of the
+     * depreciation figures. Currency values carry thousands separators; the rate carries a percent sign.
+     * When the category has no rate or the asset has no cost basis, stored values are returned unchanged.
+     */
+    private DepreciationValues computeDepreciation(Asset asset) {
+        Double ratePct = (asset.getAssetType() != null) ? asset.getAssetType().getDepreciationRate() : null;
+        Integer usefulLifeMonths = (asset.getAssetType() != null) ? asset.getAssetType().getUsefulLifeMonths() : null;
+        Double cost = parseMoney(asset.getCostOfTheAsset());
+        long elapsedMonths = monthsSinceReceipt(asset.getDateReceipt());
+
+        // Disposal is age-based and independent of the depreciation math: an asset is ready once
+        // it has been held for at least its category's useful life.
+        String disposalStatus = (usefulLifeMonths != null && usefulLifeMonths > 0)
+                ? (elapsedMonths >= usefulLifeMonths ? "Ready for disposal" : "In service")
+                : null;
+
+        if (ratePct == null || cost == null) {
+            return new DepreciationValues(
+                    asset.getNetValueB(),
+                    asset.getDetailNetBookValue(),
+                    null, null, null,
+                    ratePct != null ? formatNumber(ratePct) + "%" : asset.getAssetDepreciationRate(),
+                    disposalStatus);
+        }
+
+        double rate = ratePct / 100.0;
+
+        // Reducing balance: recalc the charge each year on the opening NBV and accrue monthly.
+        double nbv = cost;
+        long remaining = elapsedMonths;
+        while (remaining > 0 && nbv > 0) {
+            double monthly = (nbv * rate) / 12.0;
+            long monthsThisYear = Math.min(12, remaining);
+            nbv -= monthly * monthsThisYear;
+            remaining -= monthsThisYear;
+        }
+
+        double currentNbv = Math.max(0.0, nbv);
+        double accumulated = cost - currentNbv;
+
+        // Forward-looking charge at the current value.
+        double annualNow = currentNbv * rate;
+        double monthlyNow = annualNow / 12.0;
+
+        return new DepreciationValues(
+                formatCurrency(cost),
+                formatCurrency(currentNbv),
+                formatCurrency(accumulated),
+                formatCurrency(annualNow),
+                formatCurrency(monthlyNow),
+                formatNumber(ratePct) + "%",
+                disposalStatus);
+    }
+
+    private Double parseMoney(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return Double.parseDouble(value.replaceAll("[,\\s]", ""));
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /** Whole months between the receipt date and today; 0 when missing/unparseable/future. */
+    private long monthsSinceReceipt(String dateReceipt) {
+        if (dateReceipt == null || dateReceipt.isBlank()) return 0L;
+        java.time.LocalDate date = parseDateFlexible(dateReceipt.trim());
+        if (date == null) return 0L;
+        long months = java.time.temporal.ChronoUnit.MONTHS.between(date, java.time.LocalDate.now());
+        return Math.max(0L, months);
+    }
+
+    private java.time.LocalDate parseDateFlexible(String value) {
+        try { return java.time.LocalDateTime.parse(value).toLocalDate(); } catch (Exception ignored) { }
+        try { return java.time.OffsetDateTime.parse(value).toLocalDate(); } catch (Exception ignored) { }
+        try { return java.time.LocalDate.parse(value); } catch (Exception ignored) { }
+        int t = value.indexOf('T');
+        if (t > 0) {
+            try { return java.time.LocalDate.parse(value.substring(0, t)); } catch (Exception ignored) { }
+        }
+        return null;
+    }
+
+    /** Currency display with thousands separators and 2 decimals, e.g. 1234567.5 → "1,234,567.50". */
+    private String formatCurrency(double value) {
+        return String.format(java.util.Locale.US, "%,.2f", value);
+    }
+
+    /** Formats a stored money string for display (thousands separators); returns it unchanged when not numeric. */
+    private String formatMoneyString(String value) {
+        Double parsed = parseMoney(value);
+        return parsed != null ? formatCurrency(parsed) : value;
+    }
+
+    /** Strips grouping commas/spaces so money is persisted as a clean numeric string (display adds separators). */
+    private String stripGroupingCommas(String value) {
+        return value == null ? null : value.replaceAll("[,\\s]", "");
+    }
+
+    private String formatNumber(double value) {
+        if (value == Math.floor(value) && !Double.isInfinite(value)) {
+            return String.valueOf((long) value);
+        }
+        return java.math.BigDecimal.valueOf(value).setScale(2, java.math.RoundingMode.HALF_UP).toPlainString();
+    }
+
     public AssetDAO buildAssetDao(Asset asset) {
+        DepreciationValues dep = computeDepreciation(asset);
         return AssetDAO.builder()
                 .id(asset.getId())
                 .assetName(asset.getAssetName())
                 .hostname(asset.getHostname())
-                .detailNetBookValue(asset.getDetailNetBookValue())
+                .detailNetBookValue(dep.currentNetBookValue())
                 .engravedNumber(asset.getEngravedNumber())
                 .dateReceipt(asset.getDateReceipt())
                 .make(asset.getMake())
                 .unitOfMeasure(asset.getUnitOfMeasure())
-                .purchaseCost(asset.getPurchaseCost())
-                .costOfTheAsset(asset.getCostOfTheAsset())
-                .netValueB(asset.getNetValueB())
+                .purchaseCost(formatMoneyString(asset.getPurchaseCost()))
+                .costOfTheAsset(formatMoneyString(asset.getCostOfTheAsset()))
+                .netValueB(dep.grossValue())
                 .model(asset.getModel())
                 .serialNumber(asset.getSerialNumber())
                 .ram(asset.getRam())
@@ -346,7 +494,11 @@ public class AssetService {
                 .macAddress(asset.getMacAddress())
                 .ipAddress(asset.getIpAddress())
                 .interfaceType(asset.getInterfaceType())
-                .assetDepreciationRate(asset.getAssetDepreciationRate())
+                .assetDepreciationRate(dep.rate())
+                .accumulatedDepreciation(dep.accumulatedDepreciation())
+                .annualDepreciation(dep.annualDepreciation())
+                .monthlyDepreciation(dep.monthlyDepreciation())
+                .disposalStatus(dep.disposalStatus())
                 .description(asset.getDescription())
                 .image(asset.getImage())
                 .lastRepairedBy(asset.getLastRepairedBy())
