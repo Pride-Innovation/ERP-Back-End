@@ -12,6 +12,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.stereotype.Component;
 import pride.bank.erp.config.JwtService;
+import pride.bank.erp.user.User;
 
 @Component
 @RequiredArgsConstructor
@@ -34,9 +35,16 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
                     if (userEmail != null) {
                         UserDetails userDetails = userDetailsService.loadUserByUsername(userEmail);
                         if (jwtService.isTokenValid(jwt, userDetails)) {
+                            // The principal NAME must equal the value used on the send side
+                            // (convertAndSendToUser(recipient.getId(), ...)) for Spring's user
+                            // destinations to deliver. Our app pushes by numeric user id, so the
+                            // principal name must be the id — not the email (the UserDetails username).
+                            String principalName = (userDetails instanceof User appUser)
+                                    ? String.valueOf(appUser.getId())
+                                    : userEmail;
                             UsernamePasswordAuthenticationToken auth =
                                     new UsernamePasswordAuthenticationToken(
-                                            userDetails, null, userDetails.getAuthorities());
+                                            principalName, null, userDetails.getAuthorities());
                             accessor.setUser(auth);
                         }
                     }

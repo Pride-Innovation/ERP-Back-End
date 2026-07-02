@@ -397,6 +397,26 @@ public class WorkflowEngineService {
         } else {
             instance.setCurrentStepOrder(nextStep.getStepOrder());
             instanceRepository.save(instance);
+
+            // Keep the requester informed when their request is approved/recommended and moves
+            // forward (CLAUDE.md: notify on approvals as well as rejections). Only for approval
+            // stages, and never ping the requester about their own action.
+            User requester = request.getRequester();
+            boolean actorIsRequester = actor != null && requester != null
+                    && actor.getId() != null && actor.getId().equals(requester.getId());
+            if (currentStep.getStepType() == StepType.REQUEST_APPROVAL
+                    && requester != null && !actorIsRequester) {
+                notificationService.createAndPush(
+                        requester,
+                        "Request Approved",
+                        "Your request \"" + request.getName() + "\" was approved at \""
+                                + currentStep.getStepName() + "\" and moved to \"" + nextStep.getStepName() + "\".",
+                        "STEP_APPROVED",
+                        request.getId(),
+                        frontEndUrl + "/assets-mgt/asset-request/view?id=" + request.getId()
+                );
+            }
+
             notifyAndLogStep(instance, nextStep, request);
         }
     }
