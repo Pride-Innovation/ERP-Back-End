@@ -26,6 +26,10 @@ public class AssetTypeDTO {
     private String description;
     private String shortCode;
     private String ownerGroupEmail;
+    /** Annual reducing-balance depreciation rate (percent) for this category. */
+    private Double depreciationRate;
+    /** Useful life in months; an asset is flagged for disposal once its age reaches this. */
+    private Integer usefulLifeMonths;
     private Map<String, String> fieldConfig;
 
     @Builder.Default
