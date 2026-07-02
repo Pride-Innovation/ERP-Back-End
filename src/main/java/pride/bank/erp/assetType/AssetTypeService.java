@@ -62,6 +62,8 @@ public class AssetTypeService {
                 .description(request.getDescription())
                 .shortCode(StringUtils.hasText(request.getShortCode()) ? request.getShortCode().trim().toUpperCase() : null)
                 .ownerGroupEmail(normaliseEmail(request.getOwnerGroupEmail()))
+                .depreciationRate(request.getDepreciationRate())
+                .usefulLifeMonths(request.getUsefulLifeMonths())
                 .fieldConfig(request.getFieldConfig())
                 .build();
         return toDTO(assetTypeRepository.save(assetType));
@@ -96,6 +98,8 @@ public class AssetTypeService {
         assetType.setDescription(request.getDescription());
         assetType.setShortCode(StringUtils.hasText(request.getShortCode()) ? request.getShortCode().trim().toUpperCase() : null);
         assetType.setOwnerGroupEmail(normaliseEmail(request.getOwnerGroupEmail()));
+        assetType.setDepreciationRate(request.getDepreciationRate());
+        assetType.setUsefulLifeMonths(request.getUsefulLifeMonths());
         return toDTO(assetTypeRepository.save(assetType));
     }
 
@@ -241,6 +245,8 @@ public class AssetTypeService {
                 .description(entity.getDescription())
                 .shortCode(entity.getShortCode())
                 .ownerGroupEmail(entity.getOwnerGroupEmail())
+                .depreciationRate(entity.getDepreciationRate())
+                .usefulLifeMonths(entity.getUsefulLifeMonths())
                 .fieldConfig(entity.getFieldConfig())
                 .customAttributes(attrs)
                 .build();
