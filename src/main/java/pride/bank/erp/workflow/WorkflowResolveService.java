@@ -175,6 +175,12 @@ public class WorkflowResolveService {
                 .skipped(false)
                 .fallbackEmail(resolveCcEmail(step, requester));
 
+        // Issuer-subject steps resolve against whoever issues the items, which isn't known when
+        // previewing a request — surface that rather than resolving against the requester.
+        if (step.getApproverSubject() == ApproverSubject.ISSUER) {
+            return b.note("Resolves against the issuer's reporting line when the request is issued.").build();
+        }
+
         switch (step.getApproverType()) {
             case GROUP_EMAIL -> {
                 if (step.getUnit() != null) {
