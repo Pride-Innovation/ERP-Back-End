@@ -44,6 +44,15 @@ public class ApprovalStep {
     private StepApproverType approverType;
 
     /**
+     * Whose reporting line a role-based approver type climbs — the requester (default) or the
+     * issuer of the items. Lets an issuance-approval step route to the issuer's manager.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, columnDefinition = "VARCHAR(20) NOT NULL DEFAULT 'REQUESTER'")
+    @Builder.Default
+    private ApproverSubject approverSubject = ApproverSubject.REQUESTER;
+
+    /**
      * Preferred routing target for a {@code GROUP_EMAIL} step. When set, the step routes to this
      * unit directly (immune to email typos / later edits) and the notification address is read live
      * from the unit. Falls back to {@link #groupEmail} for legacy steps with no unit selected.
