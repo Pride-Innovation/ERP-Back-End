@@ -12,6 +12,8 @@ import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -73,6 +75,22 @@ public class AssetType {
     @Column(name = "tracks_assets", columnDefinition = "BIT NOT NULL DEFAULT 0")
     @Builder.Default
     private boolean tracksAssets = false;
+
+    /**
+     * Whether faulty assets of this category can be repaired at all. When {@code false}, a repair
+     * transfer short-circuits straight to the Disposal store instead of a workshop/consultant.
+     */
+    @Column(name = "repairable", columnDefinition = "BIT NOT NULL DEFAULT 1")
+    @Builder.Default
+    private boolean repairable = true;
+
+    /**
+     * Default routing for a faulty asset of this category (IT / ADMIN / EXTERNAL). Overridable at
+     * transfer time; null falls back to {@code IT}. Ignored when {@link #repairable} is false.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "repair_destination", length = 20)
+    private RepairDestination repairDestination;
 
     /**
      * Per-field visibility configuration.

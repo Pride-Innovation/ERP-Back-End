@@ -5,8 +5,10 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
 
@@ -19,10 +21,63 @@ import java.util.Map;
 public class MovementController {
 
     private final MovementService movementService;
+    private final MovementApprovalService movementApprovalService;
+    private final MovementApprovalRecordRepository movementApprovalRecordRepository;
+    private final MovementRepository movementRepository;
 
     @PostMapping("/movements")
     public ResponseEntity<Movement> createMovement(@RequestBody MovementDTO dto) throws NotFoundException {
         return new ResponseEntity<>(movementService.createMovement(dto), HttpStatus.CREATED);
+    }
+
+    /** Approve the current tier of a standalone movement's approval ladder. */
+    @PostMapping("/movements/{movementId}/approve")
+    public ResponseEntity<Movement> approveMovement(
+            @PathVariable Long movementId,
+            @RequestBody(required = false) Map<String, String> body
+    ) throws NotFoundException {
+        String comment = (body != null) ? body.get("comment") : null;
+        return new ResponseEntity<>(movementApprovalService.approve(movementId, comment), HttpStatus.OK);
+    }
+
+    /** Reject a standalone movement pending approval — cancels it and notifies the initiator. */
+    @PostMapping("/movements/{movementId}/reject")
+    public ResponseEntity<Movement> rejectMovement(
+            @PathVariable Long movementId,
+            @RequestBody(required = false) Map<String, String> body
+    ) throws NotFoundException {
+        String comment = (body != null) ? body.get("comment") : null;
+        return new ResponseEntity<>(movementApprovalService.reject(movementId, comment), HttpStatus.OK);
+    }
+
+    /** The current user's (or a given user's) movement-approval inbox: movements in DRAFT assigned to them. */
+    @GetMapping("/movements/pending-approval/{approverId}")
+    public ResponseEntity<Page<Movement>> pendingApprovals(
+            @PathVariable Long approverId,
+            @RequestParam(required = false, defaultValue = "10") int pageSize,
+            @RequestParam(required = false, defaultValue = "0") int pageNumber
+    ) {
+        Pageable pageable = PageRequest.of(pageNumber, pageSize);
+        return new ResponseEntity<>(
+                movementRepository.findByCurrentApprover_IdAndStatus(approverId, MovementStatus.DRAFT, pageable),
+                HttpStatus.OK);
+    }
+
+    /** Attach a delivery/release document (e.g. signed HO release note) to a movement. */
+    @PostMapping(value = "/movements/{movementId}/documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Movement> attachDocument(
+            @PathVariable Long movementId,
+            @RequestParam("file") MultipartFile file
+    ) throws NotFoundException {
+        return new ResponseEntity<>(movementService.attachDocument(movementId, file), HttpStatus.OK);
+    }
+
+    /** Movement approval audit trail (pending / approved / rejected per tier). */
+    @GetMapping("/movements/{movementId}/approvals")
+    public ResponseEntity<List<MovementApprovalRecord>> approvalTrail(@PathVariable Long movementId) {
+        return new ResponseEntity<>(
+                movementApprovalRecordRepository.findByMovement_IdOrderByCreateDateAsc(movementId),
+                HttpStatus.OK);
     }
 
     @GetMapping("/movements/{movementId}")

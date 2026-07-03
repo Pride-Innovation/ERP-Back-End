@@ -64,6 +64,8 @@ public class AssetTypeService {
                 .ownerGroupEmail(normaliseEmail(request.getOwnerGroupEmail()))
                 .depreciationRate(request.getDepreciationRate())
                 .usefulLifeMonths(request.getUsefulLifeMonths())
+                .repairable(request.getRepairable() == null || request.getRepairable())
+                .repairDestination(request.getRepairDestination())
                 .fieldConfig(request.getFieldConfig())
                 .build();
         return toDTO(assetTypeRepository.save(assetType));
@@ -100,6 +102,10 @@ public class AssetTypeService {
         assetType.setOwnerGroupEmail(normaliseEmail(request.getOwnerGroupEmail()));
         assetType.setDepreciationRate(request.getDepreciationRate());
         assetType.setUsefulLifeMonths(request.getUsefulLifeMonths());
+        if (request.getRepairable() != null) {
+            assetType.setRepairable(request.getRepairable());
+        }
+        assetType.setRepairDestination(request.getRepairDestination());
         return toDTO(assetTypeRepository.save(assetType));
     }
 
@@ -247,6 +253,8 @@ public class AssetTypeService {
                 .ownerGroupEmail(entity.getOwnerGroupEmail())
                 .depreciationRate(entity.getDepreciationRate())
                 .usefulLifeMonths(entity.getUsefulLifeMonths())
+                .repairable(entity.isRepairable())
+                .repairDestination(entity.getRepairDestination())
                 .fieldConfig(entity.getFieldConfig())
                 .customAttributes(attrs)
                 .build();

@@ -80,4 +80,9 @@ public interface StoreBalanceRepository extends JpaRepository<StoreBalance, Long
 
     /** Low-stock monitoring: balances at or below a threshold (excludes empty by default at callsite). */
     List<StoreBalance> findByQuantityLessThanEqual(int threshold);
+
+    /** Low-stock by each balance's own configured reorder threshold. */
+    @org.springframework.data.jpa.repository.Query(
+            "SELECT b FROM StoreBalance b WHERE b.minLevel > 0 AND b.quantity <= b.minLevel")
+    List<StoreBalance> findLowStock();
 }

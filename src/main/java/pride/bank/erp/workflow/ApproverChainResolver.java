@@ -204,6 +204,47 @@ public class ApproverChainResolver {
         return null;
     }
 
+    /**
+     * Resolves the full approval ladder for a standalone <b>movement</b> — every reporting tier
+     * above {@code initiator} (Supervisor → Manager → HoD at Head Office; Supervisor → BOM →
+     * Branch Manager at a branch), nearest holder per role, capped at the branch ceiling.
+     *
+     * <p>Unlike {@link #resolve}, this has no configurable workflow: the whole reporting ladder is
+     * the chain, because movement approval is a fixed rule (CLAUDE.md — approvals like a request,
+     * anchored on the initiator). Absent tiers are skipped; on-leave holders route to their acting
+     * user. Returns an empty list when the initiator has no branch/title or nobody sits above them.
+     */
+    public List<ResolvedApprover> resolveInitiatorChain(User initiator) {
+        List<ResolvedApprover> chain = new ArrayList<>();
+        if (initiator == null || initiator.getBranch() == null || initiator.getBranch().getId() == null) {
+            return chain;
+        }
+        Long branchId = initiator.getBranch().getId();
+        String ceilingRole = ceilingRole(initiator);
+        Set<String> handled = new HashSet<>();
+        for (Title rung : ladder(initiator)) {
+            String roleName = roleName(rung);
+            if (roleName == null) continue;
+            String key = roleName.toUpperCase();
+            if (isLadderRole(key) && !handled.contains(key)) {
+                handled.add(key);
+                User eff = effectiveApprover(holderInBranch(rung, branchId));
+                if (eff != null && !sameUser(eff, initiator)) {
+                    chain.add(ResolvedApprover.builder()
+                            .roleName(roleName).approver(eff)
+                            .note("Resolved from the initiator's reporting line").build());
+                }
+            }
+            if (roleName.equalsIgnoreCase(ceilingRole)) break;
+        }
+        return chain;
+    }
+
+    private boolean isLadderRole(String key) {
+        return ROLE_SUPERVISOR.equals(key) || ROLE_MANAGER.equals(key) || ROLE_DEPT_HEAD.equals(key)
+                || ROLE_BOM.equals(key) || ROLE_BRANCH_MANAGER.equals(key);
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Per-rung resolution
     // ─────────────────────────────────────────────────────────────────────────

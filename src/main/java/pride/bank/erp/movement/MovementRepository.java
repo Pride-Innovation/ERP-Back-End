@@ -19,4 +19,7 @@ public interface MovementRepository extends JpaRepository<Movement, Long> {
     Page<Movement> findBySourceStore_Location_Id(Long locationId, Pageable pageable);
 
     Page<Movement> findByDestStore_Location_Id(Long locationId, Pageable pageable);
+
+    /** A user's movement-approval inbox: movements in DRAFT currently assigned to them. */
+    Page<Movement> findByCurrentApprover_IdAndStatus(Long approverId, MovementStatus status, Pageable pageable);
 }

@@ -52,10 +52,23 @@ public class InventoryReportService {
         return storeBalanceRepository.findByStore_StoreType(storeType).stream().map(this::toBalanceView).toList();
     }
 
-    /** Low-stock monitoring (§11): balances at or below {@code threshold}. */
+    /**
+     * Low-stock monitoring (§11): every balance whose on-hand is at or below its own configured
+     * reorder threshold ({@code minLevel > 0 && quantity <= minLevel}). Per-commodity thresholds
+     * replace the old single global cut-off.
+     */
     @Transactional(readOnly = true)
-    public List<StoreBalanceView> lowStock(int threshold) {
-        return storeBalanceRepository.findByQuantityLessThanEqual(threshold).stream().map(this::toBalanceView).toList();
+    public List<StoreBalanceView> lowStock() {
+        return storeBalanceRepository.findLowStock().stream().map(this::toBalanceView).toList();
+    }
+
+    /** Sets a balance's reorder threshold (0 clears it) and returns the updated view. */
+    @Transactional
+    public StoreBalanceView setMinLevel(Long balanceId, int minLevel) {
+        StoreBalance balance = storeBalanceRepository.findById(balanceId)
+                .orElseThrow(() -> new IllegalArgumentException("Store balance " + balanceId + " not found"));
+        balance.setMinLevel(Math.max(0, minLevel));
+        return toBalanceView(storeBalanceRepository.save(balance));
     }
 
     /** The stores directory, optionally filtered by location, store type or department. */
@@ -106,6 +119,8 @@ public class InventoryReportService {
                 .assetTypeName(b.getCommodity() != null && b.getCommodity().getAssetType() != null
                         ? b.getCommodity().getAssetType().getName() : null)
                 .quantity(b.getQuantity())
+                .minLevel(b.getMinLevel())
+                .lowStock(b.getMinLevel() > 0 && b.getQuantity() <= b.getMinLevel())
                 .build();
     }
 

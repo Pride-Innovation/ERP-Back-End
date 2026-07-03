@@ -11,8 +11,14 @@ import pride.bank.erp.asset.AssetRepository;
 import pride.bank.erp.commodity.Commodity;
 import pride.bank.erp.commodity.CommodityRepository;
 import pride.bank.erp.config.CurrentUserService;
+import pride.bank.erp.consultant.Consultant;
+import pride.bank.erp.consultant.ConsultantRepository;
 import pride.bank.erp.exception.NotFoundException;
+import pride.bank.erp.helper.FileUpload;
 import pride.bank.erp.inventory.InventoryService;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
 import pride.bank.erp.repair.Repair;
 import pride.bank.erp.repair.RepairRepository;
 import pride.bank.erp.request.Request;
@@ -43,8 +49,11 @@ public class MovementService {
     private final CommodityRepository commodityRepository;
     private final RequestRepository requestRepository;
     private final RepairRepository repairRepository;
+    private final ConsultantRepository consultantRepository;
     private final CurrentUserService currentUserService;
     private final InventoryService inventoryService;
+    private final MovementApprovalService movementApprovalService;
+    private final FileUpload fileUpload;
 
     @Transactional
     public Movement createMovement(MovementDTO dto) throws NotFoundException {
@@ -85,6 +94,11 @@ public class MovementService {
                 .orElseThrow(() -> new NotFoundException("Repair " + dto.getRepairId() + " not found"))
                 : null;
 
+        Consultant consultant = (dto.getConsultantId() != null)
+                ? consultantRepository.findById(dto.getConsultantId())
+                .orElseThrow(() -> new NotFoundException("Consultant " + dto.getConsultantId() + " not found"))
+                : null;
+
         MovementCategory category = deriveCategory(source, dest, recipient);
 
         Movement movement = Movement.builder()
@@ -104,6 +118,7 @@ public class MovementService {
                 .initiator(currentUserService.getCurrentUser())
                 .request(request)
                 .repair(repair)
+                .consultant(consultant)
                 .build();
 
         movement.setItems(buildItems(dto.getItems(), movement));
@@ -111,7 +126,39 @@ public class MovementService {
         Movement saved = movementRepository.save(movement);
         log.info("Created {} movement {} ({} → {})", category, saved.getId(),
                 source.getName(), dest != null ? dest.getName() : "user " + (recipient != null ? recipient.getId() : null));
+
+        // Standalone movements (opt-in) climb the initiator's approval ladder before dispatch;
+        // this parks the movement in DRAFT and notifies the first tier. Request-fulfilment and
+        // internal movements leave requiresApproval unset and stay INITIATED.
+        if (Boolean.TRUE.equals(dto.getRequiresApproval())) {
+            movementApprovalService.startApproval(saved);
+        }
         return saved;
+    }
+
+    /**
+     * Attaches a delivery/release document (e.g. the signed HO release note for an out-of-Head-Office
+     * dispatch) to a movement — uploaded to local storage and appended to {@code deliveryDocuments}.
+     */
+    @Transactional
+    public Movement attachDocument(Long movementId, MultipartFile file) throws NotFoundException {
+        Movement movement = findMovement(movementId);
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("No document file was provided");
+        }
+        try {
+            String path = fileUpload.uploadFileToLocalDirectory(file);
+            if (path != null) {
+                if (movement.getDeliveryDocuments() == null) {
+                    movement.setDeliveryDocuments(new ArrayList<>());
+                }
+                movement.getDeliveryDocuments().add(path);
+                movement = movementRepository.save(movement);
+            }
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to upload movement document: " + e.getMessage(), e);
+        }
+        return movement;
     }
 
     /**
@@ -224,7 +271,51 @@ public class MovementService {
         if (remarks != null && !remarks.isBlank()) {
             movement.setRemarks(remarks);
         }
-        return movementRepository.save(movement);
+        Movement saved = movementRepository.save(movement);
+        maybeCreateDeliveryLeg(saved);
+        return saved;
+    }
+
+    /**
+     * When a cross-location request-fulfilment leg (HO → branch ADMIN store) is received, the items
+     * are in the branch store but not yet with the requester. This auto-creates the second leg — an
+     * intra-branch delivery from that store to the requester — so the BOM only has to complete it.
+     * No approval (the request was already approved). Idempotent per request.
+     */
+    private void maybeCreateDeliveryLeg(Movement completed) {
+        if (completed.getMovementType() != MovementType.ISSUANCE_FULFILLMENT) return;
+        Request request = completed.getRequest();
+        Store landedStore = completed.getDestStore();
+        if (request == null || request.getRequester() == null || landedStore == null) return;
+
+        boolean alreadyDelivered = movementRepository.findByRequest_Id(request.getId()).stream()
+                .anyMatch(m -> m.getMovementType() == MovementType.DEPARTMENT_TRANSFER && m.getRecipientUser() != null);
+        if (alreadyDelivered) return;
+
+        List<MovementItemDTO> items = completed.getItems().stream()
+                .filter(i -> i.getCommodity() != null)
+                .map(i -> MovementItemDTO.builder()
+                        .commodityId(i.getCommodity().getId())
+                        .quantity(i.getQuantity())
+                        .build())
+                .toList();
+        if (items.isEmpty()) return;
+
+        try {
+            createMovement(MovementDTO.builder()
+                    .movementType(MovementType.DEPARTMENT_TRANSFER)
+                    .sourceStoreId(landedStore.getId())
+                    .recipientUserId(request.getRequester().getId())
+                    .requestId(request.getId())
+                    .requiresApproval(false)
+                    .remarks("Auto-created delivery to the requester after cross-location fulfilment")
+                    .items(items)
+                    .build());
+            log.info("Auto-created branch delivery leg to requester {} for request {}",
+                    request.getRequester().getId(), request.getId());
+        } catch (Exception e) {
+            log.warn("Could not auto-create delivery leg for request {}: {}", request.getId(), e.getMessage());
+        }
     }
 
     private boolean isBlank(String s) {

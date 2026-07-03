@@ -9,6 +9,7 @@ import pride.bank.erp.helper.Constants;
 import pride.bank.erp.store.StoreType;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Read-only inventory visibility endpoints (CLAUDE.md §11-12): centralized cross-location balances,
@@ -47,12 +48,20 @@ public class InventoryReportController {
         return new ResponseEntity<>(result, HttpStatus.OK);
     }
 
-    /** Low-stock monitoring: balances at or below the given threshold (default 10). */
+    /** Low-stock monitoring: balances at or below their own configured reorder threshold. */
     @GetMapping("/inventory/low-stock")
-    public ResponseEntity<List<StoreBalanceView>> lowStock(
-            @RequestParam(required = false, defaultValue = "10") int threshold
+    public ResponseEntity<List<StoreBalanceView>> lowStock() {
+        return new ResponseEntity<>(reportService.lowStock(), HttpStatus.OK);
+    }
+
+    /** Sets (or clears, with 0) a balance's reorder threshold. */
+    @PutMapping("/inventory/balances/{balanceId}/min-level")
+    public ResponseEntity<StoreBalanceView> setMinLevel(
+            @PathVariable Long balanceId,
+            @RequestBody Map<String, Integer> body
     ) {
-        return new ResponseEntity<>(reportService.lowStock(threshold), HttpStatus.OK);
+        int minLevel = (body != null && body.get("minLevel") != null) ? body.get("minLevel") : 0;
+        return new ResponseEntity<>(reportService.setMinLevel(balanceId, minLevel), HttpStatus.OK);
     }
 
     /** The stores directory, optionally filtered by location, store type or department. */

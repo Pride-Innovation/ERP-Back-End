@@ -24,4 +24,8 @@ public class StoreBalanceView {
     private String commodityName;
     private String assetTypeName;
     private int quantity;
+    /** Reorder threshold (0 = none configured). */
+    private int minLevel;
+    /** True when a threshold is set and on-hand is at or below it. */
+    private boolean lowStock;
 }

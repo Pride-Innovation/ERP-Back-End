@@ -55,6 +55,13 @@ public class StoreBalance {
 
     private int quantity;
 
+    /**
+     * Reorder threshold: the balance is "low stock" when {@code quantity <= minLevel} and
+     * {@code minLevel > 0}. 0 (default) = no threshold configured, so it's never flagged.
+     */
+    @Column(columnDefinition = "INT NOT NULL DEFAULT 0")
+    private int minLevel;
+
     @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(name = "commodity_id", nullable = false)
     @NotAudited

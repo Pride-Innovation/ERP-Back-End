@@ -12,6 +12,7 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedBy;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+import pride.bank.erp.consultant.Consultant;
 import pride.bank.erp.repair.Repair;
 import pride.bank.erp.request.Request;
 import pride.bank.erp.store.Store;
@@ -108,6 +109,20 @@ public class Movement {
     @NotAudited
     private User initiator;
 
+    /**
+     * Approval routing (standalone movements only). While the movement is in {@code DRAFT} it climbs
+     * the initiator's reporting ladder: {@code currentApprover} is the tier that must act now, and
+     * {@code approvalTierIndex} is that tier's position in the resolved chain. Both are null/0 for
+     * request-fulfilment movements, which skip approval.
+     */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "current_approver_id")
+    @NotAudited
+    private User currentApprover;
+
+    @Builder.Default
+    private int approvalTierIndex = 0;
+
     private LocalDateTime completionDate;
 
     /**
@@ -129,6 +144,15 @@ public class Movement {
     @JoinColumn(name = "repair_id")
     @NotAudited
     private Repair repair;
+
+    /**
+     * External repair vendor this asset was sent to, populated only for EXTERNAL repair routing
+     * (see {@link pride.bank.erp.assetType.RepairDestination}). Null for in-house movements.
+     */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "consultant_id")
+    @NotAudited
+    private Consultant consultant;
 
     @OneToMany(mappedBy = "movement", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     @Builder.Default

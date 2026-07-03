@@ -30,8 +30,18 @@ public class MovementDTO {
     // Optional links
     private Long requestId;
     private Long repairId;
+    /** External repair vendor (EXTERNAL routing only). */
+    private Long consultantId;
 
     private String remarks;
+
+    /**
+     * Whether this movement must be approved (climbing the initiator's ladder) before it can be
+     * dispatched. Opt-in: null/false = no approval (current behaviour); true = park in DRAFT and
+     * route the initiator's reporting ladder. Per-flow defaults (repair, replenishment, etc.) are
+     * wired in their own phases so half-built flows are never stranded pending approval.
+     */
+    private Boolean requiresApproval;
 
     private List<MovementItemDTO> items;
 }
