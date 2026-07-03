@@ -70,6 +70,7 @@ public class WorkflowEngineService {
     private final AppNotificationService notificationService;
     private final WorkflowResolveService workflowResolveService;
     private final ApproverChainResolver approverChainResolver;
+    private final pride.bank.erp.issuance.IssuanceRepository issuanceRepository;
 
     @Value("${application.admin.email}")
     private String adminEmail;
@@ -650,16 +651,19 @@ public class WorkflowEngineService {
     // ─────────────────────────────────────────────────────────────────────────
 
     public User resolveApprover(ApprovalStep step, Request request) {
+        // Role-based types climb the SUBJECT's reporting line — the requester by default, or the
+        // issuer when the step is configured that way (e.g. issuance approval by the issuer's manager).
+        User subject = subjectFor(step, request);
         User candidate = switch (step.getApproverType()) {
-            case DIRECT_SUPERVISOR -> resolveDirectSupervisor(request.getRequester());
-            case SUPERVISOR        -> resolveSupervisor(request.getRequester());
-            case MANAGER           -> resolveManager(request.getRequester());
-            case DEPT_HEAD -> (request.getRequester().getDepartment() != null)
-                    ? request.getRequester().getDepartment().getHeadOfDepartment() : null;
-            case BOM -> (request.getRequester().getBranch() != null)
-                    ? request.getRequester().getBranch().getBranchOperationsManager() : null;
-            case BRANCH_MANAGER -> (request.getRequester().getBranch() != null)
-                    ? request.getRequester().getBranch().getBranchManager() : null;
+            case DIRECT_SUPERVISOR -> resolveDirectSupervisor(subject);
+            case SUPERVISOR        -> resolveSupervisor(subject);
+            case MANAGER           -> resolveManager(subject);
+            case DEPT_HEAD -> (subject.getDepartment() != null)
+                    ? subject.getDepartment().getHeadOfDepartment() : null;
+            case BOM -> (subject.getBranch() != null)
+                    ? subject.getBranch().getBranchOperationsManager() : null;
+            case BRANCH_MANAGER -> (subject.getBranch() != null)
+                    ? subject.getBranch().getBranchManager() : null;
             case ADMIN -> userRepository.findByEmail(adminEmail).orElse(null);
             case SPECIFIC_USER -> (step.getSpecificUserId() != null)
                     ? userRepository.findById(step.getSpecificUserId()).orElse(null) : null;
@@ -667,6 +671,21 @@ public class WorkflowEngineService {
             case REQUESTER -> request.getRequester();
         };
         return substituteIfOnLeave(candidate);
+    }
+
+    /**
+     * The person whose reporting line a role-based step resolves against. {@code ISSUER} steps use the
+     * issuer of the request's issuance; if no issuance exists yet the requester is used as a safe
+     * fallback so the request is never stranded.
+     */
+    private User subjectFor(ApprovalStep step, Request request) {
+        if (step.getApproverSubject() == pride.bank.erp.workflow.ApproverSubject.ISSUER) {
+            User issuer = issuanceRepository.findByRequestId(request.getId())
+                    .map(pride.bank.erp.issuance.Issuance::getIssuer)
+                    .orElse(null);
+            if (issuer != null) return issuer;
+        }
+        return request.getRequester();
     }
 
     /**
@@ -791,6 +810,9 @@ public class WorkflowEngineService {
     /** True for a REQUEST_APPROVAL step whose approver is a reporting-line role (resolved via the chain). */
     private boolean isLadderApprovalStep(ApprovalStep step) {
         if (step.getStepType() != StepType.REQUEST_APPROVAL) return false;
+        // ISSUER-subject steps resolve against the issuer's line, not the requester chain the
+        // shared resolver builds — so keep them out of it and let resolveApprover handle them.
+        if (step.getApproverSubject() == pride.bank.erp.workflow.ApproverSubject.ISSUER) return false;
         return switch (step.getApproverType()) {
             case SUPERVISOR, MANAGER, DEPT_HEAD, BOM, BRANCH_MANAGER -> true;
             default -> false; // DIRECT_SUPERVISOR / GROUP_EMAIL / ADMIN / SPECIFIC_USER / REQUESTER
@@ -828,18 +850,19 @@ public class WorkflowEngineService {
      * step is skipped and the workflow continues to the next step.
      */
     private boolean stepHasRecipient(ApprovalStep step, Request request) {
-        User requester = request.getRequester();
+        // Role checks climb the same subject the step resolves against (requester or issuer).
+        User subject = subjectFor(step, request);
         switch (step.getApproverType()) {
             case MANAGER:
-                // Only meaningful when the requester actually has a manager tier in their chain.
-                if (nearestAncestorTitleByRole(requester, "MANAGER") == null) return false;
-                return resolveApprover(step, request) != null || notBlank(managersGroupEmail(requester));
+                // Only meaningful when the subject actually has a manager tier in their chain.
+                if (nearestAncestorTitleByRole(subject, "MANAGER") == null) return false;
+                return resolveApprover(step, request) != null || notBlank(managersGroupEmail(subject));
             case GROUP_EMAIL:
                 return notBlank(stepGroupEmail(step));
             case DIRECT_SUPERVISOR: {
                 // Legacy semantics: a DIRECT_SUPERVISOR step is owned by a SUPERVISOR step when the
                 // immediate report is itself a supervisor, so bypass it in that case.
-                Title reportsTo = (requester.getTitle() != null) ? requester.getTitle().getReportsTo() : null;
+                Title reportsTo = (subject.getTitle() != null) ? subject.getTitle().getReportsTo() : null;
                 if (reportsTo != null && reportsTo.getRole() != null
                         && "SUPERVISOR".equalsIgnoreCase(reportsTo.getRole().getName())) {
                     return false;
@@ -856,8 +879,8 @@ public class WorkflowEngineService {
     private String resolveStepRecipientEmail(ApprovalStep step, Request request, User approver) {
         if (approver != null) return approver.getEmail();
         if (step.getApproverType() == StepApproverType.MANAGER) {
-            // Manager tier exists but no individual resolved → any manager in the group can act.
-            return managersGroupEmail(request.getRequester());
+            // Manager tier exists but no individual resolved → any manager in the subject's group can act.
+            return managersGroupEmail(subjectFor(step, request));
         }
         return stepGroupEmail(step);
     }
