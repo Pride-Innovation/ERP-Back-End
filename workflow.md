@@ -1,7 +1,7 @@
 # Test Workflows — Head Office & Branches
 
 Concrete approval workflows to create for **manual testing** of the request →
-acknowledgement → issuance → movement → store-update pipeline.
+acknowledgement → issuance → issuance-approval → movement → store-update pipeline.
 
 Because a workflow's `assetTypes` field holds **multiple** categories, you only
 need **4 workflows** (Admin vs Infrastructure × Head Office vs Branch), each
@@ -51,11 +51,45 @@ exactly one workflow per scope so routing is unambiguous.
 
 All four workflows share the same trailing steps; only the **Unit** differs:
 
-| # | stepType            | approverType            | notify                                            |
-|---|---------------------|-------------------------|---------------------------------------------------|
-| 4 | ACKNOWLEDGE_REQUEST | GROUP_EMAIL → *Unit*     | requester gets "now at Admin/Infrastructure"      |
-| 5 | ISSUANCE            | GROUP_EMAIL → *Unit*     | `notifyOnCompletion = {REQUESTER}` → "ready for picking" |
-| 6 | ACKNOWLEDGE_RECEIPT | REQUESTER               | `notifyOnCompletion = {ADMIN, REQUESTER_DIRECT_SUPERVISOR}` |
+| # | stepType            | approverType                          | notify                                            |
+|---|---------------------|---------------------------------------|---------------------------------------------------|
+| 4 | ACKNOWLEDGE_REQUEST | GROUP_EMAIL → *Unit*                  | requester gets "now at Admin/Infrastructure"      |
+| 5 | ISSUANCE            | GROUP_EMAIL → *Unit*                  | `notifyOnCompletion = {REQUESTER}` → "ready for picking" |
+| 6 | REQUEST_APPROVAL    | MANAGER · **Resolve against = Issuer** | issuer's (admin/stores) manager authorises the release |
+| 7 | ACKNOWLEDGE_RECEIPT | REQUESTER                             | `notifyOnCompletion = {ADMIN, REQUESTER_DIRECT_SUPERVISOR}` |
+
+> **Step 6 (issuance approval)** is the one step that resolves against the
+> **issuer** rather than the requester — see
+> *[Resolve-against (approver subject)](#resolve-against-approver-subject)*.
+> It must sit **after** `ISSUANCE` (it needs an issuance to approve). Drop it if
+> you don't want a manager sign-off between issuing and hand-over.
+
+### Resolve-against (approver subject)
+
+Every role-based approver type (`DIRECT_SUPERVISOR`, `SUPERVISOR`, `MANAGER`,
+`DEPT_HEAD`, `BOM`, `BRANCH_MANAGER`) carries an **approver subject** — the
+"Resolve against" dropdown in the builder — that decides *whose* reporting line
+the ladder climbs:
+
+| Subject ("Resolve against") | Climbs the reportsTo ladder of                             | Use for                                             |
+|-----------------------------|------------------------------------------------------------|-----------------------------------------------------|
+| **The requester** (default) | the person who raised the request                          | every pre-issuance approval step                    |
+| **The issuer**              | the person who issued the items (from the Issuance record) | issuance approval → routes to the issuer's / admin's manager |
+
+- **Default is `REQUESTER`.** Existing steps and the **entire pre-issuance chain
+  are unaffected** — `REQUESTER` resolves to `request.getRequester()` exactly as before.
+- **`ISSUER`** reads the issuer from the request's `Issuance` record; if no
+  issuance exists yet it **falls back to the requester**, so the request is never
+  stranded.
+- Issuer steps are kept **out of the requester's ladder chain**
+  (`ApproverChainResolver.buildWhitelist` / `isLadderApprovalStep`), so an
+  "issuer's Manager" step can't consume the requester's own Manager slot.
+- **Ceiling rules still apply, anchored on the issuer:** use `MANAGER`/`DEPT_HEAD`
+  when the issuer is at Head Office, `BOM`/`BRANCH_MANAGER` when the issuer is at a branch.
+
+Backing fields: `ApprovalStep.approverSubject` (enum `ApproverSubject {REQUESTER,
+ISSUER}`, column `approver_subject` defaulting to `REQUESTER`), resolved by
+`WorkflowEngineService.subjectFor(step, request)`.
 
 ---
 
@@ -76,7 +110,8 @@ steps:        1 REQUEST_APPROVAL    SUPERVISOR
               3 REQUEST_APPROVAL    DEPT_HEAD
               4 ACKNOWLEDGE_REQUEST  GROUP_EMAIL → Admin Unit
               5 ISSUANCE             GROUP_EMAIL → Admin Unit
-              6 ACKNOWLEDGE_RECEIPT  REQUESTER
+              6 REQUEST_APPROVAL    MANAGER  (Resolve against = Issuer)
+              7 ACKNOWLEDGE_RECEIPT  REQUESTER
 ```
 
 ### 2. HO · Infrastructure-handled
@@ -92,7 +127,8 @@ steps:        1 REQUEST_APPROVAL    SUPERVISOR
               3 REQUEST_APPROVAL    DEPT_HEAD
               4 ACKNOWLEDGE_REQUEST  GROUP_EMAIL → Infrastructure Unit
               5 ISSUANCE             GROUP_EMAIL → Infrastructure Unit
-              6 ACKNOWLEDGE_RECEIPT  REQUESTER
+              6 REQUEST_APPROVAL    MANAGER  (Resolve against = Issuer)
+              7 ACKNOWLEDGE_RECEIPT  REQUESTER
 ```
 
 ### 3. Branch · Admin-handled
@@ -110,7 +146,8 @@ steps:        1 REQUEST_APPROVAL    SUPERVISOR        (Head Cashier; skips if ab
               3 REQUEST_APPROVAL    BRANCH_MANAGER    (ceiling)
               4 ACKNOWLEDGE_REQUEST  GROUP_EMAIL → Admin Unit
               5 ISSUANCE             GROUP_EMAIL → Admin Unit
-              6 ACKNOWLEDGE_RECEIPT  REQUESTER
+              6 REQUEST_APPROVAL    MANAGER  (Resolve against = Issuer)
+              7 ACKNOWLEDGE_RECEIPT  REQUESTER
 ```
 
 ### 4. Branch · Infrastructure-handled
@@ -126,7 +163,8 @@ steps:        1 REQUEST_APPROVAL    SUPERVISOR
               3 REQUEST_APPROVAL    BRANCH_MANAGER
               4 ACKNOWLEDGE_REQUEST  GROUP_EMAIL → Infrastructure Unit
               5 ISSUANCE             GROUP_EMAIL → Infrastructure Unit
-              6 ACKNOWLEDGE_RECEIPT  REQUESTER
+              6 REQUEST_APPROVAL    MANAGER  (Resolve against = Issuer)
+              7 ACKNOWLEDGE_RECEIPT  REQUESTER
 ```
 
 ---
@@ -146,6 +184,10 @@ Without these, steps silently skip or emails go nowhere:
 5. **Asset categories split** per the table above.
 6. **`application.admin.email`** points to a real test user (for `ADMIN` approver
    type + issuance).
+   - For the **issuer's-manager** issuance-approval step to resolve, the issuing
+     users (Admin/Infrastructure unit members) must have a **title with a
+     `reportsTo` manager** in their chain — same requirement as any ladder step,
+     but anchored on the issuer rather than the requester.
 7. The branch's **ADMIN store auto-creates on first stock-in** — no manual setup.
    To test inter-location movement, stock into the **HO ADMIN store** and fulfil
    the branch request from there.
@@ -183,6 +225,10 @@ Create all 4, then raise:
     movement `dispatch → in-transit → receive → complete`; verify
     `RECEIVED_WITH_DISCREPANCY` handling and that the ledger applies on
     completion (HO store ↓, branch store ↑).
+- **Issuance approval (issuer's manager):** after items are issued, the request
+  routes to the **issuer's** manager — not the requester's — because step 6 is set
+  to *Resolve against = Issuer*. Verify the approver is the admin/stores manager
+  (the issuer's `reportsTo` manager), then it advances to acknowledge-receipt.
 - **Final receipt:** requester acknowledges → status `receiptAcknowledged`,
   instance `COMPLETED`, `notifyOnCompletion` targets (admin + supervisor) mailed.
 
