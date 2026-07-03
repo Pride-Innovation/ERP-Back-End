@@ -277,6 +277,10 @@ public class ApproverChainResolver {
         if (workflow.getSteps() == null) return whitelist;
         workflow.getSteps().stream()
                 .filter(s -> s.getStepType() == StepType.REQUEST_APPROVAL)
+                // Steps that resolve against the issuer are not part of the requester's reporting
+                // chain — exclude them so an issuer step (e.g. issuer's Manager) can't consume the
+                // requester's slot for the same role.
+                .filter(s -> s.getApproverSubject() != ApproverSubject.ISSUER)
                 .sorted(java.util.Comparator.comparingInt(ApprovalStep::getStepOrder))
                 .forEach(step -> {
                     String role = ladderRoleFor(step.getApproverType());
