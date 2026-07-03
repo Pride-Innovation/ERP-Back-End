@@ -20,6 +20,8 @@ public class ApprovalStepDTO {
     private String stepName;
     private StepType stepType;
     private StepApproverType approverType;
+    /** Whose reporting line a role-based approver type climbs (REQUESTER default, or ISSUER). */
+    private ApproverSubject approverSubject;
     /** Selected fulfilment unit for a GROUP_EMAIL step (preferred over groupEmail). */
     private Long unitId;
     /** Display name of the selected unit (response only). */
