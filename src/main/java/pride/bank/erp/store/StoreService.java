@@ -90,6 +90,11 @@ public class StoreService {
 
     @Transactional
     public Page<StoreBalance> fetchStoreDetailsPerBranchPerAssetType(Long branchId, Long assetTypeId, Pageable pageable) {
+        // No category filter → every balance line the branch holds (the store landing page
+        // probes per-branch line counts this way).
+        if (assetTypeId == null) {
+            return storeBalanceRepository.findByBranchId(branchId, pageable);
+        }
         return storeBalanceRepository
                 .findByBranchIdAndCommodity_AssetTypeId(branchId, assetTypeId, pageable);
     }

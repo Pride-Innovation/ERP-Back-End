@@ -19,6 +19,7 @@ public interface BranchRepository extends JpaRepository<Branch, Long> {
     Optional<Branch> findByName(String name);
     Optional<Branch> findByNameIgnoreCase(String name);
     Optional<Branch> findByShortCode(String shortCode);
+    Optional<Branch> findFirstByIsHeadOfficeTrue();
 
     @Query("""
             select

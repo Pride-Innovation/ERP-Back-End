@@ -30,7 +30,7 @@ public class StoreController {
     @GetMapping("/store")
     public ResponseEntity<Page<StoreBalance>> fetchStoreDetailsPerBranchPerAssetType(
             @RequestParam Long branchId,
-            @RequestParam Long assetTypeId,
+            @RequestParam(required = false) Long assetTypeId,
             @RequestParam(required = false, defaultValue = "10") int pageSize,
             @RequestParam(required = false, defaultValue = "0") int pageNumber
     ) {

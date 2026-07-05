@@ -50,7 +50,8 @@ public class AssetType {
     private String ownerGroupEmail;
 
     /**
-     * Annual straight-line depreciation rate (percent) for assets of this category.
+     * Annual reducing-balance depreciation rate (percent) for assets of this category: each year's
+     * charge is the opening net book value times this rate.
      * Used to derive each asset's current net book value on read. Null = no depreciation configured.
      */
     @Column(name = "depreciation_rate")

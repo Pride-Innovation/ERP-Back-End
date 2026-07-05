@@ -554,6 +554,10 @@ public class AssetService {
                                 .id(asset.getAssetType().getId())
                                 .name(asset.getAssetType().getName())
                                 .description(asset.getAssetType().getDescription())
+                                // Repair routing config rides along so the repair-transfer UI can
+                                // default the destination and enforce the EXTERNAL consultant rule.
+                                .repairable(asset.getAssetType().isRepairable())
+                                .repairDestination(asset.getAssetType().getRepairDestination())
                                 .build() : null)
                 .commodity(asset.getCommodity() != null ?
                         Commodity.builder()

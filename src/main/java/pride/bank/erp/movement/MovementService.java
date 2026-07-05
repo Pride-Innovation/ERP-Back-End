@@ -162,6 +162,26 @@ public class MovementService {
     }
 
     /**
+     * Uploads a document before its movement exists and returns the stored path for the create
+     * payload. Needed by flows that must carry documents at creation time — an EXTERNAL repair
+     * transfer is rejected without dispatch documents, so they cannot be attached after the fact.
+     */
+    public String uploadStandaloneDocument(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("No document file was provided");
+        }
+        try {
+            String path = fileUpload.uploadFileToLocalDirectory(file);
+            if (path == null) {
+                throw new IllegalArgumentException("No document file was provided");
+            }
+            return path;
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to upload movement document: " + e.getMessage(), e);
+        }
+    }
+
+    /**
      * Dispatches an inter-location movement (§9, §10): records courier/tracking details and moves it
      * to {@link MovementStatus#DISPATCHED}. Intra-location movements have no dispatch leg.
      */

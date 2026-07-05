@@ -8,6 +8,8 @@ import pride.bank.erp.asset.Asset;
 import pride.bank.erp.asset.AssetRepository;
 import pride.bank.erp.assetType.AssetType;
 import pride.bank.erp.assetType.RepairDestination;
+import pride.bank.erp.branch.Branch;
+import pride.bank.erp.branch.BranchRepository;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
@@ -38,6 +40,7 @@ public class RepairMovementService {
     private final StoreService storeService;
     private final StoreRepository storeRepository;
     private final StatusService statusService;
+    private final BranchRepository branchRepository;
 
     /**
      * §14: send a faulty asset for repair, routed by its category configuration.
@@ -170,6 +173,7 @@ public class RepairMovementService {
         if (dto.getTempAssetId() != null) {
             Asset temp = findAsset(dto.getTempAssetId());
             Store tempSource = currentStoreOf(temp);
+            Store itStore = headOfficeStore(StoreType.IT);
             movementService.createMovement(MovementDTO.builder()
                     .movementType(MovementType.RETURN_AFTER_REPAIR)
                     .sourceStoreId(tempSource.getId())
@@ -224,6 +228,17 @@ public class RepairMovementService {
     private Store headOfficeStore(StoreType type) throws NotFoundException {
         return storeRepository.findByStoreType(type).stream().findFirst()
                 .orElseThrow(() -> new NotFoundException("No " + type + " store configured"));
+    }
+
+    /**
+     * The Head Office location-level ADMIN store — custody for ADMIN-routed and EXTERNAL repairs.
+     * Every branch has an ADMIN store, so unlike IT/Disposal it must be resolved via the Head
+     * Office branch rather than "the first store of this type".
+     */
+    private Store headOfficeAdminStore() throws NotFoundException {
+        Branch headOffice = branchRepository.findFirstByIsHeadOfficeTrue()
+                .orElseThrow(() -> new NotFoundException("No Head Office branch is configured"));
+        return storeService.resolveAdminStore(headOffice);
     }
 
     private void setStatus(Asset asset, String statusCode) {

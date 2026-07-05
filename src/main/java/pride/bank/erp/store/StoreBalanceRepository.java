@@ -31,6 +31,9 @@ public interface StoreBalanceRepository extends JpaRepository<StoreBalance, Long
 
     Page<StoreBalance> findByBranchIdAndCommodity_AssetTypeId(Long branchId, Long assetTypeId, Pageable pageable);
 
+    /** All balance lines of a branch, paged — used when no asset-category filter is given. */
+    Page<StoreBalance> findByBranchId(Long branchId, Pageable pageable);
+
     @Query("SELECT s FROM StoreBalance s " +
             "WHERE s.branch.id = :branchId " +
             "AND s.commodity.assetType.id = :assetTypeId")

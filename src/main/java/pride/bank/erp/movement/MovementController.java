@@ -72,6 +72,19 @@ public class MovementController {
         return new ResponseEntity<>(movementService.attachDocument(movementId, file), HttpStatus.OK);
     }
 
+    /**
+     * Upload a document ahead of movement creation and get back its stored path, for flows that must
+     * carry documents in the create payload (e.g. an EXTERNAL repair transfer's dispatch documents).
+     */
+    @PostMapping(value = "/movements/documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Map<String, String>> uploadStandaloneDocument(
+            @RequestParam("file") MultipartFile file
+    ) {
+        return new ResponseEntity<>(
+                Map.of("path", movementService.uploadStandaloneDocument(file)),
+                HttpStatus.CREATED);
+    }
+
     /** Movement approval audit trail (pending / approved / rejected per tier). */
     @GetMapping("/movements/{movementId}/approvals")
     public ResponseEntity<List<MovementApprovalRecord>> approvalTrail(@PathVariable Long movementId) {
