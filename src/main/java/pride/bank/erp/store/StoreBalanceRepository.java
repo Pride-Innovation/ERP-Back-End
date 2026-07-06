@@ -34,6 +34,14 @@ public interface StoreBalanceRepository extends JpaRepository<StoreBalance, Long
     /** All balance lines of a branch, paged — used when no asset-category filter is given. */
     Page<StoreBalance> findByBranchId(Long branchId, Pageable pageable);
 
+    // ── Store-scoped listings: each store page (Admin / IT / Disposal) sees only its own lines.
+    // Null-store legacy rows are backfilled to the branch ADMIN store by StoreSeeder on startup,
+    // so the implicit inner join on the store container cannot hide live balances.
+    Page<StoreBalance> findByBranchIdAndStore_StoreTypeAndCommodity_AssetTypeId(
+            Long branchId, StoreType storeType, Long assetTypeId, Pageable pageable);
+
+    Page<StoreBalance> findByBranchIdAndStore_StoreType(Long branchId, StoreType storeType, Pageable pageable);
+
     @Query("SELECT s FROM StoreBalance s " +
             "WHERE s.branch.id = :branchId " +
             "AND s.commodity.assetType.id = :assetTypeId")
