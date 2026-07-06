@@ -31,6 +31,7 @@ public class StoreController {
     public ResponseEntity<Page<StoreBalance>> fetchStoreDetailsPerBranchPerAssetType(
             @RequestParam Long branchId,
             @RequestParam(required = false) Long assetTypeId,
+            @RequestParam(required = false) StoreType storeType,
             @RequestParam(required = false, defaultValue = "10") int pageSize,
             @RequestParam(required = false, defaultValue = "0") int pageNumber
     ) {
@@ -38,6 +39,7 @@ public class StoreController {
         Page<StoreBalance> response = storeService.fetchStoreDetailsPerBranchPerAssetType(
                 branchId,
                 assetTypeId,
+                storeType,
                 pageable
         );
         return new ResponseEntity<>(response, HttpStatus.OK);
