@@ -89,7 +89,16 @@ public class StoreService {
     }
 
     @Transactional
-    public Page<StoreBalance> fetchStoreDetailsPerBranchPerAssetType(Long branchId, Long assetTypeId, Pageable pageable) {
+    public Page<StoreBalance> fetchStoreDetailsPerBranchPerAssetType(
+            Long branchId, Long assetTypeId, StoreType storeType, Pageable pageable) {
+        // Store-scoped: the Admin / IT / Disposal pages each see only the lines their own store
+        // container holds — an item cannot appear on all three pages at once.
+        if (storeType != null) {
+            return assetTypeId == null
+                    ? storeBalanceRepository.findByBranchIdAndStore_StoreType(branchId, storeType, pageable)
+                    : storeBalanceRepository.findByBranchIdAndStore_StoreTypeAndCommodity_AssetTypeId(
+                            branchId, storeType, assetTypeId, pageable);
+        }
         // No category filter → every balance line the branch holds (the store landing page
         // probes per-branch line counts this way).
         if (assetTypeId == null) {
