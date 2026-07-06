@@ -21,6 +21,11 @@ public interface BranchRepository extends JpaRepository<Branch, Long> {
     Optional<Branch> findByShortCode(String shortCode);
     Optional<Branch> findFirstByIsHeadOfficeTrue();
 
+    /**
+     * Region and district are selected via explicit LEFT JOIN aliases: a bare path expression in the
+     * SELECT clause ({@code b.district}) renders as an implicit INNER join, which silently dropped
+     * branches with no district — the Head Office — and made this lookup 404 for a branch that exists.
+     */
     @Query("""
             select
                 b.id as id,
@@ -29,8 +34,8 @@ public interface BranchRepository extends JpaRepository<Branch, Long> {
                 b.telephone as telephone,
                 b.managersGroupEmail as managersGroupEmail,
                 b.isHeadOffice as headOffice,
-                b.region as region,
-                b.district as district,
+                region as region,
+                district as district,
                 branchManager.id as branchManagerId,
                 branchManager.firstName as branchManagerFirstName,
                 branchManager.lastName as branchManagerLastName,
@@ -48,6 +53,8 @@ public interface BranchRepository extends JpaRepository<Branch, Long> {
                 creditAdministrator.lastName as creditAdministratorLastName,
                 creditAdministrator.email as creditAdministratorEmail
             from Branch b
+            left join b.region region
+            left join b.district district
             left join b.branchManager branchManager
             left join b.branchOperationsManager branchOperationsManager
             left join b.relationshipManager relationshipManager
