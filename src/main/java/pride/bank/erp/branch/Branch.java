@@ -12,7 +12,9 @@ import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 import pride.bank.erp.district.District;
 import pride.bank.erp.region.Region;
 import pride.bank.erp.title.Title;
@@ -54,8 +56,14 @@ public class Branch {
      */
     private String managersGroupEmail;
 
+    // The User/Title back-references below are excluded from Lombok toString/equals:
+    // @Data includes even @JsonIgnore'd fields, so any toString() (e.g. Spring's debug
+    // "Writing [...]" log) recursed Branch → manager User → title → branch… into a
+    // StackOverflowError.
     @OneToMany(mappedBy = "branch", cascade = CascadeType.PERSIST)
     @JsonIgnore
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
     private Set<User> users;
 
     /*
@@ -67,25 +75,35 @@ public class Branch {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "branch_manager_id")
     @JsonIgnore
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
     private User branchManager;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "branch_operations_manager_id")
     @JsonIgnore
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
     private User branchOperationsManager;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "relationship_manager_id")
     @JsonIgnore
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
     private User relationshipManager;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "credit_administrator_id")
     @JsonIgnore
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
     private User creditAdministrator;
 
     @OneToMany(mappedBy = "branch", cascade = CascadeType.PERSIST)
     @JsonIgnore
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
     private Set<Title> titles;
 
     @ManyToOne(fetch = FetchType.EAGER)

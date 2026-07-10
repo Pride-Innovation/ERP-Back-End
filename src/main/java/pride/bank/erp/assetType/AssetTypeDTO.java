@@ -30,6 +30,8 @@ public class AssetTypeDTO {
     private Double depreciationRate;
     /** Useful life in months; an asset is flagged for disposal once its age reaches this. */
     private Integer usefulLifeMonths;
+    /** Whether stocking items of this category auto-creates trackable Asset records (false = consumable). */
+    private Boolean tracksAssets;
     /** Whether faulty assets of this category can be repaired (false → straight to disposal). */
     private Boolean repairable;
     /** Default repair routing (IT / ADMIN / EXTERNAL) for faulty assets of this category. */

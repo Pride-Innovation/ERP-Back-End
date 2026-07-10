@@ -1,115 +1,191 @@
-# Movements & Store Updates — UI Walkthrough
+# Movements & Stores — End-to-End Test Guide
 
-A short guide to how every movement type flows through the system, what it does to the
-stores, and where each step happens in the UI. Companion to `workflow.md` (which covers
-request approval); this covers everything after "the items need to physically move".
+How to test everything that happens **from the moment an issuance is approved**: fulfilment
+movements, movement approvals, repair / replacement / return / disposal flows, and the store
+updates each one causes. Companion to `workflow.md` (request approval); the request → approval →
+issue steps are assumed known and are not repeated here.
+
+Each scenario lists the UI steps and a **Verify** checklist. Run them in order the first time —
+later scenarios reuse assets/stock produced by earlier ones.
 
 ---
 
-## 1. The building blocks
+## 0. One-time test setup
 
-**Stores** (Store page → Admin / IT / Disposal tabs):
-
-| Store type | Who has one | Holds |
+| # | What | Where in the UI |
 |---|---|---|
-| `ADMIN` | Every branch (auto-created on first use) | Main inventory: consumable balances + issuable assets |
-| `IT` | Head Office only | Assets under repair, temporary replacements |
-| `DISPOSAL` | Head Office only | Written-off / irreparable assets |
+| 0.1 | **Actors.** You need: a HO requester, a branch requester, a branch BOM, a HO admin (issuer) whose `reportsTo` ladder has at least a Manager above them, and an officer with their own Supervisor/Manager ladder (movement initiator). | Users page → check each user's title & Reports To |
+| 0.2 | **Repair routing per category.** Computers → Repairable ✓, destination **IT**. Furniture → Repairable ✓, destination **ADMIN**. Pick one category (e.g. Kitchen & Groceries) → **Repairable ✗** (for the auto-disposal test). Pick one (e.g. Equipment) → destination **EXTERNAL**. | Settings → Asset Categories → create/update modal → *Repairable* switch + *Default Repair Destination* |
+| 0.3 | **At least one active consultant** (name + specialization). | Settings → Repair Consultants |
+| 0.4 | **Stock in the HO ADMIN store**: a consumable commodity (e.g. stationery, qty ≥ 20) and 2–3 serialized assets (Computers) marked ready for issuance. | Inventory → stock items; Assets → update status |
+| 0.5 | **Reorder threshold** on one consumable (e.g. 10) so the low-stock path can trigger later. | Store page → *Consumable Balances* panel → "Reorder at" |
 
-**Two kinds of movement lines:**
-- **Commodity line** (consumables, e.g. stationery) — moves a *quantity*; updates `StoreBalance` rows.
-- **Asset line** (serialized, e.g. a laptop) — moves *one specific asset*; updates the asset's
-  `currentStore` / `assignedTo` / branch, never a quantity.
-
-**The golden rule:** store balances change **only when a movement completes** (is received),
-never at creation or dispatch — so in-transit stock is never double-counted. The
-`inventorySettled` flag guarantees a movement's effects apply exactly once.
-
-**Category is derived, never chosen:**
-- Source and destination in **different locations** → `INTER_LOCATION` (full dispatch → receive ladder, courier required).
-- Same location → `INTRA_LOCATION` (one-step complete, no courier).
+**Reading results:** the Store landing page (`/assets-mgt/store`) shows per-branch line counts and
+the Consumable Balances panel; each store page (`/assets-mgt/store/admin`, `/it`, `/disposal`)
+shows only **its own** store's holdings ("Inventory by category" cards + per-category table),
+switchable by branch via the Branch filter.
 
 ---
 
-## 2. The universal lifecycle
+## 1. Scenario A — HO requester (same location): direct issuance, **no movement**
 
-```
-            (standalone only)
- create ──► DRAFT ──approve──► INITIATED ──dispatch──► DISPATCHED ──► IN_TRANSIT ──receive──► COMPLETED
-                └─reject──► CANCELLED                      (inter-location only)      │
-                                                                                      ▼
-                                            INTRA_LOCATION: INITIATED ──complete──► COMPLETED
-                                                                        (ledger applies here)
-```
+*Precondition: an approved request from a **HO** user, issued by the HO admin.*
 
-| Step | Who | UI |
-|---|---|---|
-| Create | Any officer | Movement → **New Movement**, or **Repair / Disposal** modal |
-| Approve / Reject (DRAFT) | Each tier of the *initiator's* reporting ladder (Supervisor → Manager → HoD, or Supervisor → BOM → Branch Manager) | Movement page → **Pending My Approval** inbox, or the movement detail view |
-| Dispatch | Source store officer (courier + tracking # required) | Movement detail / list → **Dispatch**. Print the **Release Note / Gate Pass** PDF here, get it signed, upload the scan under Documents |
-| In transit | Optional marker | Movement detail / list |
-| Receive | Receiving officer / BOM at destination — records `RECEIVED_OK` or `RECEIVED_WITH_DISCREPANCY` + remarks | Movement detail / list → **Receive** |
-| Complete (intra) | Destination officer | Movement detail / list → **Complete** |
+1. As the **issuer's manager**: Requests → open the request → **Approve Issuance**.
+2. Go to Movement (`/assets-mgt/movement`).
 
-**Approval applies only to standalone movements** (`requiresApproval = true`, e.g. repair
-transfers). Movements auto-created to fulfil an **already-approved request** skip it — the
-request was approved by its own workflow.
+**Verify**
+- ☐ No movement was created for this request (same source & destination location → `DIRECT_ISSUANCE`).
+- ☐ HO ADMIN store balance for the commodity went **down** by the issued qty (Store → Admin Store).
+- ☐ The requester can **Acknowledge Receipt** on the Requests page; request completes.
 
 ---
 
-## 3. Each movement type, start to finish
+## 2. Scenario B — Branch requester (cross-location): the full two-leg pipeline
 
-### 3.1 ISSUANCE_FULFILLMENT — approved request fulfilled from another location
-*The only movement the system creates by itself (Phase: after issuance approval).*
+*Precondition: an approved request from a **branch** user for a consumable, issued from HO.*
 
-1. HO admin issues items against an approved request (Requests → Issue) and the issuer's
-   manager approves the issuance.
-2. Same location as requester → **no movement** (direct issuance; HO ADMIN store debited immediately).
-3. Different location → the system auto-creates an INITIATED movement: **HO ADMIN store → requester-branch ADMIN store**, linked to the request. No approval needed.
-4. HO dispatches (courier, tracking, release note) → branch receives.
-5. **On receive:** HO ADMIN balance ↓, branch ADMIN balance ↑, and the system auto-creates
-   the **second leg**: an intra-branch `DEPARTMENT_TRANSFER` from the branch store to the
-   requester. The BOM just completes it → balance ↓, items with the requester.
-6. Requester acknowledges receipt (Requests page) — request completed.
+1. As the **issuer's manager**: approve the issuance (Requests page).
+2. **Movement page** → *Initiated* tab: a movement `ISSUANCE_FULFILLMENT`, **HO ADMIN store →
+   branch ADMIN store**, linked to the request, remarks "Auto-created at issuance approval…".
+   - ☐ It is **INITIATED**, not DRAFT — request-driven fulfilment **skips movement approval**
+     (the request already went through its own workflow).
+3. Open the movement (view page). As a HO store officer: **Dispatch** — courier + tracking number
+   are required. Click **Release Note** to print the PDF gate pass; upload the signed scan under
+   **Documents**.
+   - ☐ Status → DISPATCHED. Optionally mark **In Transit**.
+   - ☐ Store balances have **not** changed yet (in-transit stock is never double-counted).
+4. As the **branch BOM**: open the movement → **Receive** (choose `RECEIVED_OK`; on a second run
+   try `RECEIVED_WITH_DISCREPANCY` + remarks).
 
-### 3.2 REPLENISHMENT — branch restocks from Head Office
-Same pipeline as 3.1; the system labels it REPLENISHMENT when the requester is the branch's
-**BOM** (stock for the branch, not a person). On receive: HO ↓, branch ADMIN ↑, done — no
-second leg to a person.
+**Verify after receive**
+- ☐ Movement is COMPLETED with receiving officer + receipt date recorded.
+- ☐ **HO ADMIN balance ↓, branch ADMIN balance ↑** (Store pages, filter by each branch).
+- ☐ A **second leg** was auto-created: `DEPARTMENT_TRANSFER`, branch ADMIN store → the
+  **requester** (a person, no destination store), INITIATED, no approval, linked to the request.
 
-### 3.3 DEPARTMENT_TRANSFER — reallocate within a location
-1. New Movement → type Department Transfer, source store, destination store **or recipient user**; tick *Requires approval* if policy demands it.
-2. Intra-location → just **Complete**. Commodities: source ↓ (+ destination ↑ if store-to-store; debit-only if to a user). Assets: relocated or assigned to the user.
+5. As the branch BOM: open the second leg → **Complete** (intra-location, one step).
 
-### 3.4 REPAIR_TRANSFER — faulty asset goes for repair
-*Movement page → Repair / Disposal modal → Repair Transfer. Always requires approval (initiator's ladder).*
-
-1. Pick the faulty asset (by engraved number). Routing comes from its **category** (Settings → Asset Categories → Repair Routing), overridable:
-   - **Non-repairable category** → auto-diverted to a Disposal movement (§3.7). A warning shows in the modal.
-   - **IT** → destination = HO **IT store**.
-   - **ADMIN** → destination = HO **ADMIN store** (facilities team).
-   - **EXTERNAL** → custody = HO ADMIN store + a **consultant is mandatory** (Settings → Repair Consultants) + at least one **signed dispatch document** must be attached in the modal.
-2. Asset status flips to **In Maintenance** immediately.
-3. Approval ladder → dispatch → receive. **On receive:** asset relocates into the IT/ADMIN store.
-4. Optionally issue a temp replacement in the same operation (or via §3.5).
-
-### 3.5 TEMP_REPLACEMENT — loaner while the repair runs
-1. Repair / Disposal modal → Temporary Replacement: pick a spare asset **from the IT store** and the recipient user.
-2. On completion the asset is assigned to the user as a **temporary** assignment (tracked in assignment history), leaves the IT store.
-
-### 3.6 RETURN_AFTER_REPAIR — repaired asset goes home
-1. Repair / Disposal modal → Return After Repair: pick the repaired asset (source = wherever it currently sits: IT, Admin, or external custody), destination location, optionally the user to re-assign to, optionally the temp asset to pull back. Requires approval.
-2. On receive: asset re-assigned to its user (or into the destination ADMIN store); the temp asset (if any) returns to the IT store via its own movement.
-
-### 3.7 DISPOSAL_TRANSFER — write-off
-1. Repair / Disposal modal → Disposal (or auto-divert from §3.4). Destination is always the HO **Disposal store**.
-2. Asset status → **Pending Disposal** immediately.
-3. On completion: asset relocates to the Disposal store and is flagged **disposed** with a disposal date. It can no longer be issued.
-   *(Tip: assets past their category's useful life show "Ready for disposal" on the Assets pages.)*
+**Verify**
+- ☐ Branch ADMIN balance ↓ (debit-only — the recipient is a user, not a store).
+- ☐ Requester **acknowledges receipt** on the Requests page; request fully closed.
 
 ---
 
-## 4. Store-update cheat sheet (what completion does)
+## 3. Scenario C — Replenishment (branch restocks, no second leg)
+
+*Same as Scenario B, but the requester is the branch's **BOM** (the branch Operations Manager
+raising stock for the branch, not a person).*
+
+1. Approve the issuance → Movement page.
+
+**Verify**
+- ☐ The auto movement is typed **REPLENISHMENT** (not ISSUANCE_FULFILLMENT).
+- ☐ Dispatch → receive works as in Scenario B; on receive HO ↓ / branch ADMIN ↑.
+- ☐ **No second leg** is created — the stock's destination *is* the branch store.
+
+---
+
+## 4. Scenario D — Standalone movement approval (the initiator's ladder)
+
+*Any movement created by hand with "Requires approval" ON climbs the **initiator's** reporting
+ladder (Supervisor → Manager → Dept Head at HO; Supervisor → BOM → Branch Manager at a branch)
+before it can be dispatched.*
+
+1. As the **officer** (initiator): Movement → **New Movement** → Department Transfer, a source
+   store with stock, any destination, one commodity line, toggle **Requires approval** ON → create.
+2. Movement page:
+   - ☐ Movement sits in **Awaiting Approval** (DRAFT); the *Current approver* is the officer's
+     first ladder tier; that person got an in-app notification.
+3. Log in as the **first-tier approver**: Movement page → **Pending My Approval** inbox (or the
+   movement view) → **Approve** (optional comment).
+   - ☐ The approval trail on the view page records the tier; *Current approver* advances to the
+     next tier (repeat until the ceiling).
+4. After the **last tier** approves:
+   - ☐ Status → INITIATED; it can now be dispatched/completed normally.
+5. Repeat once more but **Reject** at any tier (reason required):
+   - ☐ Status → CANCELLED, initiator notified, no store change ever happens.
+6. Guards to try:
+   - ☐ A user who is *not* the current approver gets an error trying to approve.
+   - ☐ Approve/Reject is only possible while DRAFT.
+
+---
+
+## 5. Scenario E — Repair transfers (Movement → **Repair & Disposal** → *Repair Transfer*)
+
+All repair transfers **always require approval** (initiator's ladder, as in Scenario D) and flip
+the asset's status to **In Maintenance** immediately at creation.
+
+### 5.1 IT-routed (Computers)
+1. Repair & Disposal → Repair Transfer → search the faulty Computer by engraved number.
+   - ☐ The context strip under the picker shows the category + "Default routing: IT".
+2. Create → approve through the ladder → Dispatch → Receive at HO.
+
+**Verify**
+- ☐ Asset status = In Maintenance (Assets page) from the moment of creation.
+- ☐ After receive: the asset is held by the **HO IT store** (Store → IT Store; it also appears in
+  the IT-store pickers of the other repair flows).
+
+### 5.2 ADMIN-routed (Furniture)
+Same steps with a Furniture asset.
+- ☐ Destination resolves to the **HO ADMIN store** instead of IT.
+- ☐ The routing dropdown can override the category default (IT/ADMIN/EXTERNAL) per transfer.
+
+### 5.3 EXTERNAL (consultant)
+Use the category configured EXTERNAL (or override the dropdown to External Consultant).
+- ☐ The modal now **requires** a consultant (from Settings → Repair Consultants) and at least one
+  **signed dispatch document** — submitting without either is blocked.
+- ☐ Custody store is the **HO ADMIN store**; the movement records the consultant; the uploaded
+  document(s) appear on the movement's Documents panel.
+
+### 5.4 Non-repairable category → auto-disposal
+Pick an asset whose category has **Repairable ✗**.
+- ☐ The modal shows a warning that the transfer will divert to the **Disposal store**; the
+  routing/logistics sections disappear.
+- ☐ Submitting creates a **DISPOSAL_TRANSFER** instead (continue in Scenario H).
+
+---
+
+## 6. Scenario F — Temporary replacement
+
+1. Repair & Disposal → **Temporary Replacement**: pick a spare asset **from the IT store** and the
+   affected user → create → complete the movement.
+
+**Verify**
+- ☐ The asset is assigned to the user as a **temporary** assignment and leaves the IT store.
+- ☐ (Alternative path: a temp replacement can also be issued in the same call as the repair
+  transfer via the API's `tempAssetId` + `affectedUserId`.)
+
+---
+
+## 7. Scenario G — Return after repair (+ reclaim the loaner)
+
+1. Repair & Disposal → **Return After Repair**: pick the repaired asset (source = wherever it now
+   sits — IT, Admin or external custody; resolved automatically), the destination location,
+   optionally the user to re-assign to, and optionally the temp asset to pull back. Requires
+   approval → approve → dispatch → receive at the branch.
+
+**Verify**
+- ☐ The repaired asset is re-assigned to the user (or lands in the destination ADMIN store).
+- ☐ A **second movement** returned the temp asset to the **IT store** (check the IT store page).
+
+---
+
+## 8. Scenario H — Disposal
+
+1. Repair & Disposal → **Disposal**: pick an asset in the IT store (or arrive here via the
+   non-repairable divert of §5.4) → create → complete.
+
+**Verify**
+- ☐ Asset status → **Pending Disposal** at creation.
+- ☐ On completion the asset sits in the **HO Disposal store** (Store → Disposal Store) and is
+  flagged **disposed** with a disposal date — it can no longer be issued.
+- ☐ Assets past their category's useful life show **"Ready for disposal"** on the Assets pages
+  ("Due for Disposal" tab) independently of this flow.
+
+---
+
+## 9. Store-update cheat sheet (what completion does)
 
 | Movement type | Commodity lines | Asset lines |
 |---|---|---|
@@ -123,15 +199,35 @@ second leg to a person.
 | DISPOSAL_TRANSFER | — | relocate to Disposal store + mark disposed |
 | CANCELLED (any) | nothing | nothing |
 
-Check the results live on the **Store pages** (Admin / IT / Disposal): consumable balances
-(with per-commodity low-stock thresholds) and the assets each store currently holds.
+**Golden rules to confirm while testing**
+- Balances change **only at completion/receive** — never at create or dispatch.
+- Re-receiving a completed movement is a no-op (`inventorySettled` applies effects exactly once).
+- INTER_LOCATION (different branches) demands dispatch (courier + tracking) before receive;
+  INTRA_LOCATION completes in one step.
+- Each store page (Admin/IT/Disposal) shows **only its own store's** holdings — an item never
+  appears in more than one store.
 
 ---
 
-## 5. Quick UI test script
+## 10. Negative tests (should all be rejected)
 
-1. **Config once:** Settings → Asset Categories (repair routing per category), Settings → Repair Consultants (≥1 active vendor).
-2. **Cross-location fulfilment:** approve a branch request → issue from HO → approve issuance → movement appears (Movement → All) → dispatch (print + upload release note) → receive at branch (try a discrepancy) → complete the auto delivery leg → confirm HO ↓ / branch ↑ on the Store pages.
-3. **Repair round-trip:** Repair Transfer (IT-routed) → approve it from **Pending My Approval** → dispatch → receive (asset now in IT store) → Temp Replacement to the user → Return After Repair (+ temp back) → verify the IT store and the user's assets.
-4. **External repair:** set a category to EXTERNAL → Repair Transfer now demands consultant + signed document.
-5. **Disposal:** dispose an asset (or repair-transfer a non-repairable one) → verify it lands in the Disposal store as disposed.
+| # | Attempt | Expected |
+|---|---|---|
+| 10.1 | Dispatch without courier or tracking number | Blocked with a validation error |
+| 10.2 | Receive an inter-location movement that was never dispatched | Blocked |
+| 10.3 | Approve a DRAFT movement as someone other than the current approver | Blocked |
+| 10.4 | External repair without a consultant / without a dispatch document | Blocked in the modal |
+| 10.5 | Complete a movement whose source lacks stock | Blocked (insufficient balance) |
+| 10.6 | Cancel a COMPLETED movement | Blocked |
+| 10.7 | Receive the same movement twice | Second receive is a no-op (idempotent) |
+
+---
+
+## 11. Low-stock follow-through (closes the loop)
+
+1. After Scenario B/C drains a branch or HO balance to ≤ its "Reorder at" threshold:
+   - ☐ The balance row shows **Low** in the Consumable Balances panel; the store landing page's
+     Branches Overview shows the low-stock chip against that branch (its region auto-expands).
+2. From the Branches Overview, click **Replenish** → create the replenishment movement → run it
+   through Scenario C again.
+   - ☐ After receipt the Low flag clears.
