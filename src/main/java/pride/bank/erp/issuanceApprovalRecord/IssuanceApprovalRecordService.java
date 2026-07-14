@@ -8,8 +8,10 @@ Managing Director
 package pride.bank.erp.issuanceApprovalRecord;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.issuance.Issuance;
@@ -20,6 +22,11 @@ import pride.bank.erp.notification.Email;
 import pride.bank.erp.request.Request;
 import pride.bank.erp.request.RequestDTO;
 import pride.bank.erp.request.RequestRepository;
+import pride.bank.erp.unit.Unit;
+import pride.bank.erp.user.User;
+import pride.bank.erp.workflow.ApprovalStep;
+import pride.bank.erp.workflow.StepType;
+import pride.bank.erp.workflowinstance.RequestWorkflowInstance;
 import pride.bank.erp.workflowinstance.WorkflowEngineService;
 import pride.bank.erp.request.RequestService;
 import pride.bank.erp.status.Status;
@@ -54,6 +61,14 @@ public class IssuanceApprovalRecordService {
 
         Issuance issuance = issuanceService.findOne(issuanceApprovalRecordDTO.getIssuanceId());
         Request request = requestService.findRequest(issuanceApprovalRecordDTO.getRequestId());
+
+        // Route-level security already requires APPROVE_ISSUANCE (see SecurityConfiguration).
+        // This adds a second, finer-grained check: the ISSUER must have belonged to the Unit
+        // this request's workflow routes issuance through (e.g. Admin Unit for an Admin-handled
+        // workflow). Checked on the issuer, not the approver — the approver is resolved via the
+        // issuer's own reporting ladder (a Manager, not a unit member), so a unit requirement on
+        // the approver would make issuance approval unreachable for every manager in practice.
+        requireIssuerUnitMatch(request, issuance);
 
         // Persist the audit record (always, regardless of workflow mode)
         IssuanceApprovalRecord record = IssuanceApprovalRecord.builder()
@@ -120,6 +135,37 @@ public class IssuanceApprovalRecordService {
                 .currentApprover(response.getCurrentApprover() != null ?
                         userBuilder.builder(response.getCurrentApprover()) : null)
                 .build();
+    }
+
+    /**
+     * Enforces that the {@code issuance}'s issuer belonged to the Unit configured on this
+     * request's {@code ISSUANCE} workflow step (e.g. Admin Unit for an Admin-handled workflow).
+     * Skips (permissive) when the request has no active workflow instance, its ISSUANCE step has
+     * no unit configured, or the issuer has no unit — legacy/unconfigured cases this was never
+     * meant to block.
+     */
+    private void requireIssuerUnitMatch(Request request, Issuance issuance) throws NotFoundException {
+        RequestWorkflowInstance instance = workflowEngineService.getInstance(request.getId()).orElse(null);
+        if (instance == null || instance.getWorkflow() == null) {
+            return;
+        }
+
+        Unit requiredUnit = instance.getWorkflow().getSteps().stream()
+                .filter(step -> step.getStepType() == StepType.ISSUANCE)
+                .map(ApprovalStep::getUnit)
+                .filter(java.util.Objects::nonNull)
+                .findFirst()
+                .orElse(null);
+        if (requiredUnit == null) {
+            return;
+        }
+
+        User issuer = issuance.getIssuer();
+        Unit issuerUnit = issuer != null ? issuer.getUnit() : null;
+        if (issuerUnit == null || !issuerUnit.getId().equals(requiredUnit.getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "This issuance was not made by a member of " + requiredUnit.getName() + "; it cannot be approved.");
+        }
     }
 
     public IssuanceApprovalRecordDAO findIssuanceApprovalRecordByRequestId(Long requestId) {

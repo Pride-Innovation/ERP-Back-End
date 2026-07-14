@@ -12,6 +12,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import pride.bank.erp.title.Title;
+import pride.bank.erp.unit.Unit;
 
 @Builder
 @AllArgsConstructor
@@ -26,4 +27,7 @@ public class AuthenticationResponse {
     private String email;
     private Title title;
     private String gender;
+    /** Optional unit (e.g. Admin Unit, Infra Unit) the user belongs to — drives in-app visibility
+     *  and eligibility for unit-routed workflow steps (acknowledge / issuance / approval). */
+    private Unit unit;
 }
