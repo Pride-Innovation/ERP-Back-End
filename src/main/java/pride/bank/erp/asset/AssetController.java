@@ -167,6 +167,15 @@ public class AssetController {
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 
+    /** Flips whether an asset is pool stock for temporary replacement loans (§15). */
+    @PutMapping("assets/temporary-pool/{assetID}")
+    public ResponseEntity<AssetDAO> toggleTemporaryPool(
+            @PathVariable Long assetID
+    ) throws NotFoundException {
+        AssetDAO response = assetService.toggleTemporaryPool(assetID);
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
+    }
+
     @PostMapping("assets/bulk-insert")
     public ResponseEntity<Map<String, Object>> bulkInsertAsset(
             @RequestParam("assets") String assets,

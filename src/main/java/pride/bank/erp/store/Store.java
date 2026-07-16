@@ -13,6 +13,7 @@ import org.springframework.data.annotation.LastModifiedBy;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import pride.bank.erp.branch.Branch;
+import pride.bank.erp.courier.Courier;
 import pride.bank.erp.department.Department;
 
 import java.time.LocalDateTime;
@@ -21,13 +22,16 @@ import java.time.LocalDateTime;
  * A physical store at a {@link #location} (CLAUDE.md §4). The on-hand quantities held by a store are
  * recorded as {@link StoreBalance} rows, and stores are the source/destination of {@code Movement}s.
  *
- * <p>Identity is {@code (location, storeType, department)}:
+ * <p>Identity is {@code (location, storeType, department, courier)}:
  * <ul>
  *   <li>Every location has exactly one location-level {@link StoreType#ADMIN} store
  *       ({@code department == null}).</li>
  *   <li>Head Office additionally has one {@link StoreType#IT} and one {@link StoreType#DISPOSAL}
  *       store.</li>
  *   <li>A non-null {@link #department} models department-level holdings (§12).</li>
+ *   <li>A {@link StoreType#COURIER} store's {@link #location} is fixed to Head Office purely to
+ *       satisfy this column's {@code NOT NULL} constraint — its real identity is {@link #courier}
+ *       (one custody store per courier), not its location.</li>
  * </ul>
  *
  * <p>Mapped to the {@code store_container} table: the legacy {@code store} table now backs
@@ -43,8 +47,8 @@ import java.time.LocalDateTime;
 @Table(
         name = "store_container",
         uniqueConstraints = @UniqueConstraint(
-                name = "uk_store_location_type_department",
-                columnNames = {"location_id", "store_type", "department_id"}
+                name = "uk_store_location_type_department_courier",
+                columnNames = {"location_id", "store_type", "department_id", "courier_id"}
         )
 )
 public class Store {
@@ -71,6 +75,12 @@ public class Store {
     @JoinColumn(name = "department_id")
     @NotAudited
     private Department department;
+
+    /** Non-null only for a {@link StoreType#COURIER} store — the courier this custody store belongs to. */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "courier_id")
+    @NotAudited
+    private Courier courier;
 
     @Column(nullable = false)
     @Builder.Default

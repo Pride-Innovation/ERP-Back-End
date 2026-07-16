@@ -124,14 +124,19 @@ public class RepairMovementService {
         return movement;
     }
 
-    /** §15: issue a temporary replacement asset from the IT store to a user. */
+    /**
+     * §15: issue a temporary replacement asset to a user, from wherever that pool asset actually
+     * sits — the IT store for IT-routed categories, the Head Office Admin store for others (e.g. a
+     * pool of loaner chairs) — not always the IT store.
+     */
     @Transactional
     public Movement issueTemporaryReplacement(TempReplacementDTO dto) throws NotFoundException {
-        Store itStore = headOfficeStore(StoreType.IT);
+        Asset temp = findAsset(dto.getTempAssetId());
+        Store source = currentStoreOf(temp);
 
         return movementService.createMovement(MovementDTO.builder()
                 .movementType(MovementType.TEMP_REPLACEMENT)
-                .sourceStoreId(itStore.getId())
+                .sourceStoreId(source.getId())
                 .recipientUserId(dto.getRecipientUserId())
                 .courierService(dto.getCourierService())
                 .trackingNumber(dto.getTrackingNumber())
@@ -169,15 +174,16 @@ public class RepairMovementService {
                 .items(List.of(assetItem(dto.getAssetId())))
                 .build());
 
-        // Optionally return the temporary replacement asset back to the IT store.
+        // Optionally return the temporary replacement asset back to its own pool store — IT store
+        // for IT-routed categories, Head Office Admin store for others — not always the IT store.
         if (dto.getTempAssetId() != null) {
             Asset temp = findAsset(dto.getTempAssetId());
             Store tempSource = currentStoreOf(temp);
-            Store itStore = headOfficeStore(StoreType.IT);
+            Store poolStore = repairCustodyStoreFor(temp);
             movementService.createMovement(MovementDTO.builder()
                     .movementType(MovementType.RETURN_AFTER_REPAIR)
                     .sourceStoreId(tempSource.getId())
-                    .destStoreId(itStore.getId())
+                    .destStoreId(poolStore.getId())
                     .remarks("Return of temporary replacement asset")
                     .items(List.of(assetItem(dto.getTempAssetId())))
                     .build());
@@ -223,6 +229,19 @@ public class RepairMovementService {
             throw new NotFoundException("Asset " + asset.getId() + " has no branch to resolve a store from");
         }
         return storeService.resolveAdminStore(asset.getBranch());
+    }
+
+    /**
+     * The store a repair-pool asset of this category belongs in — the IT store for IT-routed
+     * categories, the Head Office Admin store otherwise (ADMIN-routed, EXTERNAL-routed, or
+     * unconfigured). Used to resolve where a temporary-replacement asset should live, instead of
+     * assuming it's always the IT store.
+     */
+    private Store repairCustodyStoreFor(Asset asset) throws NotFoundException {
+        AssetType category = asset.getAssetType();
+        RepairDestination routing = (category != null && category.getRepairDestination() != null)
+                ? category.getRepairDestination() : RepairDestination.IT;
+        return routing == RepairDestination.IT ? headOfficeStore(StoreType.IT) : headOfficeAdminStore();
     }
 
     private Store headOfficeStore(StoreType type) throws NotFoundException {

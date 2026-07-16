@@ -67,6 +67,15 @@ public class Asset {
     private LocalDateTime disposalDate;
     private String lastRepairedBy;
 
+    /**
+     * True when this asset is pool stock kept aside for temporary replacement loans while another
+     * asset of the same category is under repair (see {@code RepairMovementService}), rather than an
+     * operational asset assigned to a specific person/desk.
+     */
+    @Column(name = "temporary_pool", columnDefinition = "BIT NOT NULL DEFAULT 0")
+    @Builder.Default
+    private boolean temporaryPool = false;
+
     @Column(unique = true)
     private String tagName;
 

@@ -7,6 +7,8 @@ import org.springframework.transaction.annotation.Transactional;
 import pride.bank.erp.branch.Branch;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.issuance.Issuance;
+import pride.bank.erp.issuedAsset.IssuedAsset;
+import pride.bank.erp.issuedAsset.IssuedAssetRepository;
 import pride.bank.erp.request.Request;
 import pride.bank.erp.requestCommodity.RequestCommodity;
 import pride.bank.erp.requestCommodity.RequestCommodityRepository;
@@ -42,6 +44,7 @@ public class FulfillmentService {
     private final MovementRepository movementRepository;
     private final StoreService storeService;
     private final RequestCommodityRepository requestCommodityRepository;
+    private final IssuedAssetRepository issuedAssetRepository;
 
     /**
      * Evaluates the fulfilment route for {@code request} given the {@code issuance} that produced it,
@@ -67,7 +70,7 @@ public class FulfillmentService {
                 log.info("Fulfilment movement already exists for request {} — skipping", request.getId());
                 return decision;
             }
-            createFulfillmentMovement(request, source, destination);
+            createFulfillmentMovement(request, issuance, source, destination);
         } catch (Exception e) {
             log.warn("Could not create fulfilment movement for request {}: {}", request.getId(), e.getMessage());
         }
@@ -84,11 +87,14 @@ public class FulfillmentService {
         return FulfillmentType.STORE_MOVEMENT;
     }
 
-    private void createFulfillmentMovement(Request request, Branch source, Branch destination)
+    private void createFulfillmentMovement(Request request, Issuance issuance, Branch source, Branch destination)
             throws NotFoundException {
         List<RequestCommodity> commodities = requestCommodityRepository.findByRequestId(request.getId());
-        if (commodities == null || commodities.isEmpty()) {
-            log.info("Request {} has no consumable lines — no fulfilment movement created", request.getId());
+        List<IssuedAsset> issuedAssets = (issuance != null)
+                ? issuedAssetRepository.findByIssuance_Id(issuance.getId())
+                : List.of();
+        if ((commodities == null || commodities.isEmpty()) && issuedAssets.isEmpty()) {
+            log.info("Request {} has no consumable or asset lines — no fulfilment movement created", request.getId());
             return;
         }
 
@@ -96,11 +102,20 @@ public class FulfillmentService {
         Store destStore = storeService.resolveAdminStore(destination);
 
         List<MovementItemDTO> items = new ArrayList<>();
-        for (RequestCommodity rc : commodities) {
-            if (rc.getCommodity() == null || rc.getQuantity() <= 0) continue;
+        if (commodities != null) {
+            for (RequestCommodity rc : commodities) {
+                if (rc.getCommodity() == null || rc.getQuantity() <= 0) continue;
+                items.add(MovementItemDTO.builder()
+                        .commodityId(rc.getCommodity().getId())
+                        .quantity(rc.getQuantity())
+                        .build());
+            }
+        }
+        for (IssuedAsset ia : issuedAssets) {
+            if (ia.getAsset() == null) continue;
             items.add(MovementItemDTO.builder()
-                    .commodityId(rc.getCommodity().getId())
-                    .quantity(rc.getQuantity())
+                    .assetId(ia.getAsset().getId())
+                    .quantity(1)
                     .build());
         }
         if (items.isEmpty()) return;

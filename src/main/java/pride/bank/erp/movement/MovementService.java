@@ -13,6 +13,8 @@ import pride.bank.erp.commodity.CommodityRepository;
 import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.consultant.Consultant;
 import pride.bank.erp.consultant.ConsultantRepository;
+import pride.bank.erp.courier.Courier;
+import pride.bank.erp.courier.CourierService;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.FileUpload;
 import pride.bank.erp.inventory.InventoryService;
@@ -54,6 +56,7 @@ public class MovementService {
     private final InventoryService inventoryService;
     private final MovementApprovalService movementApprovalService;
     private final FileUpload fileUpload;
+    private final CourierService courierService;
 
     @Transactional
     public Movement createMovement(MovementDTO dto) throws NotFoundException {
@@ -182,8 +185,11 @@ public class MovementService {
     }
 
     /**
-     * Dispatches an inter-location movement (§9, §10): records courier/tracking details and moves it
-     * to {@link MovementStatus#DISPATCHED}. Intra-location movements have no dispatch leg.
+     * Dispatches an inter-location movement (§9, §10): resolves the courier (vetted by id, or
+     * auto-created ad-hoc by name), records the plate number and signed dispatch document(s), and
+     * moves it to {@link MovementStatus#DISPATCHED}. No ledger effect yet — the items are still
+     * booked at the source store until custody actually transfers at {@link #markInTransit}.
+     * Intra-location movements have no dispatch leg.
      */
     @Transactional
     public Movement dispatchMovement(Long movementId, MovementDispatchDTO dto) throws NotFoundException {
@@ -194,28 +200,54 @@ public class MovementService {
         if (movement.getStatus() != MovementStatus.INITIATED && movement.getStatus() != MovementStatus.DRAFT) {
             throw new IllegalStateException("Movement " + movementId + " cannot be dispatched from status " + movement.getStatus());
         }
-        if (isBlank(dto.getCourierService()) || isBlank(dto.getTrackingNumber())) {
-            throw new IllegalArgumentException("Courier service and tracking number are required to dispatch");
+        if (isBlank(dto.getTrackingNumber())) {
+            throw new IllegalArgumentException("A tracking number is required to dispatch");
+        }
+        if (isBlank(dto.getPlateNumber())) {
+            throw new IllegalArgumentException("A vehicle plate number is required to dispatch");
+        }
+        if (dto.getDeliveryDocuments() == null || dto.getDeliveryDocuments().isEmpty()) {
+            throw new IllegalArgumentException(
+                    "At least one signed dispatch document is required to dispatch. Generate the "
+                            + "dispatch note, get it signed by the courier, and upload it first.");
         }
 
-        movement.setCourierService(dto.getCourierService());
+        Courier courier = courierService.resolveForDispatch(dto.getCourierId(), dto.getCourierName());
+
+        movement.setCourier(courier);
+        movement.setPlateNumber(dto.getPlateNumber());
+        movement.setCourierService(courier.getName());
         movement.setTrackingNumber(dto.getTrackingNumber());
         movement.setDispatchDate(dto.getDispatchDate() != null ? dto.getDispatchDate() : LocalDateTime.now());
         movement.setExpectedDeliveryDate(dto.getExpectedDeliveryDate());
-        if (dto.getDeliveryDocuments() != null) {
-            movement.setDeliveryDocuments(dto.getDeliveryDocuments());
-        }
+        movement.setDeliveryDocuments(dto.getDeliveryDocuments());
         movement.setStatus(MovementStatus.DISPATCHED);
-        log.info("Dispatched movement {} via {} (tracking {})", movementId, dto.getCourierService(), dto.getTrackingNumber());
+        log.info("Dispatched movement {} to courier {} (plate {}, tracking {})",
+                movementId, courier.getName(), dto.getPlateNumber(), dto.getTrackingNumber());
         return movementRepository.save(movement);
     }
 
-    /** Optional in-transit marker for a dispatched inter-location movement. */
+    /**
+     * Marks a dispatched movement in-transit — compulsory, not optional: {@link #receiveMovement}
+     * refuses any inter-location movement that skipped this step. This is also where custody of the
+     * items actually transfers: the first ledger hop debits the source store and credits the
+     * courier's custody store, guarded by {@code custodyTransferSettled} so it only ever applies once.
+     */
     @Transactional
     public Movement markInTransit(Long movementId) throws NotFoundException {
         Movement movement = findMovement(movementId);
         if (movement.getStatus() != MovementStatus.DISPATCHED) {
             throw new IllegalStateException("Only a dispatched movement can be marked in transit");
+        }
+        if (movement.getCourier() == null) {
+            throw new IllegalStateException("Movement " + movementId + " has no courier assigned — dispatch it first");
+        }
+        if (!movement.isCustodyTransferSettled()) {
+            Store courierStore = storeRepository.findByCourier_Id(movement.getCourier().getId())
+                    .orElseThrow(() -> new NotFoundException(
+                            "Courier " + movement.getCourier().getId() + " has no custody store"));
+            inventoryService.applyCustodyHandoff(movement, courierStore);
+            movement.setCustodyTransferSettled(true);
         }
         movement.setStatus(MovementStatus.IN_TRANSIT);
         return movementRepository.save(movement);
@@ -223,8 +255,9 @@ public class MovementService {
 
     /**
      * Receives a movement at its destination and finalises it. Inter-location movements must have
-     * been dispatched first (BOM/admin confirms receipt, §10); intra-location movements are received
-     * immediately. Applies the inventory ledger unless it was already settled elsewhere.
+     * been marked {@code IN_TRANSIT} first (dispatch alone is not enough — see {@link #markInTransit});
+     * intra-location movements are received immediately. Applies the inventory ledger unless it was
+     * already settled elsewhere.
      */
     @Transactional
     public Movement receiveMovement(Long movementId, MovementReceiveDTO dto) throws NotFoundException {
@@ -236,10 +269,9 @@ public class MovementService {
             throw new IllegalStateException("Cannot receive a cancelled movement");
         }
         if (movement.getMovementCategory() == MovementCategory.INTER_LOCATION
-                && movement.getStatus() != MovementStatus.DISPATCHED
                 && movement.getStatus() != MovementStatus.IN_TRANSIT) {
             throw new IllegalStateException("Inter-location movement " + movementId
-                    + " must be dispatched before it can be received (current: " + movement.getStatus() + ")");
+                    + " must be marked in-transit before it can be received (current: " + movement.getStatus() + ")");
         }
         ReceiptStatus receiptStatus = (dto != null && dto.getReceiptStatus() != null)
                 ? dto.getReceiptStatus() : ReceiptStatus.RECEIVED_OK;
@@ -280,7 +312,15 @@ public class MovementService {
     /** Applies the ledger (unless already settled), stamps receipt/completion fields, and saves. */
     private Movement finalizeCompletion(Movement movement, ReceiptStatus receiptStatus, String remarks) {
         if (!movement.isInventorySettled()) {
-            inventoryService.applyMovementCompletion(movement);
+            // Debit the courier's custody store when one carried this leg (the items already moved
+            // there at IN_TRANSIT); otherwise debit the movement's own source store directly, as an
+            // intra-location movement (no courier ever involved) always does.
+            Store debitFrom = movement.getSourceStore();
+            if (movement.getCourier() != null) {
+                debitFrom = storeRepository.findByCourier_Id(movement.getCourier().getId())
+                        .orElse(movement.getSourceStore());
+            }
+            inventoryService.applyMovementCompletion(movement, debitFrom);
             movement.setInventorySettled(true);
         }
         movement.setStatus(MovementStatus.COMPLETED);
@@ -313,11 +353,21 @@ public class MovementService {
         if (alreadyDelivered) return;
 
         List<MovementItemDTO> items = completed.getItems().stream()
-                .filter(i -> i.getCommodity() != null)
-                .map(i -> MovementItemDTO.builder()
-                        .commodityId(i.getCommodity().getId())
-                        .quantity(i.getQuantity())
-                        .build())
+                .map(i -> {
+                    if (i.getCommodity() != null) {
+                        return MovementItemDTO.builder()
+                                .commodityId(i.getCommodity().getId())
+                                .quantity(i.getQuantity())
+                                .build();
+                    } else if (i.getAsset() != null) {
+                        return MovementItemDTO.builder()
+                                .assetId(i.getAsset().getId())
+                                .quantity(1)
+                                .build();
+                    }
+                    return null;
+                })
+                .filter(java.util.Objects::nonNull)
                 .toList();
         if (items.isEmpty()) return;
 

@@ -22,6 +22,8 @@ import pride.bank.erp.commodity.CommodityService;
 import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.exception.BadRequestException;
 import pride.bank.erp.exception.NotFoundException;
+import pride.bank.erp.issuedAsset.IssuedAsset;
+import pride.bank.erp.issuedAsset.IssuedAssetRepository;
 import pride.bank.erp.issuedCommodity.IssuedCommodity;
 import pride.bank.erp.issuedCommodity.IssuedCommodityRepository;
 import pride.bank.erp.notification.Email;
@@ -69,6 +71,7 @@ public class IssuanceService {
     private final StatusService statusService;
     private final CommodityService commodityService;
     private final IssuedCommodityRepository issuedCommodityRepository;
+    private final IssuedAssetRepository issuedAssetRepository;
     private final StoreService storeService;
     private final AssetService assetService;
     private final AssetRepository assetRepository;
@@ -95,9 +98,13 @@ public class IssuanceService {
         logger.info("Processing issuance request from branch " + issuerBranchId +
                 " for user in branch " + requesterBranchId);
 
-        // Handle asset assignments if present
+        boolean sameLocationAssets = Objects.equals(issuerBranchId, requesterBranchId);
+
+        // Handle asset assignments if present — validate up front (fail fast, before the
+        // Issuance record exists); the actual assignment/link is applied after the Issuance
+        // is saved (see below), same ordering as commodities.
         if (request.getAssets() != null && !request.getAssets().isEmpty()) {
-            updateAssetAssignedToStatusAndStatus(request.getAssets(), requester);
+            validateAssetsReadyForIssuance(request.getAssets());
         }
 
         // Process commodities if present
@@ -155,6 +162,13 @@ public class IssuanceService {
         // Add issued commodities record if commodities exist
         if (request.getCommodities() != null && !request.getCommodities().isEmpty()) {
             addIssuedCommodities(savedIssuance, request.getCommodities());
+        }
+
+        // Link + (same-location only) assign issued assets. Cross-location assets are left
+        // untouched here — the fulfilment movement created at issuance approval assigns them
+        // on receipt, exactly like cross-location commodities defer to the same movement.
+        if (request.getAssets() != null && !request.getAssets().isEmpty()) {
+            applyAssetIssuance(request.getAssets(), requester, savedIssuance, sameLocationAssets);
         }
 
         if (workflowEngineService.hasActiveInstance(requestDetails.getId())) {
@@ -369,19 +383,15 @@ public class IssuanceService {
     }
 
     /**
-     * Updates the assignment and status of assets for a user
+     * Blocks issuance of any asset still flagged "requires update after stocking" — i.e. the
+     * responsible team has not yet filled in the engraved number and remaining details. Surfaces
+     * every offending asset in one error so the issuer doesn't have to retry one-by-one. Called
+     * before the Issuance record is created so an incomplete asset fails the whole request fast.
      *
-     * @param assets The assets to update
-     * @param user   The user to assign the assets to
-     * @throws NotFoundException If an asset or status is not found
+     * @param assets The assets about to be issued
+     * @throws NotFoundException If an asset is not found
      */
-    private void updateAssetAssignedToStatusAndStatus(List<IssueAssetsDTO> assets, User user) throws NotFoundException {
-        Status assignedStatus = statusService.findByStatusCode(CODE_ASSET_ASSIGNED);
-
-        // Block issuance of any asset still flagged "requires update after stocking" —
-        // i.e. the responsible team has not yet filled in the engraved number and
-        // remaining details. Surface every offending asset in one error so the
-        // issuer doesn't have to retry one-by-one.
+    private void validateAssetsReadyForIssuance(List<IssueAssetsDTO> assets) throws NotFoundException {
         List<String> incomplete = new ArrayList<>();
         for (IssueAssetsDTO asst : assets) {
             Asset asset = assetService.findOne(asst.getId());
@@ -403,9 +413,36 @@ public class IssuanceService {
                             + "mark the following ready for issuance: "
                             + String.join("; ", incomplete));
         }
+    }
+
+    /**
+     * Links every issued asset to this {@link Issuance} (audit trail, and what
+     * {@link pride.bank.erp.movement.FulfillmentService} reads to build a cross-location fulfilment
+     * movement). When {@code sameLocation} is true the asset is also assigned to the requester
+     * immediately, exactly as before; when false the assignment is deferred to the fulfilment
+     * movement's ledger effect on receipt, so the asset isn't marked "assigned" before it has
+     * actually reached the requester's location.
+     *
+     * @param assets       The assets being issued
+     * @param user         The requester the assets are ultimately for
+     * @param issuance     The just-saved issuance record to link against
+     * @param sameLocation Whether the issuer and requester share a branch (Head Office counts as
+     *                     one branch for this purpose)
+     * @throws NotFoundException If an asset or status is not found
+     */
+    private void applyAssetIssuance(List<IssueAssetsDTO> assets, User user, Issuance issuance, boolean sameLocation)
+            throws NotFoundException {
+        Status assignedStatus = statusService.findByStatusCode(CODE_ASSET_ASSIGNED);
 
         for (IssueAssetsDTO asst : assets) {
             Asset asset = assetService.findOne(asst.getId());
+
+            issuedAssetRepository.save(IssuedAsset.builder().issuance(issuance).asset(asset).build());
+
+            if (!sameLocation) {
+                // Cross-location: the fulfilment movement owns the assignment once it's received.
+                continue;
+            }
 
             User oldUser = asset.getAssignedTo();
             Status oldStatus = asset.getAssetStatus();
@@ -424,7 +461,7 @@ public class IssuanceService {
 
             assetRepository.save(asset);
         }
-        logger.info("Updated asset assignments for " + assets.size() + " assets");
+        logger.info("Linked " + assets.size() + " issued asset(s) (sameLocation=" + sameLocation + ")");
     }
 
     /**

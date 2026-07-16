@@ -185,6 +185,7 @@ public class AssetService {
                 .branch(branch)
                 .stock(stock)
                 .commodity(commodity)
+                .temporaryPool(Boolean.TRUE.equals(request.getTemporaryPool()))
                 .build();
         return assetRepository.save(asset);
     }
@@ -300,6 +301,9 @@ public class AssetService {
         asset.setDetailNetBookValue(request.getDetailNetBookValue());
         asset.setDescription(request.getDescription());
         asset.setBranch(branch);
+        if (request.getTemporaryPool() != null) {
+            asset.setTemporaryPool(request.getTemporaryPool());
+        }
         return buildAssetDao(assetRepository.save(asset));
     }
 
@@ -502,6 +506,7 @@ public class AssetService {
                 .description(asset.getDescription())
                 .image(asset.getImage())
                 .lastRepairedBy(asset.getLastRepairedBy())
+                .temporaryPool(asset.isTemporaryPool())
 
                 // Map nested references as simple DTOs or just their IDs and names to avoid recursion
                 .supplier(asset.getSupplier() != null ?
@@ -679,6 +684,18 @@ public class AssetService {
         Status status = statusService.findByStatusCode("sentToStore"); // Asset sent to store
         asset.setAssetStatus(status);
         asset.setAssignedTo(null);
+        return buildAssetDao(assetRepository.save(asset));
+    }
+
+    /**
+     * Flips whether this asset is pool stock for temporary replacement loans (§15). Only meaningful
+     * for an asset currently unassigned and sitting in a store — flipping it on an operational,
+     * assigned asset doesn't relocate or unassign it, it just marks intent for the next repair cycle.
+     */
+    @Transactional
+    public AssetDAO toggleTemporaryPool(Long assetID) throws NotFoundException {
+        Asset asset = findOne(assetID);
+        asset.setTemporaryPool(!asset.isTemporaryPool());
         return buildAssetDao(assetRepository.save(asset));
     }
 

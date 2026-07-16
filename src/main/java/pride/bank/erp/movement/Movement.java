@@ -13,6 +13,7 @@ import org.springframework.data.annotation.LastModifiedBy;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import pride.bank.erp.consultant.Consultant;
+import pride.bank.erp.courier.Courier;
 import pride.bank.erp.repair.Repair;
 import pride.bank.erp.request.Request;
 import pride.bank.erp.store.Store;
@@ -81,6 +82,15 @@ public class Movement {
     private LocalDateTime dispatchDate;
     private LocalDateTime expectedDeliveryDate;
 
+    /** The courier holding custody of these items between dispatch and receipt. Set at dispatch. */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "courier_id")
+    @NotAudited
+    private Courier courier;
+
+    /** Vehicle plate number captured at dispatch — vetted and ad-hoc couriers alike. */
+    private String plateNumber;
+
     @ElementCollection
     @CollectionTable(name = "movement_delivery_documents", joinColumns = @JoinColumn(name = "movement_id"))
     @Column(name = "document")
@@ -126,14 +136,23 @@ public class Movement {
     private LocalDateTime completionDate;
 
     /**
-     * True once this movement's inventory effects have been applied (or were applied elsewhere).
-     * Guards the ledger so completion is never double-counted: the fulfilment path created at
-     * issuance approval sets this true because the legacy issuance already moved the stock, so a
-     * later {@code receive} records logistics/accountability without touching balances again.
+     * True once this movement's final (courier → destination, or source → destination when no
+     * courier is involved) inventory effects have been applied. Guards the ledger so completion is
+     * never double-counted.
      */
     @Column(nullable = false)
     @Builder.Default
     private boolean inventorySettled = false;
+
+    /**
+     * True once the first ledger hop — source store → the courier's custody store — has been
+     * applied at {@code IN_TRANSIT}. Only ever set for {@link MovementCategory#INTER_LOCATION}
+     * movements with a {@link #courier} assigned; guards that hop the same way
+     * {@link #inventorySettled} guards the final one.
+     */
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean custodyTransferSettled = false;
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "request_id")

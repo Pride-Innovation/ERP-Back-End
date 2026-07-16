@@ -26,4 +26,9 @@ public interface StoreRepository extends JpaRepository<Store, Long> {
     List<Store> findByDepartment_Id(Long departmentId);
 
     boolean existsByLocation_IdAndStoreTypeAndDepartmentIsNull(Long locationId, StoreType storeType);
+
+    /** A courier's custody store (see {@link StoreType#COURIER}). */
+    Optional<Store> findByCourier_Id(Long courierId);
+
+    boolean existsByCourier_Id(Long courierId);
 }

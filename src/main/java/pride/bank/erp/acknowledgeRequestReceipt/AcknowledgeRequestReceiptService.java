@@ -14,6 +14,9 @@ import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.exception.BusinessRuleException;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.issuance.UserBuilder;
+import pride.bank.erp.movement.Movement;
+import pride.bank.erp.movement.MovementRepository;
+import pride.bank.erp.movement.MovementStatus;
 import pride.bank.erp.user.User;
 import pride.bank.erp.notification.Email;
 import pride.bank.erp.request.Request;
@@ -23,6 +26,8 @@ import pride.bank.erp.request.RequestService;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
 import pride.bank.erp.workflowinstance.WorkflowEngineService;
+
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -35,6 +40,7 @@ public class AcknowledgeRequestReceiptService {
     private final Email emailService;
     private final UserBuilder userBuilder;
     private final WorkflowEngineService workflowEngineService;
+    private final MovementRepository movementRepository;
 
     @Transactional
     public RequestDTO createAcknowledgeRequestReceipt(
@@ -53,6 +59,12 @@ public class AcknowledgeRequestReceiptService {
             throw new BusinessRuleException(
                     "You cannot acknowledge your own request. It must be acknowledged by a colleague in your unit.");
         }
+
+        // Guard: cross-location requests must have their delivery movement actually completed
+        // before the requester can acknowledge — otherwise acknowledgement and physical delivery
+        // are two disconnected confirmations. DIRECT_ISSUANCE requests have no movement and are
+        // unaffected.
+        requireDeliveryComplete(request);
 
         // Persist the audit record first (always, regardless of workflow mode)
         AcknowledgeRequestReceipt acknowledgeRequestReceipt = AcknowledgeRequestReceipt
@@ -113,6 +125,29 @@ public class AcknowledgeRequestReceiptService {
                 .currentApprover(request.getCurrentApprover() != null ?
                         userBuilder.builder(request.getCurrentApprover()) : null)
                 .build();
+    }
+
+    /**
+     * If this request was fulfilled via one or more movements (cross-location), the last leg —
+     * the one that actually hands the items to the requester ({@code recipientUser != null}) —
+     * must be {@code COMPLETED} before receipt can be acknowledged. Requests with no movement rows
+     * (same-location / DIRECT_ISSUANCE) are unaffected.
+     */
+    private void requireDeliveryComplete(Request request) throws BusinessRuleException {
+        List<Movement> movements = movementRepository.findByRequest_Id(request.getId());
+        if (movements.isEmpty()) {
+            return;
+        }
+        Movement deliveryLeg = movements.stream()
+                .filter(m -> m.getRecipientUser() != null)
+                .findFirst()
+                .orElse(movements.get(movements.size() - 1));
+
+        if (deliveryLeg.getStatus() != MovementStatus.COMPLETED) {
+            throw new BusinessRuleException(
+                    "The items for this request have not been delivered yet. Please wait until the "
+                            + "delivery movement is completed before acknowledging receipt.");
+        }
     }
 
     public AcknowledgeRequestReceiptDAO findAcknowledgeRequestReceiptByRequestId(Long requestId) {

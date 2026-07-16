@@ -67,4 +67,6 @@ public class AssetDAO {
     private Long createdBy;
     private Long lastModifiedBy;
     private String lastRepairedBy;
+    /** Pool stock for temporary replacement loans (see {@code Asset#isTemporaryPool()}). */
+    private boolean temporaryPool;
 }

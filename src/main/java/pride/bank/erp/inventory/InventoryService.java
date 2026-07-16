@@ -134,13 +134,13 @@ public class InventoryService {
     // ── Movement application ────────────────────────────────────────────────
 
     /**
-     * Applies the inventory effects of a completed {@link Movement}: every line debits the source
-     * store and credits the destination (a store, or a user assignment / consumption). Idempotency
-     * is the caller's responsibility — invoke once, when the movement transitions to COMPLETED.
+     * Applies the inventory effects of a completed {@link Movement}, debiting {@code from} (the
+     * movement's own source store, or — when a courier carried it — the courier's custody store)
+     * and crediting the destination (a store, or a user assignment / consumption). Idempotency is
+     * the caller's responsibility — invoke once, when the movement transitions to COMPLETED.
      */
     @Transactional
-    public void applyMovementCompletion(Movement movement) {
-        Store source = movement.getSourceStore();
+    public void applyMovementCompletion(Movement movement, Store from) {
         Store dest = movement.getDestStore();
         User recipient = movement.getRecipientUser();
 
@@ -148,7 +148,7 @@ public class InventoryService {
             if (item.getAsset() != null) {
                 applyAssetEffect(movement, item.getAsset(), dest, recipient);
             } else if (item.getCommodity() != null) {
-                debitConsumable(source, item.getCommodity(), item.getQuantity());
+                debitConsumable(from, item.getCommodity(), item.getQuantity());
                 if (dest != null) {
                     creditConsumable(dest, item.getCommodity(), item.getQuantity());
                 }
@@ -157,6 +157,28 @@ public class InventoryService {
         }
         log.info("Applied inventory effects for movement {} ({} item(s))",
                 movement.getId(), movement.getItems().size());
+    }
+
+    /**
+     * The first ("custody handoff") leg of an inter-location movement's ledger: relocates every
+     * item from its source store into the assigned courier's custody store. Purely a location
+     * change — no assignment / disposal / temporary-assignment semantics are applied here, since
+     * the courier is never the final recipient. Idempotency is the caller's responsibility — invoke
+     * once, when the movement transitions to {@code IN_TRANSIT}.
+     */
+    @Transactional
+    public void applyCustodyHandoff(Movement movement, Store courierStore) {
+        Store source = movement.getSourceStore();
+        for (MovementItem item : movement.getItems()) {
+            if (item.getAsset() != null) {
+                relocateAsset(item.getAsset(), courierStore);
+            } else if (item.getCommodity() != null) {
+                debitConsumable(source, item.getCommodity(), item.getQuantity());
+                creditConsumable(courierStore, item.getCommodity(), item.getQuantity());
+            }
+        }
+        log.info("Applied custody handoff for movement {} to courier store {} ({} item(s))",
+                movement.getId(), courierStore.getId(), movement.getItems().size());
     }
 
     /** Asset-side effect of a completed movement, keyed by its type (§14-17). */
@@ -175,12 +197,18 @@ public class InventoryService {
                     relocateAsset(asset, dest);
                 }
             }
-            case REPAIR_TRANSFER -> relocateAsset(asset, dest); // into the IT store
+            // returnAssetToStore (not relocateAsset) so the user's active assignment is actually
+            // closed — otherwise the asset keeps showing "assigned to" them while it sits in the
+            // IT/Admin store under repair.
+            case REPAIR_TRANSFER -> returnAssetToStore(asset, dest);
             case RETURN_AFTER_REPAIR -> {
                 if (recipient != null) {
                     assignAssetToUser(asset, recipient); // back to its user
                 } else if (dest != null) {
-                    relocateAsset(asset, dest);          // back to originating store
+                    // The temp-replacement leg being returned: close its temporary assignment so
+                    // it's actually available in the pool again, not just relocated while still
+                    // showing as assigned to the borrower.
+                    returnAssetToStore(asset, dest);
                 }
             }
             default -> {                                 // ISSUANCE_FULFILLMENT / DEPARTMENT_TRANSFER

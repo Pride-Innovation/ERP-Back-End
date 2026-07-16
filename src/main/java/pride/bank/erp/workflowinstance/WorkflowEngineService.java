@@ -297,7 +297,7 @@ public class WorkflowEngineService {
 
         // Track who we have already notified so the same person isn't pinged twice
         // (e.g. the rejector themselves, or the requester appearing as a prior approver
-        // in a multi-step chain where they were also a step actor).
+        // in a multistep chain where they were also a step actor).
         Set<Long> notifiedUserIds = new HashSet<>();
 
         // 1. Requester
