@@ -11,6 +11,8 @@ import pride.bank.erp.assetAssignmentHostory.AssetAssignmentHistoryRepository;
 import pride.bank.erp.commodity.Commodity;
 import pride.bank.erp.movement.Movement;
 import pride.bank.erp.movement.MovementItem;
+import pride.bank.erp.status.Status;
+import pride.bank.erp.status.StatusService;
 import pride.bank.erp.store.Store;
 import pride.bank.erp.store.StoreBalance;
 import pride.bank.erp.store.StoreBalanceRepository;
@@ -32,6 +34,10 @@ public class InventoryService {
     private final StoreBalanceRepository storeBalanceRepository;
     private final AssetRepository assetRepository;
     private final AssetAssignmentHistoryRepository assignmentHistoryRepository;
+    private final StatusService statusService;
+
+    /** Asset status stamped while the courier holds custody (§9). */
+    private static final String CODE_IN_TRANSIT = "inTransit";
 
     // ── Consumable balances ─────────────────────────────────────────────────
 
@@ -147,6 +153,7 @@ public class InventoryService {
         for (MovementItem item : movement.getItems()) {
             if (item.getAsset() != null) {
                 applyAssetEffect(movement, item.getAsset(), dest, recipient);
+                restorePriorStatus(item);
             } else if (item.getCommodity() != null) {
                 debitConsumable(from, item.getCommodity(), item.getQuantity());
                 if (dest != null) {
@@ -160,18 +167,57 @@ public class InventoryService {
     }
 
     /**
+     * Undoes the "In Transit" stamp on receipt: puts back the status the asset carried before the
+     * courier took custody (snapshotted on the movement line). Skips when there is no snapshot
+     * (no courier leg) or the status has already been changed to something other than In Transit
+     * by the completion effect itself.
+     */
+    private void restorePriorStatus(MovementItem item) {
+        if (item.getPriorStatusCode() == null) return;
+        Asset asset = item.getAsset();
+        boolean stillInTransit = asset.getAssetStatus() != null
+                && CODE_IN_TRANSIT.equals(asset.getAssetStatus().getStatus());
+        if (stillInTransit) {
+            Status prior = findStatusOrNull(item.getPriorStatusCode());
+            if (prior != null) {
+                asset.setAssetStatus(prior);
+                assetRepository.save(asset);
+            }
+        }
+        item.setPriorStatusCode(null);
+    }
+
+    /** Status lookup that degrades to a warning instead of failing the surrounding transaction. */
+    private Status findStatusOrNull(String code) {
+        try {
+            return statusService.findByStatusCode(code);
+        } catch (Exception e) {
+            log.warn("Status '{}' not found; asset transit status will not be updated", code);
+            return null;
+        }
+    }
+
+    /**
      * The first ("custody handoff") leg of an inter-location movement's ledger: relocates every
      * item from its source store into the assigned courier's custody store. Purely a location
      * change — no assignment / disposal / temporary-assignment semantics are applied here, since
-     * the courier is never the final recipient. Idempotency is the caller's responsibility — invoke
-     * once, when the movement transitions to {@code IN_TRANSIT}.
+     * the courier is never the final recipient. Each asset is also stamped "In Transit" (its prior
+     * status is snapshotted on the movement line and restored at receive). Idempotency is the
+     * caller's responsibility — invoke once, when the movement transitions to {@code IN_TRANSIT}.
      */
     @Transactional
     public void applyCustodyHandoff(Movement movement, Store courierStore) {
         Store source = movement.getSourceStore();
+        Status inTransit = findStatusOrNull(CODE_IN_TRANSIT);
         for (MovementItem item : movement.getItems()) {
             if (item.getAsset() != null) {
-                relocateAsset(item.getAsset(), courierStore);
+                Asset asset = item.getAsset();
+                relocateAsset(asset, courierStore);
+                if (inTransit != null) {
+                    item.setPriorStatusCode(asset.getAssetStatus() != null ? asset.getAssetStatus().getStatus() : null);
+                    asset.setAssetStatus(inTransit);
+                    assetRepository.save(asset);
+                }
             } else if (item.getCommodity() != null) {
                 debitConsumable(source, item.getCommodity(), item.getQuantity());
                 creditConsumable(courierStore, item.getCommodity(), item.getQuantity());
