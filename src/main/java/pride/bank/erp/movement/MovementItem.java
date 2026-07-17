@@ -53,4 +53,11 @@ public class MovementItem {
 
     private String serialNumber;
     private String assetTag;
+
+    /**
+     * Status code the asset carried before the courier custody handoff stamped it "In Transit"
+     * (e.g. {@code inMaintenance} on a repair leg). Restored when the movement is received, so
+     * the transit stamp never permanently overwrites the asset's real lifecycle status.
+     */
+    private String priorStatusCode;
 }
