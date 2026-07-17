@@ -34,6 +34,7 @@ public class StatusSeeder {
         ensureStatus("Supervisor Approved",        "supervisorApproved",     "supervisorapproved");
         ensureStatus("Unit Acknowledged",          "unitAcknowledged",       "unitacknowledged");
         ensureStatus("Pending Disposal",           "pendingDisposal",        "pendingdisposal");
+        ensureStatus("In Transit",                 "inTransit",              "intransit");
         log.info("Status seeding complete");
     }
 
