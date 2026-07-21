@@ -18,6 +18,7 @@ import pride.bank.erp.courier.CourierService;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.FileUpload;
 import pride.bank.erp.inventory.InventoryService;
+import pride.bank.erp.issuedAsset.IssuedAssetLifecycleService;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -57,6 +58,7 @@ public class MovementService {
     private final MovementApprovalService movementApprovalService;
     private final FileUpload fileUpload;
     private final CourierService courierService;
+    private final IssuedAssetLifecycleService issuedAssetLifecycleService;
 
     @Transactional
     public Movement createMovement(MovementDTO dto) throws NotFoundException {
@@ -165,7 +167,7 @@ public class MovementService {
     }
 
     /**
-     * Uploads a document before its movement exists and returns the stored path for the create
+     * Uploads a document before its movement exists and returns the stored path for the creation
      * payload. Needed by flows that must carry documents at creation time — an EXTERNAL repair
      * transfer is rejected without dispatch documents, so they cannot be attached after the fact.
      */
@@ -254,7 +256,7 @@ public class MovementService {
     }
 
     /**
-     * Receives a movement at its destination and finalises it. Inter-location movements must have
+     * Receives a movement at its destination and finalizes it. Inter-location movements must have
      * been marked {@code IN_TRANSIT} first (dispatch alone is not enough — see {@link #markInTransit});
      * intra-location movements are received immediately. Applies the inventory ledger unless it was
      * already settled elsewhere.
@@ -306,7 +308,14 @@ public class MovementService {
         if (reason != null && !reason.isBlank()) {
             movement.setRemarks(reason);
         }
-        return movementRepository.save(movement);
+        Movement saved = movementRepository.save(movement);
+
+        // A canceled fulfilment movement means the issued items are not being delivered — return
+        // any of the linked request's issued assets to the pool so they can be issued again.
+        if (movement.getRequest() != null) {
+            issuedAssetLifecycleService.restoreToAvailable(movement.getRequest());
+        }
+        return saved;
     }
 
     /** Applies the ledger (unless already settled), stamps receipt/completion fields, and saves. */
