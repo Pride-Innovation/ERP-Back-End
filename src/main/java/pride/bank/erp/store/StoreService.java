@@ -45,7 +45,11 @@ public class StoreService {
         for (CommodityWithDetailsDao dao : commodities) {
             Commodity commodity = dao.getCommodity();
 
-            StoreBalance balance = storeBalanceRepository.findByBranchAndCommodity(branch, commodity)
+            // Store-scoped, not branch-scoped: a branch can hold the same commodity in more than
+            // one store (its ADMIN store plus a courier custody row anchored at Head Office), so a
+            // branch-only lookup could return more than one row. Stocking always targets the ADMIN store.
+            StoreBalance balance = storeBalanceRepository
+                    .findByStore_IdAndCommodity_Id(adminStore.getId(), commodity.getId())
                     .orElse(null);
 
             if (balance != null) {
@@ -125,11 +129,14 @@ public class StoreService {
     public void reduceCommoditiesFromStore(List<CommodityWithDetailsDao> commodities, Long branchID)
             throws NotFoundException, IllegalArgumentException {
         Branch branch = branchService.findBranch(branchID);
+        Store adminStore = resolveAdminStore(branch);
 
         for (CommodityWithDetailsDao dao : commodities) {
             Commodity commodity = dao.getCommodity();
 
-            StoreBalance balance = storeBalanceRepository.findByBranchAndCommodity(branch, commodity)
+            // Store-scoped: reduce from the branch's ADMIN store (see addCommoditiesToStore).
+            StoreBalance balance = storeBalanceRepository
+                    .findByStore_IdAndCommodity_Id(adminStore.getId(), commodity.getId())
                     .orElseThrow(() -> new NotFoundException(String.format("Commodity %s not found in store for the store", commodity.getName())));
 
             int currentQuantity = balance.getQuantity();
@@ -174,7 +181,7 @@ public class StoreService {
 
     /**
      * Returns the branch's location-level ADMIN {@link Store}, creating it if absent. The store
-     * seeder normally creates these at startup; this guards against a branch added afterwards.
+     * seeder normally creates these at startup; this guards against a branch added afterward.
      */
     @Transactional
     public Store resolveAdminStore(Branch branch) {
