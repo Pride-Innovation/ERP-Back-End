@@ -71,6 +71,7 @@ public class WorkflowEngineService {
     private final WorkflowResolveService workflowResolveService;
     private final ApproverChainResolver approverChainResolver;
     private final pride.bank.erp.issuance.IssuanceRepository issuanceRepository;
+    private final pride.bank.erp.issuedAsset.IssuedAssetLifecycleService issuedAssetLifecycleService;
 
     @Value("${application.admin.email}")
     private String adminEmail;
@@ -289,6 +290,10 @@ public class WorkflowEngineService {
         request.setStatus(rejectedStatus);
         request.setCurrentApprover(null);
         requestRepository.save(request);
+
+        // If the rejection lands after items were issued (e.g. issuance approval rejected), return
+        // any issued serialized assets to the pool so they can be issued again. No-op otherwise.
+        issuedAssetLifecycleService.restoreToAvailable(request);
 
         User requester = request.getRequester();
         String rejectionComment = (comment != null && !comment.isBlank())
