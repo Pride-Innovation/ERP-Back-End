@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import pride.bank.erp.asset.Asset;
 import pride.bank.erp.branch.Branch;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.issuance.Issuance;
@@ -17,7 +18,9 @@ import pride.bank.erp.store.StoreService;
 import pride.bank.erp.user.User;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Decides how an approved request is fulfilled after issuance approval (CLAUDE.md §6) and records the
@@ -101,16 +104,34 @@ public class FulfillmentService {
         Store sourceStore = storeService.resolveAdminStore(source);
         Store destStore = storeService.resolveAdminStore(destination);
 
+        // An asset-tracked request line appears twice — once as a RequestCommodity (the category,
+        // e.g. "CPU") and once as the specific serialized asset issued for it (e.g. PBL-2027-CPU06).
+        // Carry the physical item once: as its serialized asset. Count issued assets per commodity
+        // so the redundant commodity line is dropped (or reduced, for a partly-consumable line),
+        // which also avoids a phantom consumable debit on receipt for items with no store balance.
+        Map<Long, Integer> assetsByCommodity = new HashMap<>();
+        for (IssuedAsset ia : issuedAssets) {
+            Asset a = ia.getAsset();
+            if (a == null || a.getCommodity() == null || a.getCommodity().getId() == null) continue;
+            assetsByCommodity.merge(a.getCommodity().getId(), 1, Integer::sum);
+        }
+
         List<MovementItemDTO> items = new ArrayList<>();
+        // Consumable lines — only the quantity NOT already covered by an issued serialized asset.
         if (commodities != null) {
             for (RequestCommodity rc : commodities) {
                 if (rc.getCommodity() == null || rc.getQuantity() <= 0) continue;
-                items.add(MovementItemDTO.builder()
-                        .commodityId(rc.getCommodity().getId())
-                        .quantity(rc.getQuantity())
-                        .build());
+                int covered = assetsByCommodity.getOrDefault(rc.getCommodity().getId(), 0);
+                int remaining = rc.getQuantity() - covered;
+                if (remaining > 0) {
+                    items.add(MovementItemDTO.builder()
+                            .commodityId(rc.getCommodity().getId())
+                            .quantity(remaining)
+                            .build());
+                }
             }
         }
+        // Serialized assets — one line each.
         for (IssuedAsset ia : issuedAssets) {
             if (ia.getAsset() == null) continue;
             items.add(MovementItemDTO.builder()
