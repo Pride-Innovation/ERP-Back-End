@@ -39,6 +39,7 @@ import pride.bank.erp.store.Store;
 import pride.bank.erp.store.StoreBalance;
 import pride.bank.erp.store.StoreBalanceRepository;
 import pride.bank.erp.store.StoreService;
+import pride.bank.erp.store.StoreType;
 import pride.bank.erp.user.User;
 import pride.bank.erp.user.UserRepository;
 import pride.bank.erp.user.UserService;
@@ -65,6 +66,12 @@ public class IssuanceService {
     private static final String CODE_ASSET_ASSIGNED = "assetAssigned";
     /** A request whose items have been issued (pending issuance approval). */
     private static final String CODE_ISSUED = "issued";
+    /** Available for issuance — the only state from which an asset may be issued. */
+    private static final String CODE_ISSUANCE_AVAILABLE = "issuanceAvailable";
+    /** In transit with a courier (cross-location leg). */
+    private static final String CODE_IN_TRANSIT = "inTransit";
+    /** Asset-level "issued, awaiting delivery/acknowledgement" — keeps it out of the issuable pool. */
+    private static final String CODE_ASSET_ISSUED = "assetIssued";
 
     private final UserService userService;
     private final IssuanceRepository issuanceRepository;
@@ -286,7 +293,11 @@ public class IssuanceService {
         for (IssuanceCommodityDTO dto : commodities) {
             Commodity commodity = commodityService.findCommodity(dto.getCommodityId());
 
-            StoreBalance balance = storeBalanceRepository.findByBranchIdAndCommodityId(branchId, commodity.getId())
+            // Scope to the branch's ADMIN store. A plain branch-scoped lookup is unsafe: a courier
+            // custody store is anchored at Head Office, so once a consumable has passed through a
+            // courier the branch holds two balance rows for it and a single-result query blows up.
+            StoreBalance balance = storeBalanceRepository
+                    .findByBranchIdAndStore_StoreTypeAndCommodity_Id(branchId, StoreType.ADMIN, commodity.getId())
                     .orElseThrow(() -> new NotFoundException(
                             String.format("Commodity '%s' not found in store for branch ID %d",
                                     commodity.getName(), branchId)));
@@ -392,76 +403,68 @@ public class IssuanceService {
      * @throws NotFoundException If an asset is not found
      */
     private void validateAssetsReadyForIssuance(List<IssueAssetsDTO> assets) throws NotFoundException {
-        List<String> incomplete = new ArrayList<>();
+        // The authoritative guard against double-issuance: an asset may be issued only while it is
+        // "Available for Issuance". Anything else — already issued, in transit, assigned, under
+        // maintenance, still needing completion — is rejected here, so a stale frontend list or a
+        // concurrent issuance can never hand out the same asset twice.
+        List<String> notReady = new ArrayList<>();
         for (IssueAssetsDTO asst : assets) {
             Asset asset = assetService.findOne(asst.getId());
-            Status currentStatus = asset.getAssetStatus();
-            boolean stillNeedsCompletion = currentStatus != null
-                    && CODE_REQUIRE_UPDATE.equals(currentStatus.getStatus());
-            boolean missingEngravedNumber = asset.getEngravedNumber() == null
-                    || asset.getEngravedNumber().isBlank();
-            if (stillNeedsCompletion || (missingEngravedNumber && stillNeedsCompletion)) {
-                incomplete.add(asset.getAssetName()
-                        + (missingEngravedNumber ? " (no engraved number)" : "")
-                        + " [id=" + asset.getId() + "]");
+            String code = asset.getAssetStatus() != null ? asset.getAssetStatus().getStatus() : null;
+            String label = asset.getAssetName() + " [id=" + asset.getId() + "]";
+
+            if (!CODE_ISSUANCE_AVAILABLE.equals(code)) {
+                notReady.add(label + " — " + reasonNotIssuable(code));
+            } else if (asset.getEngravedNumber() == null || asset.getEngravedNumber().isBlank()) {
+                notReady.add(label + " — missing engraved number");
             }
         }
-        if (!incomplete.isEmpty()) {
+        if (!notReady.isEmpty()) {
             throw new BadRequestException(
-                    "Cannot issue assets that have not been completed after stocking. "
-                            + "Please ask the responsible team to add the engraved number and "
-                            + "mark the following ready for issuance: "
-                            + String.join("; ", incomplete));
+                    "These assets cannot be issued: " + String.join("; ", notReady));
         }
+    }
+
+    /** Human-readable reason an asset in the given status code cannot be issued. */
+    private String reasonNotIssuable(String code) {
+        if (CODE_REQUIRE_UPDATE.equals(code)) return "not yet completed after stocking";
+        if (CODE_ASSET_ISSUED.equals(code)) return "already issued and awaiting delivery";
+        if (CODE_IN_TRANSIT.equals(code)) return "currently in transit";
+        if (CODE_ASSET_ASSIGNED.equals(code)) return "already assigned to a user";
+        return "not available for issuance" + (code != null ? " (status: " + code + ")" : "");
     }
 
     /**
      * Links every issued asset to this {@link Issuance} (audit trail, and what
      * {@link pride.bank.erp.movement.FulfillmentService} reads to build a cross-location fulfilment
-     * movement). When {@code sameLocation} is true the asset is also assigned to the requester
-     * immediately, exactly as before; when false the assignment is deferred to the fulfilment
-     * movement's ledger effect on receipt, so the asset isn't marked "assigned" before it has
-     * actually reached the requester's location.
+     * movement) and stamps it <b>Issued</b> — for same- and cross-location issuance alike.
+     *
+     * <p>Stamping "Issued" immediately removes the asset from the "Available for Issuance" pool the
+     * moment it is issued, so it cannot be issued a second time while it is awaiting approval,
+     * dispatch, transit or delivery. Assignment to the requester (status "Assigned") is deferred to
+     * acknowledgement of receipt — see {@link pride.bank.erp.issuedAsset.IssuedAssetLifecycleService}
+     * — so "Assigned" only ever means the requester has actually confirmed receipt.
      *
      * @param assets       The assets being issued
      * @param user         The requester the assets are ultimately for
      * @param issuance     The just-saved issuance record to link against
-     * @param sameLocation Whether the issuer and requester share a branch (Head Office counts as
-     *                     one branch for this purpose)
+     * @param sameLocation Whether the issuer and requester share a branch (kept for logging)
      * @throws NotFoundException If an asset or status is not found
      */
     private void applyAssetIssuance(List<IssueAssetsDTO> assets, User user, Issuance issuance, boolean sameLocation)
             throws NotFoundException {
-        Status assignedStatus = statusService.findByStatusCode(CODE_ASSET_ASSIGNED);
+        Status issuedStatus = statusService.findByStatusCode(CODE_ASSET_ISSUED);
 
         for (IssueAssetsDTO asst : assets) {
             Asset asset = assetService.findOne(asst.getId());
 
             issuedAssetRepository.save(IssuedAsset.builder().issuance(issuance).asset(asset).build());
 
-            if (!sameLocation) {
-                // Cross-location: the fulfilment movement owns the assignment once it's received.
-                continue;
-            }
-
-            User oldUser = asset.getAssignedTo();
-            Status oldStatus = asset.getAssetStatus();
-
-            if (oldUser != null && oldUser.getId().equals(user.getId())
-                    && oldStatus != null && CODE_ASSET_ASSIGNED.equals(oldStatus.getStatus())) {
-                continue;
-            }
-
-            if (oldUser == null || !oldUser.getId().equals(user.getId())) {
-                trackAssetAssignmentHistory(asset, user, oldStatus, assignedStatus);
-            }
-
-            asset.setAssignedTo(user);
-            asset.setAssetStatus(assignedStatus);
-
+            // Out of the issuable pool now; assignment happens on acknowledgement of receipt.
+            asset.setAssetStatus(issuedStatus);
             assetRepository.save(asset);
         }
-        logger.info("Linked " + assets.size() + " issued asset(s) (sameLocation=" + sameLocation + ")");
+        logger.info("Marked " + assets.size() + " asset(s) as issued (sameLocation=" + sameLocation + ")");
     }
 
     /**
