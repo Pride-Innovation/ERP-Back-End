@@ -35,6 +35,10 @@ public class StatusSeeder {
         ensureStatus("Unit Acknowledged",          "unitAcknowledged",       "unitacknowledged");
         ensureStatus("Pending Disposal",           "pendingDisposal",        "pendingdisposal");
         ensureStatus("In Transit",                 "inTransit",              "intransit");
+        // Asset-level "issued, awaiting delivery/acknowledgement" — keeps an issued asset out of the
+        // "Available for Issuance" pool so it can't be issued twice. Distinct from the request-level
+        // "issued" status above.
+        ensureStatus("Issued",                     "assetIssued",            "assetissued");
         log.info("Status seeding complete");
     }
 
