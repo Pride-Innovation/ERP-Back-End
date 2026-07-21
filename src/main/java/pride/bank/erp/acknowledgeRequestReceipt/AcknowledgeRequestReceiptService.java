@@ -14,6 +14,7 @@ import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.exception.BusinessRuleException;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.issuance.UserBuilder;
+import pride.bank.erp.issuedAsset.IssuedAssetLifecycleService;
 import pride.bank.erp.movement.Movement;
 import pride.bank.erp.movement.MovementRepository;
 import pride.bank.erp.movement.MovementStatus;
@@ -41,6 +42,7 @@ public class AcknowledgeRequestReceiptService {
     private final UserBuilder userBuilder;
     private final WorkflowEngineService workflowEngineService;
     private final MovementRepository movementRepository;
+    private final IssuedAssetLifecycleService issuedAssetLifecycleService;
 
     @Transactional
     public RequestDTO createAcknowledgeRequestReceipt(
@@ -77,6 +79,7 @@ public class AcknowledgeRequestReceiptService {
 
         if (workflowEngineService.hasActiveInstance(request.getId())) {
             // Workflow mode: engine handles status update, next-step notification and emails
+            assert currentUser != null;
             workflowEngineService.processStepAction(
                     request.getId(),
                     currentUser.getId(),
@@ -95,6 +98,10 @@ public class AcknowledgeRequestReceiptService {
                     request.getRequester().getFirstName()
             );
         }
+
+        // The requester has now confirmed receipt: finalize any issued serialized assets —
+        // assign them to the requester and flip them from "Issued" to "Assigned".
+        issuedAssetLifecycleService.markAssigned(request);
 
         // Reload to reflect any status changes made by the engine
         request = requestService.findRequest(acknowledgeRequestReceiptDTO.getRequestId());
