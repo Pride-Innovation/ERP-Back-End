@@ -1031,7 +1031,9 @@ public class RequestService {
         }
 
         Role role = currentUser.getTitle().getRole();
-        System.out.println("Current User Role::: " + role.getName());
+
+//        System.out.println("Current User Role::: " + role.getName());
+
         return switch (role.getName()) {
             case "OFFICER", "Officer" -> "OFFICER";
             case "MANAGER", "Manager" -> "MANAGER";
@@ -1078,7 +1080,8 @@ public class RequestService {
         String userRole = determineUserRole();
         log.debug("Determining requesters list for role: {} and status: {}", userRole, status);
 
-        System.out.println("We are finally here:: " + status + userRole);
+//        System.out.println("We are finally here:: " + status + userRole);
+
         List<Long> result = switch (userRole) {
             case "OFFICER" -> List.of(currentUserService.getCurrentUser().getId());
 
