@@ -25,6 +25,7 @@ import pride.bank.erp.workflow.ApprovalStep;
 import pride.bank.erp.workflow.ApprovalWorkflow;
 import pride.bank.erp.workflow.ApprovalWorkflowRepository;
 import pride.bank.erp.workflow.ApproverChainResolver;
+import pride.bank.erp.workflow.ApproverSubject;
 import pride.bank.erp.workflow.NotifyGroupSource;
 import pride.bank.erp.workflow.ResolvedApprover;
 import pride.bank.erp.workflow.StepApproverType;
@@ -54,6 +55,7 @@ public class WorkflowEngineService {
     private static final String STATUS_BRANCH_MANAGER_APPROVED = "branchManagerApproved";
     private static final String STATUS_SUPERVISOR_APPROVED     = "supervisorApproved";
     private static final String STATUS_ISSUED                = "issued";
+    private static final String STATUS_ISSUANCE_APPROVED     = "issuanceApproved";
     private static final String STATUS_ACKNOWLEDGED          = "receiptAcknowledged";
     private static final String STATUS_UNIT_ACKNOWLEDGED     = "unitAcknowledged";
 
@@ -486,12 +488,19 @@ public class WorkflowEngineService {
             case ISSUANCE          -> STATUS_ISSUED;
             case ACKNOWLEDGE_RECEIPT -> STATUS_ACKNOWLEDGED;
             case ACKNOWLEDGE_REQUEST -> STATUS_UNIT_ACKNOWLEDGED;
-            case REQUEST_APPROVAL  -> resolveApprovalStatusCode(step.getApproverType());
+            // The issuance-approval step is modeled as a generic REQUEST_APPROVAL, but its
+            // approverSubject is ISSUER (it approves the issuer's issuance, not the requester's
+            // request). Without this, it would resolve to a plain "*Approved" status and demote the
+            // request out of the "Issued" set (issued → issuanceApproved → receiptAcknowledged),
+            // hiding it from the Issued tab exactly when the requester needs to acknowledge receipt.
+            case REQUEST_APPROVAL  -> step.getApproverSubject() == ApproverSubject.ISSUER
+                    ? STATUS_ISSUANCE_APPROVED
+                    : resolveApprovalStatusCode(step.getApproverType());
         };
     }
 
     /**
-     * Maps the approver type of a REQUEST_APPROVAL step to a distinct status code
+     * Maps the approver type of REQUEST_APPROVAL step to a distinct status code
      * so each approval stage is uniquely identifiable. Falls back to the generic
      * requestApproved for approver types that don't map to a named role in the chain
      * (GROUP_EMAIL, SPECIFIC_USER, ADMIN, REQUESTER).
