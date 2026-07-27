@@ -67,6 +67,7 @@ public class StockService {
     private static final String STATUS_REQUIRE_UPDATE  = "requireUpdate";
     private static final String STATUS_STOCK_PENDING   = "stockPending";
     private static final String STATUS_STOCK_COMPLETED = "stockCompleted";
+    private static final String STATUS_STOCK_CLOSED_SHORT = "stockClosedShort";
     private static final Long HEAD_OFFICE_BRANCH_ID = 1L;
 
     @Transactional
@@ -136,6 +137,10 @@ public class StockService {
                         .balanceCost(stock.getBalanceCost())
                         .grnNumber(stock.getGrnNumber())
                         .lpoNumber(stock.getLpoNumber())
+                        .poNumber(stock.getPoNumber())
+                        .orderDate(stock.getOrderDate())
+                        .deliveryDate(stock.getDeliveryDate())
+                        .invoiceDate(stock.getInvoiceDate())
                         .status(stock.getStatus() != null ?
                                 Status.builder()
                                         .name(stock.getStatus().getName())
@@ -172,11 +177,25 @@ public class StockService {
     public Stock createStock(
             Stock request,
             Long supplierID,
-            List<StockCommodityDTO> stockCommoditiesRequest
+            List<StockCommodityDTO> stockCommoditiesRequest,
+            String idempotencyKey
     ) throws NotFoundException {
         if (stockCommoditiesRequest == null || stockCommoditiesRequest.isEmpty()) {
             throw new IllegalArgumentException("Commodities list must not be null or empty.");
         }
+
+        // Idempotency: a retried/double-submitted create resolves to the already-created
+        // stock instead of duplicating it (and its assets). Keyed on a stable client UUID.
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            Optional<Stock> existing = stockRepository.findByIdempotencyKey(idempotencyKey);
+            if (existing.isPresent()) {
+                Stock prior = existing.get();
+                List<StockCommodity> priorCommodities = stockCommodityRepository.findByStockId(prior.getId());
+                prior.setCommodities(commodityWithDetailsDao(priorCommodities));
+                return prior;
+            }
+        }
+
         validateQuantities(stockCommoditiesRequest);
 
         Supplier supplier = supplierService.findSupplier(supplierID);
@@ -192,9 +211,6 @@ public class StockService {
                 ? statusService.findByStatusCode(STATUS_STOCK_COMPLETED)
                 : statusService.findByStatusCode(STATUS_STOCK_PENDING);
 
-        // GRN number is authoritative on the server — never trust a client-supplied value.
-        String grnNumber = generateGrnNumber();
-
         Stock stock = Stock
                 .builder()
                 .referenceNumber(request.getReferenceNumber())
@@ -203,7 +219,11 @@ public class StockService {
                 .name(request.getName())
                 .branch(branch)
                 .lpoNumber(request.getLpoNumber())
-                .grnNumber(grnNumber)
+                .poNumber(request.getPoNumber())
+                .orderDate(request.getOrderDate())
+                .deliveryDate(request.getDeliveryDate())
+                .invoiceDate(request.getInvoiceDate())
+                .idempotencyKey(idempotencyKey)
                 .status(status)
                 .canNotBeDeleted(false)   // becomes true once an asset from this stock is edited
                 .disposed(false)
@@ -213,9 +233,12 @@ public class StockService {
         Stock savedStock = stockRepository.save(stock);
         addCommoditiesToStock(savedStock, stockCommoditiesRequest);
 
-        GrnReport savedGrnReport = grnReportRepository.save(
-                GrnReport.builder().name(grnNumber).documentPath(null).stock(savedStock).build()
-        );
+        // GRN number is authoritative on the server — issued from the report's own id so it
+        // is monotonic and unique. Any client-supplied value is ignored.
+        GrnReport savedGrnReport = issueGrnReport(savedStock);
+        String grnNumber = savedGrnReport.getName();
+        savedStock.setGrnNumber(grnNumber);
+        stockRepository.save(savedStock);
 
         for (StockCommodityDTO dto : stockCommoditiesRequest) {
             Commodity commodity = commodityService.findCommodity(dto.getCommodityId());
@@ -280,8 +303,23 @@ public class StockService {
         return headOffice;
     }
 
-    private String generateGrnNumber() {
-        return "GRN-" + System.currentTimeMillis();
+    /**
+     * Issues a new GRN report for a stock and stamps it with a server-authoritative GRN number
+     * derived from the report's own (monotonic, unique) id. Two-step save: persist to obtain the
+     * id, then set the human-readable number. Replaces the old {@code "GRN-"+millis} scheme which
+     * was neither sequential nor collision-safe.
+     */
+    private GrnReport issueGrnReport(Stock stock) {
+        GrnReport report = grnReportRepository.save(
+                GrnReport.builder().documentPath(null).stock(stock).build()
+        );
+        report.setName(formatGrnNumber(report.getId(), report.getCreateDate()));
+        return grnReportRepository.save(report);
+    }
+
+    private String formatGrnNumber(Long reportId, LocalDateTime when) {
+        int year = (when != null ? when : LocalDateTime.now()).getYear();
+        return String.format("GRN/%d/%06d", year, reportId);
     }
 
 
@@ -332,6 +370,10 @@ public class StockService {
             }
             existing.setDeliveredQuantity(newDelivered);
 
+            // The per-batch price is authoritatively recorded on this delivery's GrnCommodity
+            // line below. Updating the StockCommodity's unit price here only affects the price
+            // stamped on assets created for THIS batch (already-created assets keep their own
+            // recorded cost); it does not retroactively re-price historical units.
             if (delivery.getCostPrice() != null) {
                 existing.setCostPrice(delivery.getCostPrice());
             }
@@ -358,12 +400,8 @@ public class StockService {
 
         storeService.addCommoditiesToStore(newlyDelivered, stock.getBranch().getId());
 
-        GrnReport grn = GrnReport.builder()
-                .name(grnNumber)
-                .documentPath(null)
-                .stock(stock)
-                .build();
-        GrnReport savedGrnReport = grnReportRepository.save(grn);
+        // GRN number is server-authoritative; the client-supplied `grnNumber` is ignored.
+        GrnReport savedGrnReport = issueGrnReport(stock);
 
         for (StockCommodityDTO delivery : additionalDeliveries) {
             Commodity commodity = commodityService.findCommodity(delivery.getCommodityId());
@@ -452,6 +490,10 @@ public class StockService {
         stock.setReferenceNumber(request.getReferenceNumber());
         stock.setTotalCost(request.getTotalCost());
         stock.setBalanceCost(request.getBalanceCost());
+        if (request.getPoNumber() != null) stock.setPoNumber(request.getPoNumber());
+        if (request.getOrderDate() != null) stock.setOrderDate(request.getOrderDate());
+        if (request.getDeliveryDate() != null) stock.setDeliveryDate(request.getDeliveryDate());
+        if (request.getInvoiceDate() != null) stock.setInvoiceDate(request.getInvoiceDate());
 
         Stock savedStock = stockRepository.save(stock);
 
@@ -479,6 +521,14 @@ public class StockService {
             requestedIds.add(dto.getCommodityId());
             StockCommodity sc = existingByCommodity.get(dto.getCommodityId());
             if (sc != null) {
+                // A correction can't reduce delivered below the number of assets already
+                // registered from this line — that would leave orphaned assets.
+                if (dto.getDeliveredQuantity() < sc.getRegisteredNumber()) {
+                    throw new IllegalArgumentException(
+                            "Delivered quantity for " + sc.getCommodity().getName()
+                                    + " cannot be less than the " + sc.getRegisteredNumber()
+                                    + " asset(s) already registered from it.");
+                }
                 sc.setOrderedQuantity(dto.getOrderedQuantity());
                 sc.setDeliveredQuantity(dto.getDeliveredQuantity());
                 if (dto.getCostPrice() != null) sc.setCostPrice(dto.getCostPrice());
@@ -518,6 +568,30 @@ public class StockService {
         );
     }
 
+    /**
+     * Closes a partially-delivered stock short: the outstanding quantity is accepted as never
+     * arriving, so the record leaves {@code stockPending} for the terminal {@code stockClosedShort}
+     * state (instead of sitting outstanding indefinitely). Already-received units and their assets
+     * are untouched.
+     */
+    @Transactional
+    public Stock closeShort(Long stockId, String reason) throws NotFoundException {
+        Stock stock = findOneStock(stockId);
+
+        Summation summation = calculateSumsFromStock(stockId);
+        if (summation.getDeliveredCommoditiesSummation() == summation.getOrderedCommoditiesSummation()) {
+            throw new IllegalArgumentException("Stock is already fully delivered and cannot be closed short.");
+        }
+
+        stock.setStatus(statusService.findByStatusCode(STATUS_STOCK_CLOSED_SHORT));
+        stock.setCloseShortReason(reason);
+        stockRepository.save(stock);
+
+        List<StockCommodity> stockCommodities = stockCommodityRepository.findByStockId(stockId);
+        stock.setCommodities(commodityWithDetailsDao(stockCommodities));
+        return stock;
+    }
+
     @Transactional
     public StockResponseDTO fetchSingleStock(Long stockId) throws NotFoundException {
         Stock stock = findOneStock(stockId);
@@ -533,6 +607,10 @@ public class StockService {
                 .totalCost(stock.getTotalCost())
                 .balanceCost(stock.getBalanceCost())
                 .lpoNumber(stock.getLpoNumber())
+                .poNumber(stock.getPoNumber())
+                .orderDate(stock.getOrderDate())
+                .deliveryDate(stock.getDeliveryDate())
+                .invoiceDate(stock.getInvoiceDate())
                 .status(stock.getStatus())
                 .branch(stock.getBranch())
                 .supplier(stock.getSupplier())
@@ -654,7 +732,10 @@ public class StockService {
                         .stock(stock)
                         .purchaseCost(String.valueOf(stockCommodity.getPurchasePrice()))
                         .costOfTheAsset(String.valueOf(stockCommodity.getCostPrice()))
-                        .dateReceipt(stock.getCreateDate().toString())
+                        // Prefer the real delivery date (basis for depreciation/age); fall back to
+                        // the row insert time only when the delivery date wasn't captured.
+                        .dateReceipt((stock.getDeliveryDate() != null
+                                ? stock.getDeliveryDate() : stock.getCreateDate()).toString())
                         .disposed(false)
                         .assetStatus(requireUpdateStatus) // "Require Update After Stocking"
                         .build();

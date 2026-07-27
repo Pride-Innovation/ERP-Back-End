@@ -27,6 +27,10 @@ public class GrnReport {
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
     private Long id;
+
+    // The GRN number, issued server-side from the report's own id (monotonic + unique).
+    // NOTE: ddl-auto=update does NOT reliably add this unique index — verify on the DB.
+    @Column(unique = true)
     private String name;
     private String documentPath;
     @Builder.Default

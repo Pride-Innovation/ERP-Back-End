@@ -24,6 +24,10 @@ public class StockDAO {
     private int balanceCost;
     private String grnNumber;
     private String lpoNumber;
+    private String poNumber;
+    private LocalDateTime orderDate;
+    private LocalDateTime deliveryDate;
+    private LocalDateTime invoiceDate;
     private Status status;
     private Branch branch;
     private Supplier supplier;

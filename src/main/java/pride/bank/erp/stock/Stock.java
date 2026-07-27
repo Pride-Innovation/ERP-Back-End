@@ -46,7 +46,26 @@ public class Stock {
     private int totalCost;
     private int balanceCost;
     private String lpoNumber;
+    private String poNumber;
     private String grnNumber;
+
+    // Client-supplied, stable per submission. A unique key means a retried/duplicated
+    // create request resolves to the same stock instead of creating a second one
+    // (with a second set of assets). NOTE: ddl-auto=update does NOT reliably create the
+    // unique index — verify uk on `idempotency_key` on the actual DB after deploy.
+    @Column(unique = true)
+    private String idempotencyKey;
+
+    // Real business dates for the purchase. `deliveryDate` in particular is the basis for
+    // asset depreciation/age — the system previously fell back to createDate (the row's
+    // insert time), which is wrong for back-dated stocking.
+    private LocalDateTime orderDate;
+    private LocalDateTime deliveryDate;
+    private LocalDateTime invoiceDate;
+
+    // Reason recorded when a partial delivery is closed short (supplier won't deliver the rest).
+    private String closeShortReason;
+
     @Builder.Default
     private boolean canNotBeDeleted = false;
     @Builder.Default

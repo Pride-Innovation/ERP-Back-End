@@ -34,6 +34,18 @@
                     <scope>runtime</scope>
                 </dependency>
 
+        <!-- Flyway schema migrations. Versions managed by spring-boot-starter-parent 3.2.0
+             (Flyway 9.22.x). MySQL support lives in its own module (flyway-mysql) even on the 9.x
+             line — without it Flyway fails at startup with "Unsupported Database: MySQL 8.0". -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-mysql</artifactId>
+        </dependency>
+
 
         <!--  MYSQL DB PACKAGE      -->
 <!--        <dependency>-->

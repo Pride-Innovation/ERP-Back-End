@@ -22,5 +22,6 @@ public class StockDTO {
     private Long status;
     private Long supplier;
     private String referenceNumber;
+    private String idempotencyKey;
     private List<StockCommodityDTO> stockCommoditiesRequest;
 }

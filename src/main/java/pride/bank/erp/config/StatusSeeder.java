@@ -26,6 +26,9 @@ public class StatusSeeder {
         ensureStatus("Require Update",         "requireUpdate",   "requireupdate");
         ensureStatus("Stock Pending",          "stockPending",    "stockpending");
         ensureStatus("Stock Completed",        "stockCompleted",  "stockcompleted");
+        // Terminal state for a partial delivery the supplier will never complete — lets a
+        // stockPending record be closed instead of sitting outstanding forever.
+        ensureStatus("Stock Closed Short",     "stockClosedShort","stockclosedshort");
         ensureStatus("Sent to Store",              "sentToStore",            "senttostore");
         ensureStatus("Manager Approved",           "managerApproved",        "managerapproved");
         ensureStatus("HOD Approved",               "hodApproved",            "hodapproved");

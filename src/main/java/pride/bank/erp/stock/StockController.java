@@ -68,7 +68,8 @@ public class StockController {
             Stock response = stockService.createStock(
                     stockDTO.getStock(),
                     stockDTO.getSupplier(),
-                    stockDTO.getStockCommoditiesRequest()
+                    stockDTO.getStockCommoditiesRequest(),
+                    stockDTO.getIdempotencyKey()
             );
             log.info("Stock created successfully with ID: {}", response.getId());
             return new ResponseEntity<>(response, HttpStatus.CREATED);
@@ -117,6 +118,15 @@ public class StockController {
                 request.grnNumber
         );
         return new ResponseEntity<>(response, HttpStatus.CREATED);
+    }
+
+    @PostMapping("/stocks/{stockID}/close-short")
+    public ResponseEntity<Stock> closeShort(
+            @PathVariable Long stockID,
+            @RequestBody(required = false) CloseShortDTO request
+    ) throws NotFoundException {
+        Stock response = stockService.closeShort(stockID, request != null ? request.getReason() : null);
+        return new ResponseEntity<>(response, HttpStatus.OK);
     }
 
     @PostMapping("/delete-stock/{stockID}")
