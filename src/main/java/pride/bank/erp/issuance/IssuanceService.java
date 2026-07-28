@@ -34,6 +34,8 @@ import pride.bank.erp.role.Role;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
 import pride.bank.erp.inventory.InventoryService;
+import pride.bank.erp.inventory.ledger.LedgerContext;
+import pride.bank.erp.inventory.ledger.StockLedgerReason;
 import pride.bank.erp.stock.CommodityWithDetailsDao;
 import pride.bank.erp.store.Store;
 import pride.bank.erp.store.StoreBalance;
@@ -325,7 +327,8 @@ public class IssuanceService {
         Store adminStore = storeService.resolveAdminStore(branchId);
         for (IssuanceCommodityDTO dto : commodities) {
             Commodity commodity = commodityService.findCommodity(dto.getCommodityId());
-            inventoryService.debitConsumable(adminStore, commodity, dto.getQuantity());
+            inventoryService.debitConsumable(adminStore, commodity, dto.getQuantity(),
+                    LedgerContext.of(StockLedgerReason.ISSUANCE, "ISSUANCE", null));
         }
         logger.info("Stock quantities reduced in branch " + branchId + " ADMIN store");
     }

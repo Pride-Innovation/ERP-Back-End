@@ -12,6 +12,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -45,7 +46,7 @@ public class StockReceiptView {
         private int quantityReceived;
         private int orderedQuantity;
         private int cumulativeDelivered;
-        private Integer costPrice;
-        private Integer purchasePrice;
+        private BigDecimal costPrice;
+        private BigDecimal purchasePrice;
     }
 }

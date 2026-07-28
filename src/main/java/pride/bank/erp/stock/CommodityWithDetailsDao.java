@@ -13,6 +13,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import pride.bank.erp.commodity.Commodity;
 
+import java.math.BigDecimal;
+
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
@@ -21,6 +23,6 @@ public class CommodityWithDetailsDao {
     private Commodity commodity;
     private int orderedQuantity;
     private int deliveredQuantity;
-    private int costPrice;
-    private int purchasePrice;
+    private BigDecimal costPrice;
+    private BigDecimal purchasePrice;
 }

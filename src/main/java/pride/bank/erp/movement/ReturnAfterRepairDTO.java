@@ -18,8 +18,16 @@ import java.util.List;
 @AllArgsConstructor
 public class ReturnAfterRepairDTO {
     private Long assetId;
+    /**
+     * Optional. Left null, the destination is derived from the holder recorded when the asset was
+     * sent for repair — which is the whole point, so that a repaired asset cannot be returned to the
+     * wrong branch by a mis-click.
+     */
     private Long destLocationId;
+    /** Optional; derived from the recorded holder when omitted. */
     private Long recipientUserId;
+    /** Required when returning the asset to someone other than its recorded holder. */
+    private String overrideReason;
     /** When set, a second movement returns this temporary asset to the IT store. */
     private Long tempAssetId;
     private String courierService;

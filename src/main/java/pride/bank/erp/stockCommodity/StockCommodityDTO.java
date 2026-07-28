@@ -11,13 +11,15 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
+
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
 public class StockCommodityDTO {
     private int orderedQuantity;
     private int deliveredQuantity;
-    private Integer purchasePrice;
-    private Integer costPrice;
+    private BigDecimal purchasePrice;
+    private BigDecimal costPrice;
     private Long commodityId;
 }

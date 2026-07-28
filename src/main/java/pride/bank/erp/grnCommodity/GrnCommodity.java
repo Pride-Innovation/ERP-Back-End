@@ -8,6 +8,7 @@ import lombok.NoArgsConstructor;
 import pride.bank.erp.commodity.Commodity;
 import pride.bank.erp.grnReport.GrnReport;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 
@@ -31,13 +32,19 @@ public class GrnCommodity {
 
     private int deliveredQuantity;
     private int orderedQuantity;
-    private Integer costPrice;
-    private Integer purchasePrice;
+    @Column(precision = 19, scale = 4)
+    private BigDecimal costPrice;
+
+    @Column(precision = 19, scale = 4)
+    private BigDecimal purchasePrice;
 
     private int totalDeliveredQuantity;
     private int totalOrderedQuantity;
-    private Integer totalCostPrice;
-    private Integer totalPurchasePrice;
+    @Column(precision = 19, scale = 4)
+    private BigDecimal totalCostPrice;
+
+    @Column(precision = 19, scale = 4)
+    private BigDecimal totalPurchasePrice;
     @Builder.Default
     private Boolean disposed = false;
     private LocalDateTime disposalDate;

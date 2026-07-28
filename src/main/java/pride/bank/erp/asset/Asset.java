@@ -28,6 +28,7 @@ import pride.bank.erp.store.Store;
 import pride.bank.erp.supplier.Supplier;
 import pride.bank.erp.user.User;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
@@ -48,8 +49,16 @@ public class Asset {
     private String dateReceipt;
     private String make;
     private String unitOfMeasure;
-    private String purchaseCost;
-    private String costOfTheAsset;
+    /**
+     * Purchase cost and book cost in UGX. Previously stored as free-text {@code String}, so no
+     * arithmetic was possible without parsing, and nothing prevented a non-numeric value being
+     * saved — untenable for depreciation, which has to multiply and divide these.
+     */
+    @Column(precision = 19, scale = 4)
+    private BigDecimal purchaseCost;
+
+    @Column(precision = 19, scale = 4)
+    private BigDecimal costOfTheAsset;
     private String netValueB;
     private String model;
     private String serialNumber;

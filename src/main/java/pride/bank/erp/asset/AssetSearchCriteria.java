@@ -27,6 +27,11 @@ public class AssetSearchCriteria {
     private String model;
     private String assignedTo;
     private String location;
+    /**
+     * Hard branch restriction applied on top of every other filter. Set by the service from the
+     * caller's permissions, never from the request — a client cannot widen its own scope.
+     */
+    private Long scopedBranchId;
     private LocalDateTime startDate;
     private LocalDateTime endDate;
 }

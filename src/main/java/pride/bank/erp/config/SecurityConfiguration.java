@@ -14,6 +14,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -33,6 +34,10 @@ import static pride.bank.erp.helper.Constants.*;
 
 @Configuration
 @EnableWebSecurity
+// Without this, every @PreAuthorize in the codebase is silently ignored — the annotation compiles,
+// reads as protection, and enforces nothing. Enabling it activates them; no endpoint changes
+// behaviour except the ones that carry an annotation.
+@EnableMethodSecurity
 @RequiredArgsConstructor
 public class SecurityConfiguration {
 

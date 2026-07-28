@@ -11,12 +11,14 @@ import pride.bank.erp.assetType.RepairDestination;
 import pride.bank.erp.branch.Branch;
 import pride.bank.erp.branch.BranchRepository;
 import pride.bank.erp.exception.NotFoundException;
+import pride.bank.erp.inventory.InventoryService;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
 import pride.bank.erp.store.Store;
 import pride.bank.erp.store.StoreRepository;
 import pride.bank.erp.store.StoreService;
 import pride.bank.erp.store.StoreType;
+import pride.bank.erp.user.User;
 
 import java.util.List;
 
@@ -36,11 +38,13 @@ public class RepairMovementService {
     private static final String CODE_PENDING_DISPOSAL = "pendingDisposal";
 
     private final MovementService movementService;
+    private final MovementRepository movementRepository;
     private final AssetRepository assetRepository;
     private final StoreService storeService;
     private final StoreRepository storeRepository;
     private final StatusService statusService;
     private final BranchRepository branchRepository;
+    private final InventoryService inventoryService;
 
     /**
      * §14: send a faulty asset for repair, routed by its category configuration.
@@ -71,6 +75,11 @@ public class RepairMovementService {
                 : (category != null && category.getRepairDestination() != null
                         ? category.getRepairDestination()
                         : RepairDestination.IT);
+
+        // Captured BEFORE the assignment is closed below — once it is closed, the system no longer
+        // knows who had the asset, and this is what the return leg aims at.
+        User originHolder = activeHolderOf(asset);
+        Branch originLocation = asset.getBranch();
 
         Store source = currentStoreOf(asset);
         Store custody;
@@ -106,12 +115,21 @@ public class RepairMovementService {
                 // Officer-initiated faulty-item transfer is a standalone movement → climbs the
                 // initiator's approval ladder before it can be dispatched.
                 .requiresApproval(true)
+                .originHolderId(originHolder != null ? originHolder.getId() : null)
+                .originLocationId(originLocation != null ? originLocation.getId() : null)
                 .items(List.of(assetItem(dto.getAssetId())))
                 .build());
 
+        // The branch admin has physically taken the item off the user, so record that hand-over now
+        // instead of at Head Office receipt. Previously the asset stayed "assigned to Jane" for the
+        // whole journey — including while it sat in a courier's van — so if it went missing in
+        // transit the trail said the user still had it.
+        inventoryService.returnAssetToStore(asset, source);
         setStatus(asset, CODE_IN_MAINTENANCE);
-        log.info("Repair transfer movement {} created for asset {} (routing {})",
-                movement.getId(), asset.getId(), routing);
+        log.info("Repair transfer movement {} created for asset {} (routing {}); custody taken by {} "
+                        + "on behalf of {}",
+                movement.getId(), asset.getId(), routing, source.getName(),
+                originHolder != null ? originHolder.getId() : "no assigned holder");
 
         // Optionally hand the affected user a temporary replacement while the repair runs (§15).
         if (dto.getTempAssetId() != null && dto.getAffectedUserId() != null) {
@@ -148,20 +166,37 @@ public class RepairMovementService {
                 .build());
     }
 
-    /** §16: return a repaired asset to its originating location (and optionally the temp asset). */
+    /**
+     * §16: return a repaired asset to whoever had it, at wherever they now are.
+     *
+     * <p>The destination is <b>derived</b>, not asked for. In order of preference:
+     * <ol>
+     *   <li>the holder recorded on the asset's repair transfer — the authoritative answer;</li>
+     *   <li>the asset's own {@code assignedTo}, which is how repairs started before origins were
+     *       recorded, so anything already in flight still returns correctly with no migration;</li>
+     *   <li>an explicit override on the DTO, which now needs a reason.</li>
+     * </ol>
+     *
+     * <p>If that holder has since moved branch but is still employed, the asset follows them to
+     * their current branch. If they have left the bank, it goes back to the branch it came from,
+     * unassigned and flagged as pool stock available for temporary issuance — it is never
+     * auto-assigned to someone who is gone.
+     */
     @Transactional
     public Movement returnAfterRepair(ReturnAfterRepairDTO dto) throws NotFoundException {
         Asset repaired = findAsset(dto.getAssetId());
         // Source is wherever the asset is currently held (IT store, Admin store, or the Admin custody
         // store that coordinated an external repair) — resolved uniformly rather than hardcoding IT.
         Store source = currentStoreOf(repaired);
-        Store destStore = storeService.resolveAdminStore(dto.getDestLocationId());
+
+        ReturnTarget target = resolveReturnTarget(repaired, dto);
+        Store destStore = storeService.resolveAdminStore(target.locationId());
 
         Movement movement = movementService.createMovement(MovementDTO.builder()
                 .movementType(MovementType.RETURN_AFTER_REPAIR)
                 .sourceStoreId(source.getId())
                 .destStoreId(destStore.getId())
-                .recipientUserId(dto.getRecipientUserId())
+                .recipientUserId(target.recipientUserId())
                 .courierService(dto.getCourierService())
                 .trackingNumber(dto.getTrackingNumber())
                 .dispatchDate(dto.getDispatchDate())
@@ -174,8 +209,19 @@ public class RepairMovementService {
                 .items(List.of(assetItem(dto.getAssetId())))
                 .build());
 
-        // Optionally return the temporary replacement asset back to its own pool store — IT store
-        // for IT-routed categories, Head Office Admin store for others — not always the IT store.
+        // If the user has left, the asset comes back to the branch rather than to a person, and is
+        // made available for temporary issuance so it can be lent out instead of sitting idle.
+        if (target.markAvailableForTemporaryIssuance()) {
+            repaired.setTemporaryPool(true);
+            assetRepository.save(repaired);
+            log.info("Asset {} returns to branch {} unassigned and available for temporary issuance — "
+                    + "its previous holder is no longer active", repaired.getId(), target.locationId());
+        }
+
+        // Return the temporary replacement to its own pool store — IT store for IT-routed
+        // categories, Head Office Admin store for others. It carries the same logistics as the leg
+        // above: created bare, an inter-location return stranded in INITIATED because nobody knew
+        // it still needed dispatching.
         if (dto.getTempAssetId() != null) {
             Asset temp = findAsset(dto.getTempAssetId());
             Store tempSource = currentStoreOf(temp);
@@ -184,11 +230,110 @@ public class RepairMovementService {
                     .movementType(MovementType.RETURN_AFTER_REPAIR)
                     .sourceStoreId(tempSource.getId())
                     .destStoreId(poolStore.getId())
-                    .remarks("Return of temporary replacement asset")
+                    .courierService(dto.getCourierService())
+                    .trackingNumber(dto.getTrackingNumber())
+                    .dispatchDate(dto.getDispatchDate())
+                    .expectedDeliveryDate(dto.getExpectedDeliveryDate())
+                    .deliveryDocuments(dto.getDeliveryDocuments())
+                    .remarks("Return of temporary replacement asset issued while asset "
+                            + repaired.getId() + " was under repair")
                     .items(List.of(assetItem(dto.getTempAssetId())))
                     .build());
         }
         return movement;
+    }
+
+    /** Where a repaired asset is going, and to whom. */
+    private record ReturnTarget(Long locationId, Long recipientUserId,
+                                boolean markAvailableForTemporaryIssuance) {
+    }
+
+    /**
+     * Works out where a repaired asset belongs, preferring the recorded origin over anything a
+     * caller supplies. See {@link #returnAfterRepair} for the rules.
+     */
+    private ReturnTarget resolveReturnTarget(Asset repaired, ReturnAfterRepairDTO dto)
+            throws NotFoundException {
+
+        User holder = originHolderFor(repaired);
+
+        // An explicit override still wins — a supervisor may genuinely want it elsewhere — but it
+        // has to be justified, so a mistyped dropdown can't quietly redirect somebody's laptop.
+        if (dto.getDestLocationId() != null || dto.getRecipientUserId() != null) {
+            boolean differsFromOrigin = holder != null
+                    && dto.getRecipientUserId() != null
+                    && !dto.getRecipientUserId().equals(holder.getId());
+            if (differsFromOrigin && isBlank(dto.getOverrideReason())) {
+                throw new IllegalArgumentException(String.format(
+                        "This asset was sent for repair by %s. Returning it to someone else needs a "
+                                + "reason (overrideReason).", displayName(holder)));
+            }
+            Long locationId = dto.getDestLocationId() != null
+                    ? dto.getDestLocationId()
+                    : branchIdOf(holder);
+            if (locationId == null) {
+                throw new IllegalArgumentException("A destination location is required to return this asset");
+            }
+            return new ReturnTarget(locationId, dto.getRecipientUserId(), false);
+        }
+
+        if (holder == null) {
+            throw new IllegalArgumentException(
+                    "This asset has no recorded holder from its repair transfer, so its destination "
+                            + "cannot be derived. Supply destLocationId (and recipientUserId).");
+        }
+
+        // Still employed — the asset follows them, including to a branch they have moved to.
+        if (holder.isEnabled()) {
+            Long branchId = branchIdOf(holder);
+            if (branchId == null) {
+                throw new IllegalArgumentException(String.format(
+                        "%s has no branch on record, so the asset cannot be routed back to them.",
+                        displayName(holder)));
+            }
+            return new ReturnTarget(branchId, holder.getId(), false);
+        }
+
+        // Left the organisation: back to where it came from, unassigned, available to lend out.
+        Long originBranchId = originLocationFor(repaired);
+        if (originBranchId == null) originBranchId = branchIdOf(holder);
+        if (originBranchId == null) {
+            throw new IllegalArgumentException(
+                    "The previous holder has left and no origin branch was recorded — supply destLocationId.");
+        }
+        return new ReturnTarget(originBranchId, null, true);
+    }
+
+    /** The holder recorded on this asset's repair transfer, else its current assignment. */
+    private User originHolderFor(Asset asset) {
+        return movementRepository
+                .findFirstByItems_Asset_IdAndMovementTypeOrderByIdDesc(asset.getId(), MovementType.REPAIR_TRANSFER)
+                .map(Movement::getOriginHolder)
+                .orElse(asset.getAssignedTo());
+    }
+
+    /** The branch recorded on this asset's repair transfer, if any. */
+    private Long originLocationFor(Asset asset) {
+        return movementRepository
+                .findFirstByItems_Asset_IdAndMovementTypeOrderByIdDesc(asset.getId(), MovementType.REPAIR_TRANSFER)
+                .map(Movement::getOriginLocation)
+                .map(Branch::getId)
+                .orElse(null);
+    }
+
+    private static Long branchIdOf(User user) {
+        return (user != null && user.getBranch() != null) ? user.getBranch().getId() : null;
+    }
+
+    private static String displayName(User user) {
+        if (user == null) return "the previous holder";
+        String name = ((user.getFirstName() != null ? user.getFirstName() : "") + " "
+                + (user.getLastName() != null ? user.getLastName() : "")).trim();
+        return name.isEmpty() ? ("user " + user.getId()) : name;
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
     }
 
     /** §17: move an irreparable asset to the Head Office Disposal store. */
@@ -222,6 +367,11 @@ public class RepairMovementService {
                 .orElseThrow(() -> new NotFoundException("Asset " + assetId + " not found"));
     }
 
+    /** Who currently holds the asset, if anyone — captured before custody moves to the admin. */
+    private User activeHolderOf(Asset asset) {
+        return asset.getAssignedTo();
+    }
+
     /** The store currently holding the asset, falling back to its branch's ADMIN store. */
     private Store currentStoreOf(Asset asset) throws NotFoundException {
         if (asset.getCurrentStore() != null) return asset.getCurrentStore();
@@ -244,9 +394,19 @@ public class RepairMovementService {
         return routing == RepairDestination.IT ? headOfficeStore(StoreType.IT) : headOfficeAdminStore();
     }
 
+    /**
+     * The organisation's single {@link StoreType#IT} / {@link StoreType#DISPOSAL} store.
+     *
+     * <p>There is exactly one of each for the whole bank, held at Head Office — that singleton is
+     * what makes "repair only happens at Head Office" true. {@code StoreSeeder} creates it and
+     * refuses to let a second one exist, so taking the first result here is unambiguous by
+     * construction rather than by luck.
+     */
     private Store headOfficeStore(StoreType type) throws NotFoundException {
         return storeRepository.findByStoreType(type).stream().findFirst()
-                .orElseThrow(() -> new NotFoundException("No " + type + " store configured"));
+                .orElseThrow(() -> new NotFoundException(String.format(
+                        "The organisation has no %s store. It is created at the branch flagged as "
+                                + "Head Office — flag one and restart the application.", type)));
     }
 
     /**

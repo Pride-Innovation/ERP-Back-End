@@ -53,11 +53,87 @@ public class StoreSeeder {
         List<Branch> branches = branchRepository.findAll();
         for (Branch branch : branches) {
             ensureStore(branch, StoreType.ADMIN, branch.getName() + " Admin Store");
-            if (branch.isHeadOffice()) {
-                ensureStore(branch, StoreType.IT, branch.getName() + " IT Store");
-                ensureStore(branch, StoreType.DISPOSAL, branch.getName() + " Disposal Store");
-            }
         }
+
+        // The IT and Disposal stores are singletons for the whole organisation, held at Head Office.
+        // That is the control that makes "repair only happens at Head Office" true, and the lookups
+        // in RepairMovementService (findByStoreType(...).findFirst()) are correct precisely because
+        // of it. Seeding them per-branch inside the loop above would quietly break that the moment
+        // the head-office flag moved, so they are seeded once, against the one Head Office branch.
+        Branch headOffice = branchRepository.findFirstByIsHeadOfficeTrue().orElse(null);
+        if (headOffice == null) {
+            log.warn("No branch is flagged as Head Office — the IT and Disposal stores cannot be "
+                    + "created. Repair transfers and disposals will fail until a branch is flagged "
+                    + "and the application is restarted.");
+        } else {
+            ensureSingletonStore(headOffice, StoreType.IT, headOffice.getName() + " IT Store");
+            ensureSingletonStore(headOffice, StoreType.DISPOSAL, headOffice.getName() + " Disposal Store");
+        }
+
+        assertSingleton(StoreType.IT);
+        assertSingleton(StoreType.DISPOSAL);
+    }
+
+    /**
+     * Creates an organisation-wide singleton store at Head Office.
+     *
+     * <p>Unlike {@link #ensureStore}, this checks for a store of the type <i>anywhere</i>, not just
+     * at this branch. If one already exists at a different location — which is what happens when the
+     * head-office flag is moved from one branch to another — it is left alone and reported, rather
+     * than a second one being created. Two stores of the same type would make
+     * {@code findByStoreType(...).findFirst()} silently ambiguous.
+     */
+    private void ensureSingletonStore(Branch headOffice, StoreType storeType, String name) {
+        List<Store> existing = storeRepository.findByStoreType(storeType);
+
+        if (existing.isEmpty()) {
+            log.info("Creating the organisation's {} store at '{}'", storeType, headOffice.getName());
+            storeRepository.save(Store.builder()
+                    .location(headOffice)
+                    .storeType(storeType)
+                    .name(name)
+                    .active(true)
+                    .build());
+            return;
+        }
+
+        Store current = existing.get(0);
+        boolean atHeadOffice = current.getLocation() != null
+                && current.getLocation().getId().equals(headOffice.getId());
+        if (!atHeadOffice) {
+            log.warn("The {} store is held at '{}' but Head Office is now '{}'. It has NOT been "
+                            + "duplicated — move the existing store's location instead, so the "
+                            + "organisation keeps exactly one {} store.",
+                    storeType,
+                    current.getLocation() != null ? current.getLocation().getName() : "an unknown branch",
+                    headOffice.getName(), storeType);
+        }
+    }
+
+    /**
+     * Guards the "exactly one" invariant that {@code findByStoreType(...).findFirst()} depends on.
+     *
+     * <p>Duplicates <b>fail startup</b>: the lookup would still succeed but route to an arbitrary
+     * store, so repairs could silently land in the wrong place — worse than not running at all.
+     *
+     * <p>Zero is loud but non-fatal: the rest of the application works fine, and the branch may
+     * simply not be flagged yet. Repair and disposal then fail with an actionable message from
+     * {@code RepairMovementService} rather than the silent misbehaviour we are guarding against.
+     */
+    private void assertSingleton(StoreType storeType) {
+        int count = storeRepository.findByStoreType(storeType).size();
+        if (count == 1) return;
+
+        if (count == 0) {
+            log.error("No {} store exists. Flag a branch as Head Office and restart — repair "
+                    + "transfers and disposals cannot run without it.", storeType);
+            return;
+        }
+
+        throw new IllegalStateException(String.format(
+                "%d %s stores exist, but the organisation must have exactly one — repairs and "
+                        + "disposals would route to an arbitrary store. Remove the duplicates and restart.",
+                count, storeType));
     }
 
     /** Location-level store (department is null) — created only if absent. */

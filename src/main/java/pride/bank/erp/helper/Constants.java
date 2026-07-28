@@ -105,6 +105,21 @@ public class Constants {
     public static final String DELETE_STORE = "DELETE_STORE";
     public static final String UPDATE_STORE = "UPDATE_STORE";
 
+    /**
+     * Lets a user see data belonging to branches other than their own.
+     *
+     * <p>Grantable and revocable like any other permission: Head Office staff who need a national
+     * view get it, everyone else is scoped to the branch they belong to. Absence of this permission
+     * is the default, so a new user is confined to their own branch until someone decides otherwise.
+     */
+    public static final String VIEW_ALL_BRANCHES = "VIEW_ALL_BRANCHES";
+
+    // Stock take — counting is a designated duty, and the person who counts must not be the
+    // person who approves their own variances.
+    public static final String READ_STOCK_TAKE = "READ_STOCK_TAKE";
+    public static final String PERFORM_STOCK_TAKE = "PERFORM_STOCK_TAKE";
+    public static final String APPROVE_STOCK_TAKE = "APPROVE_STOCK_TAKE";
+
     public static final String READ_ASSET = "READ_ASSET";
     public static final String CREATE_ASSET = "CREATE_ASSET";
     public static final String DELETE_ASSET = "DELETE_ASSET";

@@ -18,5 +18,13 @@ public enum MovementType {
     /** Return a repaired asset to its originating location (§16). */
     RETURN_AFTER_REPAIR,
     /** Move an irreparable / written-off asset to the Disposal store (§17). */
-    DISPOSAL_TRANSFER
+    DISPOSAL_TRANSFER,
+    /**
+     * A user hands an item back into a store — the counterpart of issuing it out.
+     *
+     * <p>The source is the user, not a store, so there is nothing to debit: the quantity already
+     * left the store when it was issued. Completing it credits the destination store for a
+     * consumable, or returns a serialized asset to that store and closes its assignment.
+     */
+    RETURN_TO_STORE
 }

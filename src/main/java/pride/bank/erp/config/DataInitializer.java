@@ -35,8 +35,13 @@ import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import static pride.bank.erp.helper.Constants.ADMIN;
+import static pride.bank.erp.helper.Constants.VIEW_ALL_BRANCHES;
+import static pride.bank.erp.helper.Constants.READ_STOCK_TAKE;
+import static pride.bank.erp.helper.Constants.PERFORM_STOCK_TAKE;
+import static pride.bank.erp.helper.Constants.APPROVE_STOCK_TAKE;
 import static pride.bank.erp.helper.Constants.ACKNOWLEDGE_REQUEST;
 import static pride.bank.erp.helper.Constants.APPROVE_ISSUANCE;
 import static pride.bank.erp.helper.Constants.APPROVE_REQUEST;
@@ -215,6 +220,12 @@ public class DataInitializer {
                 ensurePermission(CREATE_STORE),
                 ensurePermission(DELETE_STORE),
                 ensurePermission(UPDATE_STORE),
+                // Cross-branch visibility
+                ensurePermission(VIEW_ALL_BRANCHES),
+                // Stock take
+                ensurePermission(READ_STOCK_TAKE),
+                ensurePermission(PERFORM_STOCK_TAKE),
+                ensurePermission(APPROVE_STOCK_TAKE),
                 // Asset
                 ensurePermission(READ_ASSET),
                 ensurePermission(CREATE_ASSET),
@@ -236,8 +247,16 @@ public class DataInitializer {
                 );
     }
 
+    /**
+     * Ensures the super-administrator role exists <b>and holds every permission</b>.
+     *
+     * <p>Reconciled on every startup, not only at creation. Previously this was a plain
+     * {@code orElseGet}, so any permission added after the role first existed was created in the
+     * permissions table but never attached to it — the super administrator silently lacked each new
+     * capability, and the feature guarded by it simply returned "forbidden" with no clue why.
+     */
     private Role initializeSuperAdminRole(List<Permission> permissions) {
-        return roleRepository.findByName(SUPER_ADMIN)
+        Role role = roleRepository.findByName(SUPER_ADMIN)
                 .orElseGet(() -> roleRepository.save(
                         Role.builder()
                                 .name(SUPER_ADMIN)
@@ -248,6 +267,20 @@ public class DataInitializer {
                                 .lastModifiedBy(1L)
                                 .permissions(new HashSet<>(permissions))
                                 .build()));
+
+        Set<Permission> held = role.getPermissions() != null ? role.getPermissions() : new HashSet<>();
+        List<Permission> missing = permissions.stream()
+                .filter(p -> held.stream().noneMatch(h -> h.getId().equals(p.getId())))
+                .toList();
+
+        if (!missing.isEmpty()) {
+            held.addAll(missing);
+            role.setPermissions(held);
+            role = roleRepository.save(role);
+            log.info("Granted {} newly-added permission(s) to {}: {}",
+                    missing.size(), SUPER_ADMIN, missing.stream().map(Permission::getName).toList());
+        }
+        return role;
     }
 
     private Role initializeAdminRole(List<Permission> permissions) {

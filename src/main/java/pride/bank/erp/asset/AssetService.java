@@ -26,7 +26,15 @@ import pride.bank.erp.commodity.CommodityService;
 import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.FileUpload;
+import pride.bank.erp.inventory.InventoryService;
+import pride.bank.erp.movement.MovementDTO;
+import pride.bank.erp.movement.MovementItemDTO;
+import pride.bank.erp.movement.MovementService;
+import pride.bank.erp.movement.MovementType;
 import pride.bank.erp.notification.Email;
+import pride.bank.erp.store.Store;
+import pride.bank.erp.store.StoreRepository;
+import pride.bank.erp.store.StoreService;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
 import pride.bank.erp.stock.Stock;
@@ -39,6 +47,7 @@ import pride.bank.erp.user.User;
 import pride.bank.erp.user.UserService;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -67,6 +76,11 @@ public class AssetService {
     private final CurrentUserService currentUserService;
     private final FileUpload fileUpload;
     private final Email email;
+    private final StoreRepository storeRepository;
+    private final StoreService storeService;
+    private final InventoryService inventoryService;
+    private final MovementService movementService;
+    private final pride.bank.erp.config.BranchScopeService branchScopeService;
 
     /** Upper bound on assets scanned in-memory when computing the derived "due for disposal" list. */
     private static final int DISPOSAL_SCAN_LIMIT = 10_000;
@@ -112,6 +126,11 @@ public class AssetService {
                     .endDate(endDate)
                     .assignedTo(assignedTo)
                     .location(location)
+                    // Applied from the caller's permissions, never from the request: a user without
+                    // VIEW_ALL_BRANCHES sees only their own branch's assets, and cannot widen that
+                    // by passing a different filter.
+                    .scopedBranchId(branchScopeService.canViewAllBranches()
+                            ? null : branchScopeService.currentUserBranchId())
                     .build();
 
             // "Due for disposal" is a derived state (depends on the receipt date and the category's
@@ -160,7 +179,7 @@ public class AssetService {
                 .assetDepreciationRate(request.getAssetDepreciationRate())
                 .assetStatus(status)
                 .supplier(supplier)
-                .costOfTheAsset(stripGroupingCommas(request.getCostOfTheAsset()))
+                .costOfTheAsset(parseMoneyDecimal(request.getCostOfTheAsset()))
                 .assetName(request.getAssetName())
                 .dateReceipt(request.getDateReceipt())
                 .assetType(assetType)
@@ -176,7 +195,7 @@ public class AssetService {
                 .macAddress(request.getMacAddress())
                 .ram(request.getRam())
                 .netValueB(request.getNetValueB())
-                .purchaseCost(stripGroupingCommas(request.getPurchaseCost()))
+                .purchaseCost(parseMoneyDecimal(request.getPurchaseCost()))
                 .serialNumber(request.getSerialNumber())
                 .unitOfMeasure(request.getUnitOfMeasure())
                 .cpuSpeed(request.getCpuSpeed())
@@ -278,7 +297,7 @@ public class AssetService {
         asset.setAssetDepreciationRate(request.getAssetDepreciationRate());
         asset.setAssetStatus(status);
         asset.setSupplier(supplier);
-        asset.setCostOfTheAsset(stripGroupingCommas(request.getCostOfTheAsset()));
+        asset.setCostOfTheAsset(parseMoneyDecimal(request.getCostOfTheAsset()));
         asset.setAssetName(request.getAssetName());
         asset.setDateReceipt(request.getDateReceipt());
         asset.setAssetType(assetType);
@@ -294,7 +313,7 @@ public class AssetService {
         asset.setMacAddress(request.getMacAddress());
         asset.setRam(request.getRam());
         asset.setNetValueB(request.getNetValueB());
-        asset.setPurchaseCost(stripGroupingCommas(request.getPurchaseCost()));
+        asset.setPurchaseCost(parseMoneyDecimal(request.getPurchaseCost()));
         asset.setSerialNumber(request.getSerialNumber());
         asset.setUnitOfMeasure(request.getUnitOfMeasure());
         asset.setCpuSpeed(request.getCpuSpeed());
@@ -377,7 +396,7 @@ public class AssetService {
     private DepreciationValues computeDepreciation(Asset asset) {
         Double ratePct = (asset.getAssetType() != null) ? asset.getAssetType().getDepreciationRate() : null;
         Integer usefulLifeMonths = (asset.getAssetType() != null) ? asset.getAssetType().getUsefulLifeMonths() : null;
-        Double cost = parseMoney(asset.getCostOfTheAsset());
+        Double cost = toDouble(asset.getCostOfTheAsset());
         long elapsedMonths = monthsSinceReceipt(asset.getDateReceipt());
 
         // Disposal is age-based and independent of the depreciation math: an asset is ready once
@@ -464,6 +483,30 @@ public class AssetService {
         return parsed != null ? formatCurrency(parsed) : value;
     }
 
+    /**
+     * Parses money typed by a user — grouping commas and spaces removed — into the {@link BigDecimal}
+     * actually stored. Returns null for blank or non-numeric input rather than throwing, so a stray
+     * character in one field cannot fail the whole save.
+     */
+    private BigDecimal parseMoneyDecimal(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return new BigDecimal(value.replaceAll("[,\\s]", ""));
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /** Stored money as a double, for the depreciation maths. */
+    private Double toDouble(BigDecimal value) {
+        return value == null ? null : value.doubleValue();
+    }
+
+    /** Stored money formatted for display; the API surface stays a string. */
+    private String formatMoney(BigDecimal value) {
+        return value == null ? null : formatCurrency(value.doubleValue());
+    }
+
     /** Strips grouping commas/spaces so money is persisted as a clean numeric string (display adds separators). */
     private String stripGroupingCommas(String value) {
         return value == null ? null : value.replaceAll("[,\\s]", "");
@@ -487,8 +530,8 @@ public class AssetService {
                 .dateReceipt(asset.getDateReceipt())
                 .make(asset.getMake())
                 .unitOfMeasure(asset.getUnitOfMeasure())
-                .purchaseCost(formatMoneyString(asset.getPurchaseCost()))
-                .costOfTheAsset(formatMoneyString(asset.getCostOfTheAsset()))
+                .purchaseCost(formatMoney(asset.getPurchaseCost()))
+                .costOfTheAsset(formatMoney(asset.getCostOfTheAsset()))
                 .netValueB(dep.grossValue())
                 .model(asset.getModel())
                 .serialNumber(asset.getSerialNumber())
@@ -679,24 +722,72 @@ public class AssetService {
         return buildAssetDao(assetRepository.save(asset));
     }
 
-    public AssetDAO sendAssetToStore(Long assetID) throws NotFoundException {
+    /**
+     * Hands an asset back into a store, optionally marking it as temporary-replacement pool stock.
+     *
+     * <p>This is the single action that actually puts an asset <i>in</i> a store. It replaces two
+     * that each did half the job: the old "Send to Store" set a status and cleared the holder but
+     * never set {@code currentStore}, left the assignment history row open, and credited no store —
+     * so the asset ended up in no store at all; and "Temporary Pool" only flipped a boolean without
+     * moving anything. Because the pool picker looks up assets by
+     * {@code currentStore.storeType}, an asset "sent to store" could never appear in it, which is
+     * why temporary replacement was unusable however many assets were flagged.
+     *
+     * <p>Recorded as a {@link MovementType#RETURN_TO_STORE} movement so the hand-back is audited
+     * like every other stock move, rather than being an invisible field update.
+     *
+     * @param storeId       destination store; defaults to the asset's branch ADMIN store
+     * @param temporaryPool when non-null, also sets whether this asset is loanable pool stock
+     */
+    @Transactional
+    public AssetDAO sendAssetToStore(Long assetID, Long storeId, Boolean temporaryPool)
+            throws NotFoundException {
         Asset asset = findOne(assetID);
-        Status status = statusService.findByStatusCode("sentToStore"); // Asset sent to store
-        asset.setAssetStatus(status);
-        asset.setAssignedTo(null);
+
+        Store destination = (storeId != null)
+                ? storeRepository.findById(storeId)
+                .orElseThrow(() -> new NotFoundException("Store " + storeId + " not found"))
+                : resolveDefaultStoreFor(asset);
+
+        User holder = asset.getAssignedTo();
+        if (holder != null) {
+            // The holder is handing it back, so the movement records them as the source. It has no
+            // store to debit — the asset left the store when it was issued.
+            movementService.createMovement(MovementDTO.builder()
+                    .movementType(MovementType.RETURN_TO_STORE)
+                    .sourceUserId(holder.getId())
+                    .destStoreId(destination.getId())
+                    .remarks("Asset returned to " + destination.getName())
+                    .items(List.of(MovementItemDTO.builder().assetId(assetID).quantity(1).build()))
+                    .build());
+        }
+
+        // Applied here rather than waiting for movement completion: the storekeeper is physically
+        // taking the item now, and an unassigned asset with no store is the exact broken state this
+        // method exists to prevent.
+        inventoryService.returnAssetToStore(asset, destination);
+
+        if (temporaryPool != null) {
+            asset.setTemporaryPool(temporaryPool);
+        }
+        // Pool stock is offered for loan, so it reads as available; anything else is simply in store.
+        asset.setAssetStatus(statusService.findByStatusCode(
+                asset.isTemporaryPool() ? "issuanceAvailable" : "sentToStore"));
+
         return buildAssetDao(assetRepository.save(asset));
     }
 
-    /**
-     * Flips whether this asset is pool stock for temporary replacement loans (§15). Only meaningful
-     * for an asset currently unassigned and sitting in a store — flipping it on an operational,
-     * assigned asset doesn't relocate or unassign it, it just marks intent for the next repair cycle.
-     */
-    @Transactional
-    public AssetDAO toggleTemporaryPool(Long assetID) throws NotFoundException {
-        Asset asset = findOne(assetID);
-        asset.setTemporaryPool(!asset.isTemporaryPool());
-        return buildAssetDao(assetRepository.save(asset));
+    /** Where an asset goes when no store is named: the ADMIN store of the branch holding it. */
+    private Store resolveDefaultStoreFor(Asset asset) throws NotFoundException {
+        if (asset.getCurrentStore() != null) return asset.getCurrentStore();
+        Branch branch = asset.getAssignedTo() != null && asset.getAssignedTo().getBranch() != null
+                ? asset.getAssignedTo().getBranch()
+                : asset.getBranch();
+        if (branch == null) {
+            throw new NotFoundException(
+                    "Asset " + asset.getId() + " has no branch, so a destination store cannot be resolved");
+        }
+        return storeService.resolveAdminStore(branch);
     }
 
     public Map<String, Object> bulkInsertAsset(List<BulkAssetDTO> assetList, Long assetTypeID)

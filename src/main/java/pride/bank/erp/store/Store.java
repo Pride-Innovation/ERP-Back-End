@@ -65,8 +65,18 @@ public class Store {
     @Builder.Default
     private StoreType storeType = StoreType.ADMIN;
 
-    @ManyToOne(fetch = FetchType.EAGER, optional = false)
-    @JoinColumn(name = "location_id", nullable = false)
+    /**
+     * Where the store physically is. <b>Null for a {@link StoreType#COURIER} custody store</b>, which
+     * has no location — its identity is its {@link #courier}, and whatever it holds is between two
+     * places rather than at one.
+     *
+     * <p>This used to be {@code NOT NULL}, so courier stores were pinned to Head Office to satisfy
+     * the column. The consequence was that every unit and every asset in transit anywhere in the
+     * country reported as Head Office stock, and the balance queries had to be littered with
+     * defensive filters to work around it.
+     */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "location_id")
     @NotAudited
     private Branch location;
 

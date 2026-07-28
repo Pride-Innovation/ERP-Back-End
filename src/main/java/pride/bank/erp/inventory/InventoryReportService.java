@@ -5,13 +5,16 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pride.bank.erp.asset.Asset;
 import pride.bank.erp.asset.AssetRepository;
+import pride.bank.erp.branch.BranchRepository;
 import pride.bank.erp.store.Store;
 import pride.bank.erp.store.StoreBalance;
 import pride.bank.erp.store.StoreBalanceRepository;
 import pride.bank.erp.store.StoreRepository;
 import pride.bank.erp.store.StoreType;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Read-only inventory visibility for Head Office administrators (CLAUDE.md §11) and per-department
@@ -25,16 +28,62 @@ public class InventoryReportService {
     private final StoreBalanceRepository storeBalanceRepository;
     private final StoreRepository storeRepository;
     private final AssetRepository assetRepository;
+    private final BranchRepository branchRepository;
 
-    /** All consumable balances across every location (centralized visibility). */
+    /**
+     * All consumable balances <b>on hand</b> across every location (centralized visibility).
+     *
+     * <p>Excludes courier custody: those balances are pinned to Head Office by the schema, so
+     * including them both double-counted goods that are still in a van and attributed every
+     * in-transit unit in the country to Head Office. Use {@link #inTransitBalances()} to see them.
+     */
     @Transactional(readOnly = true)
     public List<StoreBalanceView> allBalances() {
-        return storeBalanceRepository.findAll().stream().map(this::toBalanceView).toList();
+        return storeBalanceRepository.findAllOnHand().stream().map(this::toBalanceView).toList();
     }
 
     @Transactional(readOnly = true)
     public List<StoreBalanceView> balancesByLocation(Long locationId) {
-        return storeBalanceRepository.findByStore_Location_Id(locationId).stream().map(this::toBalanceView).toList();
+        return storeBalanceRepository.findOnHandByLocation(locationId).stream().map(this::toBalanceView).toList();
+    }
+
+    /**
+     * Every branch's stock position in one call: item lines, units on hand, low-stock lines and
+     * assets held. The store landing page previously assembled this by querying each branch
+     * separately, which cost one HTTP round trip per branch on every load.
+     */
+    @Transactional(readOnly = true)
+    public List<BranchStoreOverview> branchOverview() {
+        Map<Long, Object[]> balanceStats = new HashMap<>();
+        for (Object[] row : storeBalanceRepository.summariseByBranch()) {
+            if (row[0] != null) balanceStats.put(((Number) row[0]).longValue(), row);
+        }
+
+        Map<Long, Long> assetsByBranch = new HashMap<>();
+        for (Object[] row : assetRepository.countAssetsInStoreByBranch()) {
+            if (row[0] != null) assetsByBranch.put(((Number) row[0]).longValue(), ((Number) row[1]).longValue());
+        }
+
+        return branchRepository.findAll().stream()
+                .map(branch -> {
+                    Object[] stats = balanceStats.get(branch.getId());
+                    return BranchStoreOverview.builder()
+                            .branchId(branch.getId())
+                            .branchName(branch.getName())
+                            .regionName(branch.getRegion() != null ? branch.getRegion().getName() : null)
+                            .itemLines(stats == null ? 0 : ((Number) stats[1]).intValue())
+                            .totalQuantity(stats == null ? 0L : ((Number) stats[2]).longValue())
+                            .lowStockLines(stats == null || stats[3] == null ? 0 : ((Number) stats[3]).intValue())
+                            .assetsHeld(assetsByBranch.getOrDefault(branch.getId(), 0L))
+                            .build();
+                })
+                .toList();
+    }
+
+    /** Stock currently held by couriers between two stores — in transit, not available anywhere. */
+    @Transactional(readOnly = true)
+    public List<StoreBalanceView> inTransitBalances() {
+        return storeBalanceRepository.findInTransit().stream().map(this::toBalanceView).toList();
     }
 
     @Transactional(readOnly = true)
@@ -45,6 +94,23 @@ public class InventoryReportService {
     @Transactional(readOnly = true)
     public List<StoreBalanceView> balancesByDepartment(Long departmentId) {
         return storeBalanceRepository.findByStore_Department_Id(departmentId).stream().map(this::toBalanceView).toList();
+    }
+
+    /**
+     * Assets scoped by position in the organisation — branch, department and/or unit.
+     *
+     * <p>Department and unit come from the person holding the asset rather than from a store, since
+     * only departments that genuinely operate a store have one, and units never do.
+     */
+    @Transactional(readOnly = true)
+    public List<Asset> assetsByOrganisationScope(Long branchId, Long departmentId, Long unitId) {
+        return assetRepository.findByOrganisationScope(branchId, departmentId, unitId);
+    }
+
+    /** Everything a given person is currently holding. */
+    @Transactional(readOnly = true)
+    public List<Asset> assetsHeldBy(Long userId) {
+        return assetRepository.findByAssignedTo_IdAndDisposedFalse(userId);
     }
 
     @Transactional(readOnly = true)
@@ -59,7 +125,7 @@ public class InventoryReportService {
      */
     @Transactional(readOnly = true)
     public List<StoreBalanceView> lowStock() {
-        return storeBalanceRepository.findLowStock().stream().map(this::toBalanceView).toList();
+        return storeBalanceRepository.findLowStockOnHand().stream().map(this::toBalanceView).toList();
     }
 
     /** Sets a balance's reorder threshold (0 clears it) and returns the updated view. */

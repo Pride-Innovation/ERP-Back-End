@@ -9,6 +9,7 @@ import pride.bank.erp.grnReport.GrnReport;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.supplier.Supplier;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -20,8 +21,8 @@ public class StockResponseDTO {
     private Long id;
     private String referenceNumber;
     private String name;
-    private int totalCost;
-    private int balanceCost;
+    private BigDecimal totalCost;
+    private BigDecimal balanceCost;
     private String grnNumber;
     private String lpoNumber;
     private String poNumber;

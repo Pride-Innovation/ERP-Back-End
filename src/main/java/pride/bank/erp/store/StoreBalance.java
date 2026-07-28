@@ -78,8 +78,15 @@ public class StoreBalance {
     @NotAudited
     private Commodity commodity;
 
-    @ManyToOne(fetch = FetchType.EAGER, optional = false)
-    @JoinColumn(name = "branch_id", nullable = false)
+    /**
+     * Denormalised location of this balance — always equal to {@code store.location}.
+     *
+     * <p>Null for a courier custody balance, which is between two places rather than at one. Every
+     * branch-scoped query already excludes courier stores, so a null here is never surfaced as
+     * branch stock.
+     */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "branch_id")
     @NotAudited
     private Branch branch;
 

@@ -83,4 +83,42 @@ public interface AssetRepository extends JpaRepository<Asset, Long> {
             GROUP BY a.stock.id, a.commodity.id
             """)
     List<Object[]> countAssetsByStockAndCommodity();
+
+    /**
+     * Assets filtered by where they sit in the organisation.
+     *
+     * <p>For an asset held by a person, "which department is this in?" is answered by the holder's
+     * department, not by a store — which is why there is no store per user or per unit. Any
+     * combination of the three may be null, meaning "don't filter on it".
+     */
+    // LEFT JOINs, not path navigation: writing `a.assignedTo.department.id` would make Hibernate
+    // emit an INNER JOIN on assignedTo, silently dropping every asset sitting in a store — which is
+    // most of them — even when no department filter was asked for.
+    @Query("""
+            SELECT a FROM Asset a
+            LEFT JOIN a.assignedTo holder
+            LEFT JOIN holder.department dept
+            LEFT JOIN holder.unit unit
+            WHERE a.disposed = false
+              AND (:branchId IS NULL OR a.branch.id = :branchId)
+              AND (:departmentId IS NULL OR dept.id = :departmentId)
+              AND (:unitId IS NULL OR unit.id = :unitId)
+            """)
+    List<Asset> findByOrganisationScope(@Param("branchId") Long branchId,
+                                        @Param("departmentId") Long departmentId,
+                                        @Param("unitId") Long unitId);
+
+    /** Everything a given person currently holds. */
+    List<Asset> findByAssignedTo_IdAndDisposedFalse(Long userId);
+
+    /** Assets held in a store, per branch: {@code [branchId, count]}. Excludes courier custody. */
+    @Query("""
+            SELECT a.currentStore.location.id, COUNT(a)
+            FROM Asset a
+            WHERE a.currentStore IS NOT NULL
+              AND a.disposed = false
+              AND a.currentStore.storeType <> pride.bank.erp.store.StoreType.COURIER
+            GROUP BY a.currentStore.location.id
+            """)
+    List<Object[]> countAssetsInStoreByBranch();
 }

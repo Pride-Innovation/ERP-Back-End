@@ -152,13 +152,12 @@ public class CourierService {
         if (storeRepository.existsByCourier_Id(courier.getId())) {
             return;
         }
-        Branch headOffice = branchRepository.findFirstByIsHeadOfficeTrue()
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.INTERNAL_SERVER_ERROR, "No Head Office branch is configured"));
+        // Deliberately no location: a courier's custody store is not at a place, and pinning it to
+        // Head Office made everything in transit anywhere report as Head Office stock. Its identity
+        // is the courier.
         storeRepository.save(Store.builder()
                 .name(courier.getName() + " — In Transit")
                 .storeType(StoreType.COURIER)
-                .location(headOffice)
                 .courier(courier)
                 .active(true)
                 .build());

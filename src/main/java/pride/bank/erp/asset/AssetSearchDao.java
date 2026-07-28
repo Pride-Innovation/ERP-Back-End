@@ -184,6 +184,24 @@ public class AssetSearchDao {
         }
 
 
+        if (Objects.nonNull(assetSearchCriteria.getScopedBranchId())) {
+            // Matches the asset's own branch or its holder's, so an item assigned to someone at this
+            // branch stays visible even if the asset row still points elsewhere.
+            //
+            // An explicit LEFT JOIN, not `assetRoot.get("assignedTo").get(...)`: path navigation
+            // through a nullable association builds an INNER JOIN, which would drop every asset
+            // sitting in a store — most of them — before the OR ever got a chance to match.
+            Long scoped = assetSearchCriteria.getScopedBranchId();
+            Join<Object, Object> holder = assetRoot.join("assignedTo", JoinType.LEFT);
+            Join<Object, Object> holderBranch = holder.join("branch", JoinType.LEFT);
+            Join<Object, Object> assetBranch = assetRoot.join("branch", JoinType.LEFT);
+
+            predicates.add(criteriaBuilder.or(
+                    criteriaBuilder.equal(assetBranch.get("id"), scoped),
+                    criteriaBuilder.equal(holderBranch.get("id"), scoped)
+            ));
+        }
+
         return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
     }
 

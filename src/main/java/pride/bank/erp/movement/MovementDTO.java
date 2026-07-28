@@ -16,9 +16,19 @@ import java.util.List;
 public class MovementDTO {
     private MovementType movementType;
 
+    /** Exactly one of {@code sourceStoreId} / {@code sourceUserId} must be set. */
     private Long sourceStoreId;
+    /** The person handing items back — set only for a {@link MovementType#RETURN_TO_STORE}. */
+    private Long sourceUserId;
     private Long destStoreId;
     private Long recipientUserId;
+
+    // ── Repair round-trip: where the asset must go back to ───────────────────
+    // Set by RepairMovementService at repair initiation from the asset's own assignment. Not
+    // intended for clients — a caller-supplied return destination is what made repaired assets
+    // land on the wrong person in the first place.
+    private Long originHolderId;
+    private Long originLocationId;
 
     // Logistics (used only when the derived category is INTER_LOCATION)
     private String courierService;

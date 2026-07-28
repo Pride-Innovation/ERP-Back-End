@@ -26,6 +26,7 @@ import pride.bank.erp.status.Status;
 import pride.bank.erp.stockCommodity.StockCommodity;
 import pride.bank.erp.supplier.Supplier;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
@@ -43,8 +44,12 @@ public class Stock {
     private Long id;
     private String referenceNumber;
     private String name;
-    private int totalCost;
-    private int balanceCost;
+    /** Order totals in UGX. See StockCommodity for why these are BigDecimal rather than int. */
+    @Column(precision = 19, scale = 4)
+    private BigDecimal totalCost;
+
+    @Column(precision = 19, scale = 4)
+    private BigDecimal balanceCost;
     private String lpoNumber;
     private String poNumber;
     private String grnNumber;

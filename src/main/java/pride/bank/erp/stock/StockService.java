@@ -28,11 +28,14 @@ import pride.bank.erp.grnCommodity.GrnCommodityRepository;
 import pride.bank.erp.grnReport.GrnReport;
 import pride.bank.erp.grnReport.GrnReportRepository;
 import pride.bank.erp.helper.DeleteResponse;
+import pride.bank.erp.inventory.ledger.LedgerContext;
+import pride.bank.erp.inventory.ledger.StockLedgerReason;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
 import pride.bank.erp.stockCommodity.StockCommodity;
 import pride.bank.erp.stockCommodity.StockCommodityDTO;
 import pride.bank.erp.stockCommodity.StockCommodityRepository;
+import pride.bank.erp.stocktake.StockReversalService;
 import pride.bank.erp.stockReceipt.StockReceipt;
 import pride.bank.erp.stockReceipt.StockReceiptDTO;
 import pride.bank.erp.stockReceipt.StockReceiptRepository;
@@ -43,6 +46,7 @@ import pride.bank.erp.supplier.SupplierService;
 import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.user.User;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -67,6 +71,7 @@ public class StockService {
     private final StockReceiptRepository stockReceiptRepository;
     private final CurrentUserService currentUserService;
     private final ApplicationEventPublisher eventPublisher;
+    private final StockReversalService stockReversalService;
 
     // Status codes (stable across re-seeds) — replace brittle magic numeric IDs.
     private static final String STATUS_REQUIRE_UPDATE  = "requireUpdate";
@@ -454,8 +459,8 @@ public class StockService {
             }
             stockCommodityRepository.save(stockLine);
 
-            int unitCost = stockLine.getCostPrice();
-            int unitPurchase = stockLine.getPurchasePrice();
+            BigDecimal unitCost = stockLine.getCostPrice();
+            BigDecimal unitPurchase = stockLine.getPurchasePrice();
 
             grnCommodityRepository.save(GrnCommodity.builder()
                     .grnReport(grnReport)
@@ -481,7 +486,9 @@ public class StockService {
                     .build());
         }
 
-        storeService.addCommoditiesToStore(creditToStore, stock.getBranch().getId());
+        storeService.addCommoditiesToStore(creditToStore, stock.getBranch().getId(),
+                LedgerContext.of(StockLedgerReason.RECEIPT, "STOCK_RECEIPT", receipt.getId(),
+                        "GRN " + grnReport.getName()));
         createAssetsFromStock(stock, receiptDate);
 
         // The first GRN issued against an order remains the one shown on the stock header, so the
@@ -638,8 +645,8 @@ public class StockService {
                         .commodity(commodity)
                         .orderedQuantity(dto.getOrderedQuantity())
                         .deliveredQuantity(0)
-                        .costPrice(dto.getCostPrice() != null ? dto.getCostPrice() : 0)
-                        .purchasePrice(dto.getPurchasePrice() != null ? dto.getPurchasePrice() : 0)
+                        .costPrice(dto.getCostPrice() != null ? dto.getCostPrice() : BigDecimal.ZERO)
+                        .purchasePrice(dto.getPurchasePrice() != null ? dto.getPurchasePrice() : BigDecimal.ZERO)
                         .stock(stock)
                         .build());
             }
@@ -765,8 +772,8 @@ public class StockService {
             Commodity commodity = stockCommodity.getCommodity();
             int orderedQuantity = stockCommodity.getOrderedQuantity();
             int deliveredQuantity = stockCommodity.getDeliveredQuantity();
-            int costPrice = stockCommodity.getCostPrice();
-            int purchasePrice = stockCommodity.getPurchasePrice();
+            BigDecimal costPrice = stockCommodity.getCostPrice();
+            BigDecimal purchasePrice = stockCommodity.getPurchasePrice();
 
             CommodityWithDetailsDao dto = new CommodityWithDetailsDao(
                     commodity,
@@ -833,8 +840,8 @@ public class StockService {
                         .supplier(stock.getSupplier())
                         .branch(stock.getBranch())
                         .stock(stock)
-                        .purchaseCost(String.valueOf(stockCommodity.getPurchasePrice()))
-                        .costOfTheAsset(String.valueOf(stockCommodity.getCostPrice()))
+                        .purchaseCost(stockCommodity.getPurchasePrice())
+                        .costOfTheAsset(stockCommodity.getCostPrice())
                         // The date THIS batch physically arrived — the basis for the asset's age and
                         // depreciation. Previously taken from the mutable Stock.deliveryDate header,
                         // which every later receipt or correction overwrote, silently rewriting the
@@ -941,6 +948,23 @@ public class StockService {
             grnReport.setDisposed(true);
             grnReport.setDisposalDate(LocalDateTime.now());
             grnReportRepository.save(grnReport);
+        }
+
+        // Step 0: take the stock back out of the store BEFORE anything is soft-deleted, so the
+        // reversal is computed from live data and a failure (goods already issued out) aborts the
+        // whole delete rather than leaving a half-deleted order behind.
+        Map<Commodity, Integer> received = new LinkedHashMap<>();
+        for (StockCommodity line : stockCommodityRepository.findByStockId(stockID)) {
+            if (line.getDeliveredQuantity() > 0) {
+                received.merge(line.getCommodity(), line.getDeliveredQuantity(), Integer::sum);
+            }
+        }
+        if (!received.isEmpty()) {
+            stockReversalService.reverse(
+                    storeService.resolveAdminStore(stock.getBranch()),
+                    received,
+                    "Reversal of deleted stock " + (stock.getLpoNumber() != null
+                            ? stock.getLpoNumber() : "#" + stockID));
         }
 
         // Step 1b: Soft delete the receipts those GRNs documented

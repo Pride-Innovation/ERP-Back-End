@@ -9,6 +9,9 @@ import pride.bank.erp.asset.AssetRepository;
 import pride.bank.erp.assetAssignmentHostory.AssetAssignmentHistory;
 import pride.bank.erp.assetAssignmentHostory.AssetAssignmentHistoryRepository;
 import pride.bank.erp.commodity.Commodity;
+import pride.bank.erp.inventory.ledger.LedgerContext;
+import pride.bank.erp.inventory.ledger.StockLedgerReason;
+import pride.bank.erp.inventory.ledger.StockLedgerService;
 import pride.bank.erp.movement.Movement;
 import pride.bank.erp.movement.MovementItem;
 import pride.bank.erp.status.Status;
@@ -35,15 +38,29 @@ public class InventoryService {
     private final AssetRepository assetRepository;
     private final AssetAssignmentHistoryRepository assignmentHistoryRepository;
     private final StatusService statusService;
+    private final StockLedgerService ledger;
 
     /** Asset status stamped while the courier holds custody (§9). */
     private static final String CODE_IN_TRANSIT = "inTransit";
 
     // ── Consumable balances ─────────────────────────────────────────────────
 
-    /** Increases (creating if needed) the balance of {@code commodity} in {@code store}. */
+    /**
+     * Increases (creating if needed) the balance of {@code commodity} in {@code store}.
+     *
+     * @deprecated every balance change should say why it happened. Use
+     * {@link #creditConsumable(Store, Commodity, int, LedgerContext)}; this overload records an
+     * {@link StockLedgerReason#UNSPECIFIED} entry so the change is at least visible.
+     */
+    @Deprecated
     @Transactional
     public void creditConsumable(Store store, Commodity commodity, int quantity) {
+        creditConsumable(store, commodity, quantity, LedgerContext.unspecified());
+    }
+
+    /** Increases the balance of {@code commodity} in {@code store}, recording why. */
+    @Transactional
+    public void creditConsumable(Store store, Commodity commodity, int quantity, LedgerContext context) {
         if (quantity <= 0) return;
         StoreBalance balance = storeBalanceRepository
                 .findByStore_IdAndCommodity_Id(store.getId(), commodity.getId())
@@ -55,11 +72,23 @@ public class InventoryService {
                         .build());
         balance.setQuantity(balance.getQuantity() + quantity);
         storeBalanceRepository.save(balance);
+        ledger.record(store, commodity, quantity, balance.getQuantity(), context);
     }
 
-    /** Decreases the balance of {@code commodity} in {@code store}, validating availability. */
+    /**
+     * Decreases the balance of {@code commodity} in {@code store}, validating availability.
+     *
+     * @deprecated see {@link #creditConsumable(Store, Commodity, int)}.
+     */
+    @Deprecated
     @Transactional
     public void debitConsumable(Store store, Commodity commodity, int quantity) {
+        debitConsumable(store, commodity, quantity, LedgerContext.unspecified());
+    }
+
+    /** Decreases the balance of {@code commodity} in {@code store}, recording why. */
+    @Transactional
+    public void debitConsumable(Store store, Commodity commodity, int quantity, LedgerContext context) {
         if (quantity <= 0) return;
         StoreBalance balance = storeBalanceRepository
                 .findByStore_IdAndCommodity_Id(store.getId(), commodity.getId())
@@ -72,6 +101,7 @@ public class InventoryService {
         }
         balance.setQuantity(balance.getQuantity() - quantity);
         storeBalanceRepository.save(balance);
+        ledger.record(store, commodity, -quantity, balance.getQuantity(), context);
     }
 
     // ── Serialized assets ───────────────────────────────────────────────────
@@ -85,7 +115,13 @@ public class InventoryService {
     public void relocateAsset(Asset asset, Store destStore) {
         if (destStore != null) {
             asset.setCurrentStore(destStore);
-            asset.setBranch(destStore.getLocation());
+            // A courier store has no location, so an asset in transit keeps the branch it left.
+            // Overwriting it here made every in-transit asset report as Head Office stock, which is
+            // where courier stores used to be pinned. `currentStore` and the In Transit status
+            // already say it is on the road.
+            if (destStore.getLocation() != null) {
+                asset.setBranch(destStore.getLocation());
+            }
         }
         assetRepository.save(asset);
     }
@@ -155,9 +191,16 @@ public class InventoryService {
                 applyAssetEffect(movement, item.getAsset(), dest, recipient);
                 restorePriorStatus(item);
             } else if (item.getCommodity() != null) {
-                debitConsumable(from, item.getCommodity(), item.getQuantity());
+                // A return has no source store to debit: the quantity already left the store when
+                // it was issued to the person handing it back. Crediting only is what makes the
+                // store balance go back up when a user returns something.
+                if (from != null) {
+                    debitConsumable(from, item.getCommodity(), item.getQuantity(),
+                            LedgerContext.of(StockLedgerReason.CUSTODY_IN, "MOVEMENT", movement.getId()));
+                }
                 if (dest != null) {
-                    creditConsumable(dest, item.getCommodity(), item.getQuantity());
+                    creditConsumable(dest, item.getCommodity(), item.getQuantity(),
+                            LedgerContext.of(StockLedgerReason.TRANSFER_IN, "MOVEMENT", movement.getId()));
                 }
                 // No dest store (issued/consumed by a user) → debit only.
             }
@@ -219,8 +262,10 @@ public class InventoryService {
                     assetRepository.save(asset);
                 }
             } else if (item.getCommodity() != null) {
-                debitConsumable(source, item.getCommodity(), item.getQuantity());
-                creditConsumable(courierStore, item.getCommodity(), item.getQuantity());
+                debitConsumable(source, item.getCommodity(), item.getQuantity(),
+                        LedgerContext.of(StockLedgerReason.TRANSFER_OUT, "MOVEMENT", movement.getId()));
+                creditConsumable(courierStore, item.getCommodity(), item.getQuantity(),
+                        LedgerContext.of(StockLedgerReason.CUSTODY_OUT, "MOVEMENT", movement.getId()));
             }
         }
         log.info("Applied custody handoff for movement {} to courier store {} ({} item(s))",
@@ -247,6 +292,8 @@ public class InventoryService {
             // closed — otherwise the asset keeps showing "assigned to" them while it sits in the
             // IT/Admin store under repair.
             case REPAIR_TRANSFER -> returnAssetToStore(asset, dest);
+            // A user handing an asset back: it stops being theirs and belongs to the store again.
+            case RETURN_TO_STORE -> returnAssetToStore(asset, dest);
             case RETURN_AFTER_REPAIR -> {
                 if (recipient != null) {
                     assignAssetToUser(asset, recipient); // back to its user
@@ -257,11 +304,15 @@ public class InventoryService {
                     returnAssetToStore(asset, dest);
                 }
             }
-            default -> {                                 // ISSUANCE_FULFILLMENT / DEPARTMENT_TRANSFER
+            default -> {                                 // ISSUANCE_FULFILLMENT / DEPARTMENT_TRANSFER / REPLENISHMENT
                 if (recipient != null) {
                     assignAssetToUser(asset, recipient);
                 } else if (dest != null) {
-                    relocateAsset(asset, dest);
+                    // returnAssetToStore, not relocateAsset: an asset that lands in a store is no
+                    // longer held by anyone, so its assignment has to be closed. relocateAsset only
+                    // moved it, leaving the previous holder still recorded — the asset then read as
+                    // both "in the Admin store" and "assigned to Jane" at the same time.
+                    returnAssetToStore(asset, dest);
                 }
             }
         }

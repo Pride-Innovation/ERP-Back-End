@@ -8,6 +8,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pride.bank.erp.asset.Asset;
 import pride.bank.erp.asset.AssetRepository;
+import pride.bank.erp.branch.Branch;
+import pride.bank.erp.branch.BranchRepository;
 import pride.bank.erp.commodity.Commodity;
 import pride.bank.erp.commodity.CommodityRepository;
 import pride.bank.erp.config.CurrentUserService;
@@ -48,6 +50,8 @@ public class MovementService {
     private final MovementRepository movementRepository;
     private final StoreRepository storeRepository;
     private final UserRepository userRepository;
+    private final BranchRepository branchRepository;
+    private final pride.bank.erp.config.BranchScopeService branchScopeService;
     private final AssetRepository assetRepository;
     private final CommodityRepository commodityRepository;
     private final RequestRepository requestRepository;
@@ -65,15 +69,26 @@ public class MovementService {
         if (dto.getMovementType() == null) {
             throw new IllegalArgumentException("movementType is required");
         }
-        if (dto.getSourceStoreId() == null) {
-            throw new IllegalArgumentException("sourceStoreId is required");
+        // Exactly one source: a store, or a user handing items back (RETURN_TO_STORE).
+        boolean hasSourceStore = dto.getSourceStoreId() != null;
+        boolean hasSourceUser = dto.getSourceUserId() != null;
+        if (hasSourceStore == hasSourceUser) {
+            throw new IllegalArgumentException(
+                    "A movement needs exactly one source — either sourceStoreId or sourceUserId");
         }
         if (dto.getItems() == null || dto.getItems().isEmpty()) {
             throw new IllegalArgumentException("A movement must have at least one item");
         }
 
-        Store source = storeRepository.findById(dto.getSourceStoreId())
-                .orElseThrow(() -> new NotFoundException("Source store " + dto.getSourceStoreId() + " not found"));
+        Store source = hasSourceStore
+                ? storeRepository.findById(dto.getSourceStoreId())
+                .orElseThrow(() -> new NotFoundException("Source store " + dto.getSourceStoreId() + " not found"))
+                : null;
+
+        User sourceUser = hasSourceUser
+                ? userRepository.findById(dto.getSourceUserId())
+                .orElseThrow(() -> new NotFoundException("Source user " + dto.getSourceUserId() + " not found"))
+                : null;
 
         Store dest = (dto.getDestStoreId() != null)
                 ? storeRepository.findById(dto.getDestStoreId())
@@ -87,6 +102,10 @@ public class MovementService {
 
         if (dest == null && recipient == null) {
             throw new IllegalArgumentException("A movement needs a destination store or a recipient user");
+        }
+        if (sourceUser != null && dest == null) {
+            throw new IllegalArgumentException(
+                    "A return from a user must name the destination store the items are handed back into");
         }
 
         Request request = (dto.getRequestId() != null)
@@ -104,15 +123,18 @@ public class MovementService {
                 .orElseThrow(() -> new NotFoundException("Consultant " + dto.getConsultantId() + " not found"))
                 : null;
 
-        MovementCategory category = deriveCategory(source, dest, recipient);
+        MovementCategory category = deriveCategory(source, sourceUser, dest, recipient);
 
         Movement movement = Movement.builder()
                 .movementType(dto.getMovementType())
                 .movementCategory(category)
                 .status(MovementStatus.INITIATED)
                 .sourceStore(source)
+                .sourceUser(sourceUser)
                 .destStore(dest)
                 .recipientUser(recipient)
+                .originHolder(resolveUser(dto.getOriginHolderId()))
+                .originLocation(resolveBranch(dto.getOriginLocationId()))
                 .courierService(dto.getCourierService())
                 .trackingNumber(dto.getTrackingNumber())
                 .dispatchDate(dto.getDispatchDate())
@@ -130,7 +152,8 @@ public class MovementService {
 
         Movement saved = movementRepository.save(movement);
         log.info("Created {} movement {} ({} → {})", category, saved.getId(),
-                source.getName(), dest != null ? dest.getName() : "user " + (recipient != null ? recipient.getId() : null));
+                source != null ? source.getName() : "user " + sourceUser.getId(),
+                dest != null ? dest.getName() : "user " + (recipient != null ? recipient.getId() : null));
 
         // Standalone movements (opt-in) climb the initiator's approval ladder before dispatch;
         // this parks the movement in DRAFT and notifies the first tier. Request-fulfilment and
@@ -294,6 +317,16 @@ public class MovementService {
         if (movement.getStatus() == MovementStatus.CANCELLED) {
             throw new IllegalStateException("Cannot complete a cancelled movement");
         }
+        // Same precondition as receiveMovement. Without it this endpoint was a way around the
+        // compulsory custody chain: an inter-location movement could be completed with no courier,
+        // plate number, tracking number or signed dispatch note, and its assets never stamped
+        // In Transit — the ledger would still balance, but the custody trail would be fiction.
+        if (movement.getMovementCategory() == MovementCategory.INTER_LOCATION
+                && movement.getStatus() != MovementStatus.IN_TRANSIT) {
+            throw new IllegalStateException("Inter-location movement " + movementId
+                    + " must be dispatched and marked in-transit before it can be completed (current: "
+                    + movement.getStatus() + ")");
+        }
         return finalizeCompletion(movement, ReceiptStatus.RECEIVED_OK, remarks);
     }
 
@@ -408,8 +441,19 @@ public class MovementService {
     }
 
     @Transactional(readOnly = true)
+    /**
+     * Movements the caller may see: everything for a cross-branch viewer, otherwise only those
+     * touching their own branch at either end.
+     */
     public Page<Movement> listMovements(Pageable pageable) {
-        return movementRepository.findAll(pageable);
+        if (branchScopeService.canViewAllBranches()) {
+            return movementRepository.findAll(pageable);
+        }
+        Long own = branchScopeService.currentUserBranchId();
+        if (own == null) {
+            return Page.empty(pageable);
+        }
+        return movementRepository.findForBranch(own, pageable);
     }
 
     @Transactional(readOnly = true)
@@ -420,8 +464,14 @@ public class MovementService {
     // ── helpers ──────────────────────────────────────────────────────────────
 
     /** INTER when the destination is in a different location from the source; INTRA otherwise. */
-    private MovementCategory deriveCategory(Store source, Store dest, User recipient) {
-        Long sourceLoc = (source.getLocation() != null) ? source.getLocation().getId() : null;
+    private MovementCategory deriveCategory(Store source, User sourceUser, Store dest, User recipient) {
+        // A return has no source store, so the location it leaves from is the holder's branch.
+        Long sourceLoc = null;
+        if (source != null && source.getLocation() != null) {
+            sourceLoc = source.getLocation().getId();
+        } else if (sourceUser != null && sourceUser.getBranch() != null) {
+            sourceLoc = sourceUser.getBranch().getId();
+        }
         Long destLoc = null;
         if (dest != null && dest.getLocation() != null) {
             destLoc = dest.getLocation().getId();
@@ -430,6 +480,18 @@ public class MovementService {
         }
         boolean interLocation = sourceLoc != null && destLoc != null && !sourceLoc.equals(destLoc);
         return interLocation ? MovementCategory.INTER_LOCATION : MovementCategory.INTRA_LOCATION;
+    }
+
+    private User resolveUser(Long userId) throws NotFoundException {
+        if (userId == null) return null;
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new NotFoundException("User " + userId + " not found"));
+    }
+
+    private Branch resolveBranch(Long branchId) throws NotFoundException {
+        if (branchId == null) return null;
+        return branchRepository.findById(branchId)
+                .orElseThrow(() -> new NotFoundException("Branch " + branchId + " not found"));
     }
 
     private List<MovementItem> buildItems(List<MovementItemDTO> itemDtos, Movement movement) throws NotFoundException {

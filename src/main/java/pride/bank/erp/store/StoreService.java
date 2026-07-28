@@ -11,6 +11,9 @@ import pride.bank.erp.branch.BranchService;
 import pride.bank.erp.commodity.Commodity;
 import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.exception.NotFoundException;
+import pride.bank.erp.inventory.InventoryService;
+import pride.bank.erp.inventory.ledger.LedgerContext;
+import pride.bank.erp.inventory.ledger.StockLedgerReason;
 import pride.bank.erp.stock.CommodityWithDetailsDao;
 
 import java.time.LocalDate;
@@ -24,6 +27,7 @@ public class StoreService {
     private final StoreRepository storeRepository;
     private final BranchService branchService;
     private final CurrentUserService currentUserService;
+    private final InventoryService inventoryService;
 
     /**
      * Adds or updates commodities in the ADMIN store of a specific branch.
@@ -39,34 +43,22 @@ public class StoreService {
     @Transactional
     public void addCommoditiesToStore(List<CommodityWithDetailsDao> commodities, Long branchID)
             throws NotFoundException {
+        addCommoditiesToStore(commodities, branchID, LedgerContext.unspecified());
+    }
+
+    /** As above, recording why the stock arrived. */
+    @Transactional
+    public void addCommoditiesToStore(List<CommodityWithDetailsDao> commodities, Long branchID,
+                                      LedgerContext context) throws NotFoundException {
         Branch branch = branchService.findBranch(branchID);
         Store adminStore = resolveAdminStore(branch);
 
+        // Delegates to the inventory ledger rather than adjusting balances here. This used to be a
+        // second, parallel implementation of the same credit, which is why goods receiving could
+        // drift from every other stock movement without anything noticing: receiving simply was not
+        // going through the service that is supposed to be the single authority over balances.
         for (CommodityWithDetailsDao dao : commodities) {
-            Commodity commodity = dao.getCommodity();
-
-            // Store-scoped, not branch-scoped: a branch can hold the same commodity in more than
-            // one store (its ADMIN store plus a courier custody row anchored at Head Office), so a
-            // branch-only lookup could return more than one row. Stocking always targets the ADMIN store.
-            StoreBalance balance = storeBalanceRepository
-                    .findByStore_IdAndCommodity_Id(adminStore.getId(), commodity.getId())
-                    .orElse(null);
-
-            if (balance != null) {
-                balance.setQuantity(balance.getQuantity() + dao.getDeliveredQuantity());
-                if (balance.getStore() == null) {
-                    balance.setStore(adminStore);
-                }
-            } else {
-                balance = StoreBalance.builder()
-                        .branch(branch)
-                        .store(adminStore)
-                        .commodity(commodity)
-                        .quantity(dao.getDeliveredQuantity())
-                        .build();
-            }
-
-            storeBalanceRepository.save(balance);
+            inventoryService.creditConsumable(adminStore, dao.getCommodity(), dao.getDeliveredQuantity(), context);
         }
     }
 
@@ -77,19 +69,16 @@ public class StoreService {
      * @return list of StoreBalance entities with commodity and branch eagerly loaded
      * @throws NotFoundException if no balances are found for the branch
      */
+    /**
+     * All (non-courier) balances a branch holds.
+     *
+     * <p>Returns an empty list when the branch holds nothing. A branch with no stock is a normal,
+     * expected state — a newly opened one, or one that has issued everything out — and answering a
+     * 404 made it look like the branch or its store did not exist.
+     */
     @Transactional(readOnly = true)
-    public List<StoreBalance> fetchStoreDetailsPerBranch(Long branchId)
-            throws NotFoundException {
-
-        List<StoreBalance> storeList = storeBalanceRepository.findAllByBranchIdWithCommodityAndBranch(branchId);
-
-        if (storeList.isEmpty()) {
-            throw new NotFoundException(
-                    String.format("Store details for branch with id %s are not found", branchId)
-            );
-        }
-
-        return storeList;
+    public List<StoreBalance> fetchStoreDetailsPerBranch(Long branchId) {
+        return storeBalanceRepository.findAllByBranchIdWithCommodityAndBranch(branchId);
     }
 
     @Transactional
@@ -113,43 +102,9 @@ public class StoreService {
     }
 
 
-    /**
-     * Reduces the quantity of commodities in the ADMIN store of a specific branch.
-     * <p>
-     * For each commodity in the input list:
-     * - If a balance exists for the branch and has sufficient quantity, its quantity is decreased.
-     * - If no balance exists or quantity is insufficient, an exception is thrown.
-     *
-     * @param commodities a list of CommodityWithDetailsDao objects containing commodity and quantity to reduce
-     * @param branchID    the ID of the branch where the commodities should be reduced
-     * @throws NotFoundException        if the branch or commodity is not found
-     * @throws IllegalArgumentException if there is insufficient quantity to reduce
-     */
-    @Transactional
-    public void reduceCommoditiesFromStore(List<CommodityWithDetailsDao> commodities, Long branchID)
-            throws NotFoundException, IllegalArgumentException {
-        Branch branch = branchService.findBranch(branchID);
-        Store adminStore = resolveAdminStore(branch);
-
-        for (CommodityWithDetailsDao dao : commodities) {
-            Commodity commodity = dao.getCommodity();
-
-            // Store-scoped: reduce from the branch's ADMIN store (see addCommoditiesToStore).
-            StoreBalance balance = storeBalanceRepository
-                    .findByStore_IdAndCommodity_Id(adminStore.getId(), commodity.getId())
-                    .orElseThrow(() -> new NotFoundException(String.format("Commodity %s not found in store for the store", commodity.getName())));
-
-            int currentQuantity = balance.getQuantity();
-            int quantityToReduce = dao.getDeliveredQuantity();
-
-            if (currentQuantity < quantityToReduce) {
-                throw new IllegalArgumentException("Insufficient quantity for commodity: " + commodity.getName());
-            }
-
-            balance.setQuantity(currentQuantity - quantityToReduce);
-            storeBalanceRepository.save(balance);
-        }
-    }
+    // reduceCommoditiesFromStore was removed here: it had no callers, and it was a third
+    // implementation of "take stock out of a store" alongside InventoryService.debitConsumable —
+    // with different validation. Debits belong to the ledger; use InventoryService.debitConsumable.
 
     public AssetTypeSummaryView findCommoditiesInStockByAssetType() {
         return storeBalanceRepository.findAssetTypeSummary("Stationery");

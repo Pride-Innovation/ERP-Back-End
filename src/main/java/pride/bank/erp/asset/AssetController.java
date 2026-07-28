@@ -159,20 +159,24 @@ public class AssetController {
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 
+    /**
+     * Hands an asset back into a store, optionally marking it as temporary-replacement pool stock.
+     *
+     * <p>The single action that puts an asset in a store. The former
+     * {@code assets/temporary-pool/{id}} endpoint is gone: flipping the pool flag without moving the
+     * asset produced pool stock the replacement picker could never see, since it looks assets up by
+     * the store holding them. The flag now travels with the move that makes it meaningful.
+     */
     @PutMapping("assets/store/{assetID}")
     public ResponseEntity<AssetDAO> sendAssetToStore(
-            @PathVariable Long assetID
+            @PathVariable Long assetID,
+            @RequestBody(required = false) SendToStoreDTO request
     ) throws NotFoundException {
-        AssetDAO response = assetService.sendAssetToStore(assetID);
-        return new ResponseEntity<>(response, HttpStatus.CREATED);
-    }
-
-    /** Flips whether an asset is pool stock for temporary replacement loans (§15). */
-    @PutMapping("assets/temporary-pool/{assetID}")
-    public ResponseEntity<AssetDAO> toggleTemporaryPool(
-            @PathVariable Long assetID
-    ) throws NotFoundException {
-        AssetDAO response = assetService.toggleTemporaryPool(assetID);
+        AssetDAO response = assetService.sendAssetToStore(
+                assetID,
+                request != null ? request.getStoreId() : null,
+                request != null ? request.getTemporaryPool() : null
+        );
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 

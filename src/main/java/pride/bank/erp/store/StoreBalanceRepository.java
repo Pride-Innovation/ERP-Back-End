@@ -104,6 +104,46 @@ public interface StoreBalanceRepository extends JpaRepository<StoreBalance, Long
     /** Balances whose container link has not yet been backfilled (used by the one-time migration). */
     List<StoreBalance> findByStoreIsNull();
 
+    // ── On-hand views: courier custody deliberately excluded ─────────────────
+    // A COURIER store's location is pinned to Head Office purely to satisfy the NOT NULL on the
+    // column, so its balances carry branch = Head Office. Any unfiltered query therefore reports
+    // every unit in transit anywhere in the country as Head Office stock, and counts goods that are
+    // in a van as available on a shelf. These are the on-hand equivalents of findAll() /
+    // findLowStock() / findByStore_Location_Id().
+
+    @Query("SELECT s FROM StoreBalance s WHERE s.store IS NULL OR s.store.storeType <> pride.bank.erp.store.StoreType.COURIER")
+    List<StoreBalance> findAllOnHand();
+
+    @Query("SELECT s FROM StoreBalance s WHERE s.store.location.id = :locationId "
+            + "AND s.store.storeType <> pride.bank.erp.store.StoreType.COURIER")
+    List<StoreBalance> findOnHandByLocation(@Param("locationId") Long locationId);
+
+    @Query("SELECT b FROM StoreBalance b WHERE b.minLevel > 0 AND b.quantity <= b.minLevel "
+            + "AND (b.store IS NULL OR b.store.storeType <> pride.bank.erp.store.StoreType.COURIER)")
+    List<StoreBalance> findLowStockOnHand();
+
+    /**
+     * Per-branch stock position in one query: {@code [branchId, lines, totalQty, lowStockLines]}.
+     *
+     * <p>Replaces the store landing page's per-branch round trip — it fired one request per branch
+     * just to read a count, so 50 branches meant 50 requests on every page load.
+     */
+    @Query("""
+            SELECT s.branch.id,
+                   COUNT(s),
+                   COALESCE(SUM(s.quantity), 0),
+                   SUM(CASE WHEN s.minLevel > 0 AND s.quantity <= s.minLevel THEN 1 ELSE 0 END)
+            FROM StoreBalance s
+            WHERE s.store IS NULL OR s.store.storeType <> pride.bank.erp.store.StoreType.COURIER
+            GROUP BY s.branch.id
+            """)
+    List<Object[]> summariseByBranch();
+
+    /** Everything a courier is currently carrying — the counterpart the views above leave out. */
+    @Query("SELECT s FROM StoreBalance s WHERE s.store.storeType = pride.bank.erp.store.StoreType.COURIER "
+            + "AND s.quantity > 0")
+    List<StoreBalance> findInTransit();
+
     // ── Reporting / visibility (§11-12) ──────────────────────────────────────
     List<StoreBalance> findByStore_Id(Long storeId);
 

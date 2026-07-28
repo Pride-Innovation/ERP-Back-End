@@ -17,6 +17,7 @@ import pride.bank.erp.courier.Courier;
 import pride.bank.erp.repair.Repair;
 import pride.bank.erp.request.Request;
 import pride.bank.erp.store.Store;
+import pride.bank.erp.branch.Branch;
 import pride.bank.erp.user.User;
 
 import java.time.LocalDateTime;
@@ -59,11 +60,25 @@ public class Movement {
     @Builder.Default
     private MovementStatus status = MovementStatus.INITIATED;
 
-    // ── Source ──────────────────────────────────────────────────────────────
-    @ManyToOne(fetch = FetchType.EAGER, optional = false)
-    @JoinColumn(name = "source_store_id", nullable = false)
+    // ── Source (a store, or a user handing an item back) ─────────────────────
+    /**
+     * The store the items leave. Null only for a {@link MovementType#RETURN_TO_STORE}, where the
+     * items are coming back from a person rather than out of a store — exactly one of this and
+     * {@link #sourceUser} is always set.
+     */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "source_store_id")
     @NotAudited
     private Store sourceStore;
+
+    /**
+     * The person handing the items back. A user holds no stock balance, so a return credits the
+     * destination store without debiting anything — the quantity left the store when it was issued.
+     */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "source_user_id")
+    @NotAudited
+    private User sourceUser;
 
     // ── Destination (a store, or a user for store→user issuance) ─────────────
     @ManyToOne(fetch = FetchType.EAGER)
@@ -75,6 +90,25 @@ public class Movement {
     @JoinColumn(name = "recipient_user_id")
     @NotAudited
     private User recipientUser;
+
+    // ── Where a repaired asset must go back to (REPAIR_TRANSFER only) ────────
+    /**
+     * Who held the asset when it was sent for repair, and where they held it. Captured at
+     * initiation from the asset's own active assignment — never supplied by a client.
+     *
+     * <p>Without this the return leg had nothing authoritative to aim at: the assignment is closed
+     * when Head Office receives the asset, so by the time it is repaired the system no longer knows
+     * who had it, and an operator had to pick the branch and the person from a dropdown by memory.
+     */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "origin_holder_id")
+    @NotAudited
+    private User originHolder;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "origin_location_id")
+    @NotAudited
+    private Branch originLocation;
 
     // ── Logistics (populated only for INTER_LOCATION movements) ──────────────
     private String courierService;
