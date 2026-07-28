@@ -70,4 +70,17 @@ public interface AssetRepository extends JpaRepository<Asset, Long> {
     List<Asset> findByCurrentStore_Id(Long storeId);
 
     List<Asset> findByCurrentStore_StoreType(pride.bank.erp.store.StoreType storeType);
+
+    /**
+     * Assets on the register per order line: {@code [stockId, commodityId, count]}. Disposed assets
+     * are counted too — the question this answers is whether a record was ever created for a
+     * received unit, and a later end-of-life disposal does not undo that.
+     */
+    @Query("""
+            SELECT a.stock.id, a.commodity.id, COUNT(a)
+            FROM Asset a
+            WHERE a.stock IS NOT NULL AND a.commodity IS NOT NULL
+            GROUP BY a.stock.id, a.commodity.id
+            """)
+    List<Object[]> countAssetsByStockAndCommodity();
 }

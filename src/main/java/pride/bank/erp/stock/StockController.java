@@ -17,8 +17,12 @@ import org.springframework.web.bind.annotation.*;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
 import pride.bank.erp.helper.DeleteResponse;
+import pride.bank.erp.stockReceipt.StockReceiptDTO;
+import pride.bank.erp.stockReceipt.StockReceiptService;
+import pride.bank.erp.stockReceipt.StockReceiptView;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
 
@@ -29,6 +33,7 @@ import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
 @Slf4j
 public class StockController {
     private final StockService stockService;
+    private final StockReceiptService stockReceiptService;
 
     @GetMapping("/stocks")
     public ResponseEntity<Page<StockDAO>> fetchAllStocks(
@@ -86,13 +91,16 @@ public class StockController {
         }
     }
 
+    /**
+     * Corrects an existing order. Quantities <em>delivered</em> are not editable here — see
+     * {@link #receiveDelivery}. The status is derived from the lines, so no status id is accepted.
+     */
     @PutMapping("/stocks/{stockID}")
     public ResponseEntity<Stock> updateStock(@PathVariable Long stockID, @RequestBody StockDTO stockDTO)
             throws NotFoundException {
         Stock response = stockService.updateStock(
                 stockID,
                 stockDTO.getStock(),
-                stockDTO.getStatus(),
                 stockDTO.getSupplier(),
                 stockDTO.getStockCommoditiesRequest()
         );
@@ -106,6 +114,31 @@ public class StockController {
         return new ResponseEntity<>(stockService.fetchSingleStock(stockID), HttpStatus.OK);
     }
 
+    /**
+     * Records one physical delivery against the order: every line that arrived in this batch, plus
+     * the delivery-note details a GRN is meant to carry. One call produces one receipt, one GRN,
+     * one store credit and one batch of assets.
+     */
+    @PostMapping("/stocks/{stockID}/receipts")
+    public ResponseEntity<Stock> receiveDelivery(
+            @PathVariable Long stockID,
+            @RequestBody StockReceiptDTO request
+    ) throws NotFoundException {
+        Stock response = stockService.receiveDelivery(stockID, request);
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
+    }
+
+    /** The delivery history of an order — one entry per physical receipt, newest last. */
+    @GetMapping("/stocks/{stockID}/receipts")
+    public ResponseEntity<List<StockReceiptView>> fetchReceipts(@PathVariable Long stockID) {
+        return new ResponseEntity<>(stockReceiptService.fetchReceiptsForStock(stockID), HttpStatus.OK);
+    }
+
+    /**
+     * @deprecated superseded by {@link #receiveDelivery}, which records the receipt date, delivery
+     * note and receiving officer. Retained so older clients keep working.
+     */
+    @Deprecated
     @PostMapping("/stocks/{stockID}/complete-delivery")
     public ResponseEntity<Stock> completeDelivery(
             @RequestBody completeDeliveryDTO request,

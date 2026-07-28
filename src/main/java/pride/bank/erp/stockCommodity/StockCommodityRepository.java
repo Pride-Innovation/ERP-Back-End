@@ -30,6 +30,16 @@ public interface StockCommodityRepository extends JpaRepository<StockCommodity, 
 
     Optional<StockCommodity> findByStockIdAndCommodityId(Long stockId, Long commodityId);
 
+    /** Every line of every live order — the left-hand side of the reconciliation report. */
+    @Query("""
+            SELECT sc FROM StockCommodity sc
+            JOIN FETCH sc.stock s
+            JOIN FETCH sc.commodity c
+            WHERE s.disposed = false
+            ORDER BY s.id ASC, c.name ASC
+            """)
+    List<StockCommodity> findAllForActiveStocks();
+
     @Query(value = """
                 SELECT
                     DATE_FORMAT(s.create_date, '%Y-%m') AS month,

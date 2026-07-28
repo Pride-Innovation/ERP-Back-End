@@ -8,6 +8,7 @@ Managing Director
 package pride.bank.erp.advice;
 
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.security.access.AccessDeniedException;
@@ -134,6 +135,22 @@ public class ApplicationExceptionHandler {
         ProblemDetail errorDetail = ProblemDetail
                 .forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
         errorDetail.setProperty("request_failure", "Bad Request");
+        return errorDetail;
+    }
+
+    /**
+     * Two people changed the same stock line or store balance at once and one write lost the race.
+     * Nothing is wrong with the request itself — it just needs to be re-read and re-submitted, so
+     * say that in plain language rather than surfacing a Hibernate stack trace.
+     */
+    @ResponseStatus(HttpStatus.CONFLICT)
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ProblemDetail handleOptimisticLock(ObjectOptimisticLockingFailureException ex) {
+        ProblemDetail errorDetail = ProblemDetail.forStatusAndDetail(
+                HttpStatus.CONFLICT,
+                "Someone else updated this record while you were working on it. "
+                        + "Refresh the page to pick up their change, then try again.");
+        errorDetail.setProperty("request_failure", "Conflict");
         return errorDetail;
     }
 

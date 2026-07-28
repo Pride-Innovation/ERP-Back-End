@@ -30,6 +30,15 @@ public class StockCommodity {
     private int purchasePrice;
     private int registeredNumber;
 
+    /**
+     * Optimistic lock. Receiving is a read-modify-write on {@code deliveredQuantity} and
+     * {@code registeredNumber}; without this, two storekeepers receiving the same order at the same
+     * moment silently lose one of the batches (last write wins) while both GRNs still print.
+     */
+    @Version
+    @Column(nullable = false, columnDefinition = "BIGINT NOT NULL DEFAULT 0")
+    private Long version;
+
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "stock_id", nullable = false)
     private Stock stock;

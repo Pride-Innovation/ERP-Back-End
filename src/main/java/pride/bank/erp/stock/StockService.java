@@ -9,6 +9,7 @@ package pride.bank.erp.stock;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Sort;
@@ -27,12 +28,15 @@ import pride.bank.erp.grnCommodity.GrnCommodityRepository;
 import pride.bank.erp.grnReport.GrnReport;
 import pride.bank.erp.grnReport.GrnReportRepository;
 import pride.bank.erp.helper.DeleteResponse;
-import pride.bank.erp.notification.Email;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
 import pride.bank.erp.stockCommodity.StockCommodity;
 import pride.bank.erp.stockCommodity.StockCommodityDTO;
 import pride.bank.erp.stockCommodity.StockCommodityRepository;
+import pride.bank.erp.stockReceipt.StockReceipt;
+import pride.bank.erp.stockReceipt.StockReceiptDTO;
+import pride.bank.erp.stockReceipt.StockReceiptRepository;
+import pride.bank.erp.store.Store;
 import pride.bank.erp.store.StoreService;
 import pride.bank.erp.supplier.Supplier;
 import pride.bank.erp.supplier.SupplierService;
@@ -60,8 +64,9 @@ public class StockService {
     private final AssetRepository assetRepository;
     private final GrnReportRepository grnReportRepository;
     private final GrnCommodityRepository grnCommodityRepository;
-    private final Email emailService;
+    private final StockReceiptRepository stockReceiptRepository;
     private final CurrentUserService currentUserService;
+    private final ApplicationEventPublisher eventPublisher;
 
     // Status codes (stable across re-seeds) — replace brittle magic numeric IDs.
     private static final String STATUS_REQUIRE_UPDATE  = "requireUpdate";
@@ -233,42 +238,32 @@ public class StockService {
         Stock savedStock = stockRepository.save(stock);
         addCommoditiesToStock(savedStock, stockCommoditiesRequest);
 
-        // GRN number is authoritative on the server — issued from the report's own id so it
-        // is monotonic and unique. Any client-supplied value is ignored.
-        GrnReport savedGrnReport = issueGrnReport(savedStock);
-        String grnNumber = savedGrnReport.getName();
-        savedStock.setGrnNumber(grnNumber);
-        stockRepository.save(savedStock);
+        // Anything already delivered at creation time is itself a physical receipt, so it goes
+        // through exactly the same path as a later batch: one receipt, one GRN, one store credit,
+        // one set of assets. An order captured with nothing yet delivered produces no GRN at all —
+        // previously a "zero delivery" GRN was issued regardless, which put an empty document into
+        // the audit trail.
+        List<StockCommodityDTO> initiallyDelivered = stockCommoditiesRequest.stream()
+                .filter(dto -> dto.getDeliveredQuantity() > 0)
+                .toList();
 
-        for (StockCommodityDTO dto : stockCommoditiesRequest) {
-            Commodity commodity = commodityService.findCommodity(dto.getCommodityId());
-            if (commodity == null) {
-                throw new NotFoundException("Commodity with ID " + dto.getCommodityId() + " not found.");
-            }
-
-            GrnCommodity grnCommodity = GrnCommodity.builder()
-                    .grnReport(savedGrnReport)
-                    .commodity(commodity)
-                    .deliveredQuantity(dto.getDeliveredQuantity())
-                    .orderedQuantity(dto.getOrderedQuantity())
-                    .costPrice(dto.getCostPrice())
-                    .purchasePrice(dto.getPurchasePrice())
-                    .totalDeliveredQuantity(dto.getDeliveredQuantity())
-                    .totalOrderedQuantity(dto.getOrderedQuantity())
-                    .totalCostPrice(dto.getCostPrice())
-                    .totalPurchasePrice(dto.getPurchasePrice())
-                    .build();
-
-            grnCommodityRepository.save(grnCommodity);
+        if (!initiallyDelivered.isEmpty()) {
+            StockReceiptDTO openingReceipt = new StockReceiptDTO();
+            openingReceipt.setLines(initiallyDelivered);
+            openingReceipt.setReceiptDate(request.getDeliveryDate());
+            openingReceipt.setInvoiceNumber(request.getReferenceNumber());
+            openingReceipt.setIdempotencyKey(
+                    idempotencyKey != null && !idempotencyKey.isBlank() ? idempotencyKey + ":opening" : null);
+            // The lines were persisted above with their delivered quantity already set, so the
+            // receipt must not add them a second time.
+            recordReceipt(savedStock, openingReceipt, false);
+        } else {
+            recomputeStatus(savedStock);
+            stockRepository.save(savedStock);
         }
 
-        createAssetsFromStock(savedStock);
-
         List<StockCommodity> stockCommodities = stockCommodityRepository.findByStockId(savedStock.getId());
-        List<CommodityWithDetailsDao> commodities = commodityWithDetailsDao(stockCommodities);
-
-        storeService.addCommoditiesToStore(commodities, branch.getId());
-        savedStock.setCommodities(commodities);
+        savedStock.setCommodities(commodityWithDetailsDao(stockCommodities));
 
         return savedStock;
     }
@@ -309,9 +304,9 @@ public class StockService {
      * id, then set the human-readable number. Replaces the old {@code "GRN-"+millis} scheme which
      * was neither sequential nor collision-safe.
      */
-    private GrnReport issueGrnReport(Stock stock) {
+    private GrnReport issueGrnReport(Stock stock, StockReceipt receipt) {
         GrnReport report = grnReportRepository.save(
-                GrnReport.builder().documentPath(null).stock(stock).build()
+                GrnReport.builder().documentPath(null).stock(stock).stockReceipt(receipt).build()
         );
         report.setName(formatGrnNumber(report.getId(), report.getCreateDate()));
         return grnReportRepository.save(report);
@@ -324,148 +319,232 @@ public class StockService {
 
 
     /**
-     * Handles the partial or complete delivery of additional commodities for an existing stock entry.
+     * Records one <b>physical delivery</b> against an existing order — the single path by which
+     * quantities ever enter the system after creation.
      *
-     * <p>This method updates the delivered quantity of each commodity, adjusts the store inventory with only
-     * the newly delivered amounts, and recalculates the stock's status (partial or complete).
+     * <p>Everything a receipt touches moves together, inside one transaction: the delivered
+     * quantity on each line, the store balance, the asset register, the GRN, and the stock's status.
+     * That atomicity is the whole point — the previous split between this path and
+     * {@code updateStock} let a storekeeper raise the delivered figure without any of the rest
+     * following, so the screen said the goods had arrived while the store and asset register did
+     * not know about them.
      *
-     * <p>Additionally, this method:
-     * <ul>
-     *   <li>Updates the cost and purchase price if they have changed</li>
-     *   <li>Generates a new GRN report associated with the stock and the current delivery</li>
-     *   <li>Creates assets from newly delivered commodities if eligible</li>
-     * </ul>
+     * <p>Quantities in {@code request.lines} are <b>deltas</b>: what arrived in this batch, never
+     * the new cumulative total.
      *
-     * @param stockId              the ID of the stock receiving the additional delivery
-     * @param additionalDeliveries a list of commodity DTOs representing new deliveries
-     * @param grnNumber            a unique identifier for the Goods Received Note (GRN) for this delivery
-     * @return the updated stock object with current commodity and delivery information
-     * @throws NotFoundException if the stock or commodities are not found
+     * @param stockId the order the batch was delivered against
+     * @param request the batch: per-commodity quantities plus the delivery-note level details
+     * @return the stock with refreshed commodity totals
      */
+    @Transactional
+    public Stock receiveDelivery(Long stockId, StockReceiptDTO request) throws NotFoundException {
+        if (request == null || request.getLines() == null || request.getLines().isEmpty()) {
+            throw new IllegalArgumentException("A receipt must contain at least one commodity line.");
+        }
 
+        // Replaying the same submission returns the original receipt untouched rather than
+        // receiving the batch a second time.
+        String key = request.getIdempotencyKey();
+        if (key != null && !key.isBlank()) {
+            Optional<StockReceipt> prior = stockReceiptRepository.findByIdempotencyKey(key);
+            if (prior.isPresent()) {
+                Stock stock = prior.get().getStock();
+                stock.setCommodities(commodityWithDetailsDao(
+                        stockCommodityRepository.findByStockId(stock.getId())));
+                return stock;
+            }
+        }
+
+        Stock stock = findOneStock(stockId);
+        recordReceipt(stock, request, true);
+
+        stock.setCommodities(commodityWithDetailsDao(stockCommodityRepository.findByStockId(stockId)));
+        return stock;
+    }
+
+    /**
+     * Backwards-compatible entry point for the old per-commodity "Receive more" call. Wraps the
+     * lines into a receipt so legacy clients still produce a well-formed GRN.
+     *
+     * @deprecated use {@link #receiveDelivery(Long, StockReceiptDTO)} — it captures the delivery
+     * note, invoice, receipt date and receiving officer that a GRN is supposed to carry.
+     */
+    @Deprecated
     @Transactional
     public Stock completeDelivery(
             Long stockId,
             List<StockCommodityDTO> additionalDeliveries,
             String grnNumber
     ) throws NotFoundException {
-        Stock stock = findOneStock(stockId);
-        List<StockCommodity> existingCommodities = stockCommodityRepository.findByStockId(stockId);
-        List<CommodityWithDetailsDao> newlyDelivered = new ArrayList<>();
+        StockReceiptDTO request = new StockReceiptDTO();
+        request.setLines(additionalDeliveries);
+        return receiveDelivery(stockId, request);
+    }
 
-        for (StockCommodityDTO delivery : additionalDeliveries) {
-            StockCommodity existing = existingCommodities.stream()
-                    .filter(sc -> sc.getCommodity().getId().equals(delivery.getCommodityId()))
-                    .findFirst()
-                    .orElseThrow(() -> new NotFoundException("Commodity not found in stock"));
+    /**
+     * The one place a delivery is applied. Shared by order creation (for whatever arrived up
+     * front) and by every later batch.
+     *
+     * @param applyQuantityDelta {@code true} to add each line's quantity to the running delivered
+     *                           total; {@code false} when the caller has already persisted the
+     *                           quantities (order creation) and the receipt is only documenting them.
+     */
+    private StockReceipt recordReceipt(Stock stock, StockReceiptDTO request, boolean applyQuantityDelta)
+            throws NotFoundException {
 
-            if (delivery.getDeliveredQuantity() < 0) {
-                throw new IllegalArgumentException("Delivered quantity cannot be negative.");
-            }
-            int previousDelivered = existing.getDeliveredQuantity();
-            int newDelivered = previousDelivered + delivery.getDeliveredQuantity();
-            if (newDelivered > existing.getOrderedQuantity()) {
-                throw new IllegalArgumentException(
-                        "Total delivered would exceed ordered quantity for commodity " + delivery.getCommodityId() + ".");
-            }
-            existing.setDeliveredQuantity(newDelivered);
+        List<StockCommodity> existingLines = stockCommodityRepository.findByStockId(stock.getId());
+        Map<Long, StockCommodity> linesByCommodity = existingLines.stream()
+                .collect(Collectors.toMap(sc -> sc.getCommodity().getId(), sc -> sc, (a, b) -> a));
 
-            // The per-batch price is authoritatively recorded on this delivery's GrnCommodity
-            // line below. Updating the StockCommodity's unit price here only affects the price
-            // stamped on assets created for THIS batch (already-created assets keep their own
-            // recorded cost); it does not retroactively re-price historical units.
-            if (delivery.getCostPrice() != null) {
-                existing.setCostPrice(delivery.getCostPrice());
-            }
-            if (delivery.getPurchasePrice() != null) {
-                existing.setPurchasePrice(delivery.getPurchasePrice());
-            }
+        // Ignore empty lines so a receipt form submitted with most rows left blank records only
+        // what actually arrived, instead of a GRN padded with zero-quantity entries.
+        List<StockCommodityDTO> received = request.getLines().stream()
+                .filter(line -> line.getDeliveredQuantity() > 0)
+                .toList();
 
-            stockCommodityRepository.save(existing);
-
-            CommodityWithDetailsDao dao = CommodityWithDetailsDao.builder()
-                    .commodity(existing.getCommodity())
-                    .deliveredQuantity(delivery.getDeliveredQuantity())
-                    .build();
-            newlyDelivered.add(dao);
+        if (received.isEmpty()) {
+            throw new IllegalArgumentException("A receipt must record a quantity greater than zero for at least one commodity.");
         }
 
-        Summation updatedSummation = calculateSumsFromStock(stockId);
-        stock.setStatus(
-                updatedSummation.getDeliveredCommoditiesSummation() == updatedSummation.getOrderedCommoditiesSummation()
-                        ? statusService.findByStatusCode(STATUS_STOCK_COMPLETED)
-                        : statusService.findByStatusCode(STATUS_STOCK_PENDING)
-        );
+        LocalDateTime receiptDate = request.getReceiptDate() != null
+                ? request.getReceiptDate()
+                : LocalDateTime.now();
+
+        Store destination = storeService.resolveAdminStore(stock.getBranch());
+
+        StockReceipt receipt = stockReceiptRepository.save(StockReceipt.builder()
+                .stock(stock)
+                .receiptDate(receiptDate)
+                .deliveryNoteNumber(trimToNull(request.getDeliveryNoteNumber()))
+                .invoiceNumber(trimToNull(request.getInvoiceNumber()))
+                .notes(trimToNull(request.getNotes()))
+                .store(destination)
+                .idempotencyKey(trimToNull(request.getIdempotencyKey()))
+                .build());
+
+        GrnReport grnReport = issueGrnReport(stock, receipt);
+        List<CommodityWithDetailsDao> creditToStore = new ArrayList<>();
+
+        for (StockCommodityDTO line : received) {
+            StockCommodity stockLine = linesByCommodity.get(line.getCommodityId());
+            if (stockLine == null) {
+                throw new NotFoundException(
+                        "Commodity with ID " + line.getCommodityId() + " is not on this order.");
+            }
+
+            if (applyQuantityDelta) {
+                int newDelivered = stockLine.getDeliveredQuantity() + line.getDeliveredQuantity();
+                if (newDelivered > stockLine.getOrderedQuantity()) {
+                    throw new IllegalArgumentException(String.format(
+                            "Receiving %d more %s would take the delivered total to %d against %d ordered.",
+                            line.getDeliveredQuantity(), stockLine.getCommodity().getName(),
+                            newDelivered, stockLine.getOrderedQuantity()));
+                }
+                stockLine.setDeliveredQuantity(newDelivered);
+            }
+
+            // A batch may be priced differently from the last one. The line's unit price is updated
+            // so assets created from THIS batch carry this batch's price; assets already created
+            // keep the price they were stamped with, and the GRN below records what this batch cost.
+            if (line.getCostPrice() != null) {
+                stockLine.setCostPrice(line.getCostPrice());
+            }
+            if (line.getPurchasePrice() != null) {
+                stockLine.setPurchasePrice(line.getPurchasePrice());
+            }
+            stockCommodityRepository.save(stockLine);
+
+            int unitCost = stockLine.getCostPrice();
+            int unitPurchase = stockLine.getPurchasePrice();
+
+            grnCommodityRepository.save(GrnCommodity.builder()
+                    .grnReport(grnReport)
+                    .commodity(stockLine.getCommodity())
+                    .deliveredQuantity(line.getDeliveredQuantity())
+                    // Ordered is taken from the order itself, not from the request — a client that
+                    // echoed back the wrong figure used to make the GRN misstate the order.
+                    .orderedQuantity(stockLine.getOrderedQuantity())
+                    .costPrice(unitCost)
+                    .purchasePrice(unitPurchase)
+                    .totalDeliveredQuantity(stockLine.getDeliveredQuantity())
+                    .totalOrderedQuantity(stockLine.getOrderedQuantity())
+                    .totalCostPrice(unitCost)
+                    .totalPurchasePrice(unitPurchase)
+                    .build());
+
+            creditToStore.add(CommodityWithDetailsDao.builder()
+                    .commodity(stockLine.getCommodity())
+                    .deliveredQuantity(line.getDeliveredQuantity())
+                    .orderedQuantity(stockLine.getOrderedQuantity())
+                    .costPrice(unitCost)
+                    .purchasePrice(unitPurchase)
+                    .build());
+        }
+
+        storeService.addCommoditiesToStore(creditToStore, stock.getBranch().getId());
+        createAssetsFromStock(stock, receiptDate);
+
+        // The first GRN issued against an order remains the one shown on the stock header, so the
+        // list view keeps a stable reference; every GRN is listed on the stock's own GRN tab.
+        if (stock.getGrnNumber() == null || stock.getGrnNumber().isBlank()) {
+            stock.setGrnNumber(grnReport.getName());
+        }
+        recomputeStatus(stock);
         stockRepository.save(stock);
 
-        storeService.addCommoditiesToStore(newlyDelivered, stock.getBranch().getId());
+        return receipt;
+    }
 
-        // GRN number is server-authoritative; the client-supplied `grnNumber` is ignored.
-        GrnReport savedGrnReport = issueGrnReport(stock);
+    private static String trimToNull(String value) {
+        if (value == null) return null;
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
 
-        for (StockCommodityDTO delivery : additionalDeliveries) {
-            Commodity commodity = commodityService.findCommodity(delivery.getCommodityId());
+    /**
+     * Derives the stock's status from its own lines rather than trusting a client-supplied id.
+     *
+     * <p>A stock that was closed short stays closed short until a later receipt actually completes
+     * it — receiving a further batch against a closed-short order should not silently reopen it as
+     * "pending" while the outstanding balance is still not expected.
+     */
+    private void recomputeStatus(Stock stock) throws NotFoundException {
+        Summation summation = calculateSumsFromStock(stock.getId());
+        boolean fullyDelivered =
+                summation.getDeliveredCommoditiesSummation() == summation.getOrderedCommoditiesSummation();
 
-            StockCommodity stockCommodity = existingCommodities.stream()
-                    .filter(sc -> sc.getCommodity().getId().equals(delivery.getCommodityId()))
-                    .findFirst()
-                    .orElseThrow(() -> new NotFoundException("Commodity not found in stock"));
-
-            int deliveredQty = delivery.getDeliveredQuantity();
-            int orderedQty = delivery.getOrderedQuantity();
-            // Prices are optional on a top-up delivery — fall back to the line's current unit prices.
-            int unitCostPrice = delivery.getCostPrice() != null
-                    ? delivery.getCostPrice() : stockCommodity.getCostPrice();
-            int unitPurchasePrice = delivery.getPurchasePrice() != null
-                    ? delivery.getPurchasePrice() : stockCommodity.getPurchasePrice();
-
-            // This GRN line records THIS delivery; the "total*" fields snapshot the
-            // cumulative position for the commodity after this delivery (quantities are
-            // additive; unit prices are not summed).
-            GrnCommodity grnCommodity = GrnCommodity.builder()
-                    .grnReport(savedGrnReport)
-                    .commodity(commodity)
-                    .deliveredQuantity(deliveredQty)
-                    .orderedQuantity(orderedQty)
-                    .costPrice(unitCostPrice)
-                    .purchasePrice(unitPurchasePrice)
-                    .totalDeliveredQuantity(stockCommodity.getDeliveredQuantity())
-                    .totalOrderedQuantity(stockCommodity.getOrderedQuantity())
-                    .totalCostPrice(unitCostPrice)
-                    .totalPurchasePrice(unitPurchasePrice)
-                    .build();
-            grnCommodityRepository.save(grnCommodity);
+        if (fullyDelivered) {
+            stock.setStatus(statusService.findByStatusCode(STATUS_STOCK_COMPLETED));
+            return;
         }
 
-        createAssetsFromStock(stock);
-
-        List<StockCommodity> updatedStockCommodities = stockCommodityRepository.findByStockId(stockId);
-        List<CommodityWithDetailsDao> updatedDetails = commodityWithDetailsDao(updatedStockCommodities);
-        stock.setCommodities(updatedDetails);
-
-        return stock;
+        boolean closedShort = stock.getStatus() != null
+                && STATUS_STOCK_CLOSED_SHORT.equals(stock.getStatus().getStatus());
+        if (!closedShort) {
+            stock.setStatus(statusService.findByStatusCode(STATUS_STOCK_PENDING));
+        }
     }
 
 
     /**
-     * Update Stock
+     * Corrects an existing order: its header (supplier, references, business dates), what was
+     * <b>ordered</b>, and unit prices.
      *
-     * @param stockID                 this takes the stock Identification
-     * @param request                 this is the request body
-     * @param statusID                this is the status
-     * @param supplierID              this takes the supplier.
-     * @param stockCommoditiesRequest this takes the commodities
-     * @return Stock
-     * @throws NotFoundException This method is to update a stock.
-     *                           Its major purpose to ensure that the system users correct mistakes during
-     *                           stocking
+     * <p>It deliberately cannot change what has been <b>delivered</b>. Receiving is a physical
+     * event with consequences that have to happen together — the store is credited, assets are
+     * registered, a GRN is issued — and none of that can be inferred from someone typing a larger
+     * number into a correction form. Raising the delivered figure here used to do exactly that:
+     * the line said the goods had arrived while the store balance, the asset register and the GRN
+     * trail all still reflected the earlier delivery, and the gap never closed. Deliveries go
+     * through {@link #receiveDelivery(Long, StockReceiptDTO)}.
+     *
+     * <p>The status is derived from the lines afterwards, so correcting an order down to what has
+     * actually been received completes it rather than leaving it stuck on "pending".
      */
-
     @Transactional
     public Stock updateStock(
             Long stockID,
             Stock request,
-            Long statusID,
             Long supplierID,
             List<StockCommodityDTO> stockCommoditiesRequest
     ) throws NotFoundException {
@@ -474,7 +553,6 @@ public class StockService {
         if (stockCommoditiesRequest == null || stockCommoditiesRequest.isEmpty()) {
             throw new IllegalArgumentException("Commodities list must not be null or empty.");
         }
-        validateQuantities(stockCommoditiesRequest);
 
         if (supplierID != null) {
             Supplier supplier = supplierService.findSupplier(supplierID);
@@ -482,9 +560,6 @@ public class StockService {
                 throw new NotFoundException("Supplier with ID " + supplierID + " not found.");
             }
             stock.setSupplier(supplier);
-        }
-        if (statusID != null) {
-            stock.setStatus(statusService.findOneStatus(statusID));
         }
 
         stock.setReferenceNumber(request.getReferenceNumber());
@@ -501,6 +576,9 @@ public class StockService {
         // linkage survives a correction.
         mergeStockCommodities(savedStock, stockCommoditiesRequest);
 
+        recomputeStatus(savedStock);
+        savedStock = stockRepository.save(savedStock);
+
         List<StockCommodity> stockCommodities = stockCommodityRepository.findByStockId(savedStock.getId());
         savedStock.setCommodities(commodityWithDetailsDao(stockCommodities));
         return savedStock;
@@ -508,8 +586,8 @@ public class StockService {
 
     /**
      * Non-destructive merge of a stock's commodity lines: existing lines are updated in place
-     * (preserving {@code registeredNumber} and asset linkage), new lines are added, and lines no
-     * longer present are removed only when no assets have been registered from them.
+     * (preserving {@code deliveredQuantity}, {@code registeredNumber} and asset linkage), new lines
+     * are added, and lines are removed only when nothing has been received against them.
      */
     private void mergeStockCommodities(Stock stock, List<StockCommodityDTO> requested) throws NotFoundException {
         List<StockCommodity> existing = stockCommodityRepository.findByStockId(stock.getId());
@@ -520,21 +598,38 @@ public class StockService {
         for (StockCommodityDTO dto : requested) {
             requestedIds.add(dto.getCommodityId());
             StockCommodity sc = existingByCommodity.get(dto.getCommodityId());
+
             if (sc != null) {
-                // A correction can't reduce delivered below the number of assets already
-                // registered from this line — that would leave orphaned assets.
-                if (dto.getDeliveredQuantity() < sc.getRegisteredNumber()) {
-                    throw new IllegalArgumentException(
-                            "Delivered quantity for " + sc.getCommodity().getName()
-                                    + " cannot be less than the " + sc.getRegisteredNumber()
-                                    + " asset(s) already registered from it.");
+                if (dto.getOrderedQuantity() < 0) {
+                    throw new IllegalArgumentException("Ordered quantity cannot be negative.");
                 }
+                // Correcting the order down below what the supplier has already delivered would
+                // leave the line permanently over-delivered and its status un-derivable.
+                if (dto.getOrderedQuantity() < sc.getDeliveredQuantity()) {
+                    throw new IllegalArgumentException(String.format(
+                            "Ordered quantity for %s cannot be set to %d — %d has already been received.",
+                            sc.getCommodity().getName(), dto.getOrderedQuantity(), sc.getDeliveredQuantity()));
+                }
+                // Delivered is owned by the receipt trail, not by this form. Reject rather than
+                // silently ignore, so a client that still submits it finds out.
+                if (dto.getDeliveredQuantity() != sc.getDeliveredQuantity()) {
+                    throw new IllegalArgumentException(String.format(
+                            "Delivered quantity for %s cannot be changed here (currently %d). "
+                                    + "Record a delivery against this order instead, so the store, "
+                                    + "the asset register and the GRN are updated with it.",
+                            sc.getCommodity().getName(), sc.getDeliveredQuantity()));
+                }
+
                 sc.setOrderedQuantity(dto.getOrderedQuantity());
-                sc.setDeliveredQuantity(dto.getDeliveredQuantity());
                 if (dto.getCostPrice() != null) sc.setCostPrice(dto.getCostPrice());
                 if (dto.getPurchasePrice() != null) sc.setPurchasePrice(dto.getPurchasePrice());
                 stockCommodityRepository.save(sc);
             } else {
+                // A line added by correction is an addition to the ORDER; nothing has been
+                // received against it yet, so it starts at zero delivered whatever was submitted.
+                if (dto.getOrderedQuantity() <= 0) {
+                    throw new IllegalArgumentException("Ordered quantity must be greater than zero.");
+                }
                 Commodity commodity = commodityService.findCommodity(dto.getCommodityId());
                 if (commodity == null) {
                     throw new NotFoundException("Commodity with ID " + dto.getCommodityId() + " not found.");
@@ -542,7 +637,7 @@ public class StockService {
                 stockCommodityRepository.save(StockCommodity.builder()
                         .commodity(commodity)
                         .orderedQuantity(dto.getOrderedQuantity())
-                        .deliveredQuantity(dto.getDeliveredQuantity())
+                        .deliveredQuantity(0)
                         .costPrice(dto.getCostPrice() != null ? dto.getCostPrice() : 0)
                         .purchasePrice(dto.getPurchasePrice() != null ? dto.getPurchasePrice() : 0)
                         .stock(stock)
@@ -552,6 +647,14 @@ public class StockService {
 
         for (StockCommodity sc : existing) {
             if (!requestedIds.contains(sc.getCommodity().getId())) {
+                // registeredNumber only ever moves for asset-tracked categories, so it used to let
+                // a consumable line (Stationery, Cleaning …) be deleted while its delivered units
+                // stayed on the store balance for good. Delivered quantity is the honest test.
+                if (sc.getDeliveredQuantity() > 0) {
+                    throw new IllegalArgumentException(String.format(
+                            "Cannot remove %s — %d unit(s) have already been received against it and are held in the store.",
+                            sc.getCommodity().getName(), sc.getDeliveredQuantity()));
+                }
                 if (sc.getRegisteredNumber() > 0) {
                     throw new IllegalArgumentException(
                             "Cannot remove commodity " + sc.getCommodity().getName()
@@ -695,7 +798,7 @@ public class StockService {
      * Assumptions:
      * - Status ID 8 represents "Active" or similar initial asset status.
      */
-    private void createAssetsFromStock(Stock stock) throws NotFoundException {
+    private void createAssetsFromStock(Stock stock, LocalDateTime receiptDate) throws NotFoundException {
         List<StockCommodity> stockCommodities = stockCommodityRepository.findByStockId(stock.getId());
 
         Status requireUpdateStatus = statusService.findByStatusCode(STATUS_REQUIRE_UPDATE);
@@ -732,10 +835,11 @@ public class StockService {
                         .stock(stock)
                         .purchaseCost(String.valueOf(stockCommodity.getPurchasePrice()))
                         .costOfTheAsset(String.valueOf(stockCommodity.getCostPrice()))
-                        // Prefer the real delivery date (basis for depreciation/age); fall back to
-                        // the row insert time only when the delivery date wasn't captured.
-                        .dateReceipt((stock.getDeliveryDate() != null
-                                ? stock.getDeliveryDate() : stock.getCreateDate()).toString())
+                        // The date THIS batch physically arrived — the basis for the asset's age and
+                        // depreciation. Previously taken from the mutable Stock.deliveryDate header,
+                        // which every later receipt or correction overwrote, silently rewriting the
+                        // depreciation start date of assets received months earlier.
+                        .dateReceipt(receiptDate.toString())
                         .disposed(false)
                         .assetStatus(requireUpdateStatus) // "Require Update After Stocking"
                         .build();
@@ -776,7 +880,9 @@ public class StockService {
                     summary.toString(),
                     "update the inventory of stocked " + type.getName() + " items"
             );
-            notifyIndividual(recipient, stock, greeting, body);
+            // Published now, delivered after the transaction commits — a dead SMTP host must not
+            // be able to roll back a delivery that physically happened.
+            eventPublisher.publishEvent(new AssetsStockedEvent(recipient, stock, greeting, body));
         }
     }
 
@@ -794,28 +900,6 @@ public class StockService {
         return new Summation(orderedSum, deliveredSum);
     }
 
-
-    private void notifyIndividual(
-            String email,
-            Stock stock,
-            String updaterName,
-            String commoditySummary
-    ) {
-        emailService.sendEmailVerification(
-                email,
-                String.format("Stock LPO ID: %s", stock.getLpoNumber()),
-                null,
-                updaterName,
-                "View Stock",
-                commoditySummary,
-                "stocks",
-                null,
-                stock,
-                null,
-                null,
-                null
-        );
-    }
 
     private String buildAdminEmailBody(
             String commodityDetails,
@@ -857,6 +941,16 @@ public class StockService {
             grnReport.setDisposed(true);
             grnReport.setDisposalDate(LocalDateTime.now());
             grnReportRepository.save(grnReport);
+        }
+
+        // Step 1b: Soft delete the receipts those GRNs documented
+        for (StockReceipt receipt : stockReceiptRepository.findByStockIdOrderByReceiptDateAsc(stockID)) {
+            receipt.setDisposed(true);
+            receipt.setDisposalDate(LocalDateTime.now());
+            // Free the idempotency key so a corrected re-entry of the same delivery is not
+            // rejected as a replay of the deleted one.
+            receipt.setIdempotencyKey(null);
+            stockReceiptRepository.save(receipt);
         }
 
         // Step 2: Soft delete assets linked to the stock

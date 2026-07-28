@@ -15,4 +15,17 @@ public interface GrnCommodityRepository extends JpaRepository<GrnCommodity, Long
     Page<GrnCommodity> findByStockId(@Param("stockId") Long stockId, Pageable pageable);
 
     List<GrnCommodity> findByGrnReportId(Long id);
+
+    /**
+     * Quantity documented by the GRN trail, per order line: {@code [stockId, commodityId, qty]}.
+     * Compared against the line's delivered quantity, the difference is the number of units that
+     * entered the order without a receipt behind them — and so were never credited to a store.
+     */
+    @Query("""
+            SELECT gc.grnReport.stock.id, gc.commodity.id, SUM(gc.deliveredQuantity)
+            FROM GrnCommodity gc
+            WHERE gc.disposed = false AND gc.grnReport.disposed = false
+            GROUP BY gc.grnReport.stock.id, gc.commodity.id
+            """)
+    List<Object[]> sumReceivedQuantityByStockAndCommodity();
 }

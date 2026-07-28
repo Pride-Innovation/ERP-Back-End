@@ -62,6 +62,17 @@ public class StoreBalance {
     @Column(columnDefinition = "INT NOT NULL DEFAULT 0")
     private int minLevel;
 
+    /**
+     * Optimistic lock. Every credit (receiving) and debit (issuance) is a read-modify-write on
+     * {@link #quantity}, so concurrent writers would otherwise overwrite each other's balance.
+     * {@code @NotAudited} — the lock counter is bookkeeping, not history, and keeping it off
+     * {@code store_AUD} avoids an audit-table column for it.
+     */
+    @Version
+    @NotAudited
+    @Column(nullable = false, columnDefinition = "BIGINT NOT NULL DEFAULT 0")
+    private Long version;
+
     @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(name = "commodity_id", nullable = false)
     @NotAudited
