@@ -7,23 +7,17 @@ Managing Director
 
 package pride.bank.erp.notification;
 
-import jakarta.mail.internet.MimeMessage;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.FileSystemResource;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import pride.bank.erp.helper.ExtractNumberFromEmailAddress;
 import pride.bank.erp.request.CommodityWithQuantityDTO;
 import pride.bank.erp.request.Request;
 import pride.bank.erp.stock.Stock;
 
-import java.io.File;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -37,10 +31,9 @@ import static java.lang.String.format;
 public class Email {
 
     private static final Logger logger = LoggerFactory.getLogger(Email.class);
-    private final JavaMailSender mailSender;
+    private final MailDispatcher mailDispatcher;
 
-    @Value("${mail.sender.from}")
-    private String fromEmail;
+    // The From address now belongs to MailDispatcher, which builds the message.
 
     @Value("${application.verification.url}")
     private String verificationUrl;
@@ -57,8 +50,13 @@ public class Email {
 
     /**
      * Sends an email with an optional password.
+     *
+     * <p>Deliberately <b>not</b> {@code @Async}: the templates below read JPA entities
+     * ({@code request.getRequester().getBranch()}, {@code stock.getSupplier()}), which is only safe
+     * while the caller's persistence context is still open. Rendering therefore happens here, on the
+     * caller's thread, and only the finished HTML is handed to {@link MailDispatcher} to transmit
+     * off-thread — so the SMTP round-trip still doesn't block the request.
      */
-    @Async
     public boolean sendEmailVerification(
             String email,
             String subject,
@@ -95,23 +93,11 @@ public class Email {
                 return false;
             }
 
-            String recipient = cleanRecipient(email);
-            MimeMessage mimeMessage = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "utf-8");
-            helper.setTo(recipient);
-            helper.setSubject(subject);
-            helper.setFrom(fromEmail);
-            helper.setText(htmlContent, true);
-
-            String pathToAttachment = "src/main/resources/static/images/logo.png";
-            FileSystemResource image = new FileSystemResource(new File(pathToAttachment));
-            helper.addInline("logoImage", image);
-
-            mailSender.send(mimeMessage);
-            logger.info("Email sent to {}", recipient);
+            // Rendering is done; from here nothing touches an entity, so the send can go off-thread.
+            mailDispatcher.send(cleanRecipient(email), subject, htmlContent, type);
             return true;
         } catch (Exception e) {
-            logger.error("Failed to send email to {}", email, e);
+            logger.error("Failed to build email for {}", email, e);
             return false;
         }
     }
@@ -802,7 +788,6 @@ public class Email {
      * @param step         The current approval step (may be null for rejection)
      * @param stepStatus   "PENDING", "REJECTED", "CC"
      */
-    @Async
     public boolean sendWorkflowEmail(
             String email,
             String subject,
@@ -815,25 +800,13 @@ public class Email {
     ) {
         if (email == null || email.isBlank()) return false;
         try {
+            // Reads the request graph — must stay on the caller's thread (see sendEmailVerification).
             String htmlContent = getWorkflowEmailContent(greeting, stepTitle, instructions, request, stepStatus);
 
-            String recipient = cleanRecipient(email);
-            MimeMessage mimeMessage = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "utf-8");
-            helper.setTo(recipient);
-            helper.setSubject(subject);
-            helper.setFrom(fromEmail);
-            helper.setText(htmlContent, true);
-
-            String pathToAttachment = "src/main/resources/static/images/logo.png";
-            FileSystemResource image = new FileSystemResource(new File(pathToAttachment));
-            helper.addInline("logoImage", image);
-
-            mailSender.send(mimeMessage);
-            logger.info("Workflow email sent to {}", recipient);
+            mailDispatcher.send(cleanRecipient(email), subject, htmlContent, "workflow");
             return true;
         } catch (Exception e) {
-            logger.error("Failed to send workflow email to {}", email, e);
+            logger.error("Failed to build workflow email for {}", email, e);
             return false;
         }
     }

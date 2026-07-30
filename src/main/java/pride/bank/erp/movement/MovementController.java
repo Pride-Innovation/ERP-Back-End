@@ -24,52 +24,57 @@ public class MovementController {
     private final MovementApprovalService movementApprovalService;
     private final MovementApprovalRecordRepository movementApprovalRecordRepository;
     private final MovementRepository movementRepository;
+    private final MovementMapper movementMapper;
 
     @PostMapping("/movements")
-    public ResponseEntity<Movement> createMovement(@RequestBody MovementDTO dto) throws NotFoundException {
-        return new ResponseEntity<>(movementService.createMovement(dto), HttpStatus.CREATED);
+    public ResponseEntity<MovementResponseDTO> createMovement(@RequestBody MovementDTO dto) throws NotFoundException {
+        return new ResponseEntity<>(movementMapper.toDto(movementService.createMovement(dto)), HttpStatus.CREATED);
     }
 
     /** Approve the current tier of a standalone movement's approval ladder. */
     @PostMapping("/movements/{movementId}/approve")
-    public ResponseEntity<Movement> approveMovement(
+    public ResponseEntity<MovementResponseDTO> approveMovement(
             @PathVariable Long movementId,
             @RequestBody(required = false) Map<String, String> body
     ) throws NotFoundException {
         String comment = (body != null) ? body.get("comment") : null;
-        return new ResponseEntity<>(movementApprovalService.approve(movementId, comment), HttpStatus.OK);
+        return new ResponseEntity<>(
+                movementMapper.toDto(movementApprovalService.approve(movementId, comment)), HttpStatus.OK);
     }
 
     /** Reject a standalone movement pending approval — cancels it and notifies the initiator. */
     @PostMapping("/movements/{movementId}/reject")
-    public ResponseEntity<Movement> rejectMovement(
+    public ResponseEntity<MovementResponseDTO> rejectMovement(
             @PathVariable Long movementId,
             @RequestBody(required = false) Map<String, String> body
     ) throws NotFoundException {
         String comment = (body != null) ? body.get("comment") : null;
-        return new ResponseEntity<>(movementApprovalService.reject(movementId, comment), HttpStatus.OK);
+        return new ResponseEntity<>(
+                movementMapper.toDto(movementApprovalService.reject(movementId, comment)), HttpStatus.OK);
     }
 
     /** The current user's (or a given user's) movement-approval inbox: movements in DRAFT assigned to them. */
     @GetMapping("/movements/pending-approval/{approverId}")
-    public ResponseEntity<Page<Movement>> pendingApprovals(
+    public ResponseEntity<Page<MovementResponseDTO>> pendingApprovals(
             @PathVariable Long approverId,
             @RequestParam(required = false, defaultValue = "10") int pageSize,
             @RequestParam(required = false, defaultValue = "0") int pageNumber
     ) {
         Pageable pageable = PageRequest.of(pageNumber, pageSize);
         return new ResponseEntity<>(
-                movementRepository.findByCurrentApprover_IdAndStatus(approverId, MovementStatus.DRAFT, pageable),
+                movementRepository.findByCurrentApprover_IdAndStatus(approverId, MovementStatus.DRAFT, pageable)
+                        .map(movementMapper::toDto),
                 HttpStatus.OK);
     }
 
     /** Attach a delivery/release document (e.g. signed HO release note) to a movement. */
     @PostMapping(value = "/movements/{movementId}/documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<Movement> attachDocument(
+    public ResponseEntity<MovementResponseDTO> attachDocument(
             @PathVariable Long movementId,
             @RequestParam("file") MultipartFile file
     ) throws NotFoundException {
-        return new ResponseEntity<>(movementService.attachDocument(movementId, file), HttpStatus.OK);
+        return new ResponseEntity<>(
+                movementMapper.toDto(movementService.attachDocument(movementId, file)), HttpStatus.OK);
     }
 
     /**
@@ -94,56 +99,59 @@ public class MovementController {
     }
 
     @GetMapping("/movements/{movementId}")
-    public ResponseEntity<Movement> getMovement(@PathVariable Long movementId) throws NotFoundException {
-        return new ResponseEntity<>(movementService.findMovement(movementId), HttpStatus.OK);
+    public ResponseEntity<MovementResponseDTO> getMovement(@PathVariable Long movementId) throws NotFoundException {
+        return new ResponseEntity<>(movementMapper.toDto(movementService.findMovement(movementId)), HttpStatus.OK);
     }
 
     @GetMapping("/movements")
-    public ResponseEntity<Page<Movement>> listMovements(
+    public ResponseEntity<Page<MovementResponseDTO>> listMovements(
             @RequestParam(required = false, defaultValue = "10") int pageSize,
             @RequestParam(required = false, defaultValue = "0") int pageNumber
     ) {
         Pageable pageable = PageRequest.of(pageNumber, pageSize);
-        return new ResponseEntity<>(movementService.listMovements(pageable), HttpStatus.OK);
+        return new ResponseEntity<>(movementService.listMovements(pageable).map(movementMapper::toDto), HttpStatus.OK);
     }
 
     @GetMapping("/movements/by-request/{requestId}")
-    public ResponseEntity<List<Movement>> listByRequest(@PathVariable Long requestId) {
-        return new ResponseEntity<>(movementService.findByRequest(requestId), HttpStatus.OK);
+    public ResponseEntity<List<MovementResponseDTO>> listByRequest(@PathVariable Long requestId) {
+        return new ResponseEntity<>(movementMapper.toDtoList(movementService.findByRequest(requestId)), HttpStatus.OK);
     }
 
     /** Dispatches an inter-location movement with courier/tracking details (§9, §10). */
     @PostMapping("/movements/{movementId}/dispatch")
-    public ResponseEntity<Movement> dispatchMovement(
+    public ResponseEntity<MovementResponseDTO> dispatchMovement(
             @PathVariable Long movementId,
             @RequestBody MovementDispatchDTO dto
     ) throws NotFoundException {
-        return new ResponseEntity<>(movementService.dispatchMovement(movementId, dto), HttpStatus.OK);
+        return new ResponseEntity<>(
+                movementMapper.toDto(movementService.dispatchMovement(movementId, dto)), HttpStatus.OK);
     }
 
     /** Optional in-transit marker for a dispatched inter-location movement. */
     @PostMapping("/movements/{movementId}/in-transit")
-    public ResponseEntity<Movement> markInTransit(@PathVariable Long movementId) throws NotFoundException {
-        return new ResponseEntity<>(movementService.markInTransit(movementId), HttpStatus.OK);
+    public ResponseEntity<MovementResponseDTO> markInTransit(@PathVariable Long movementId) throws NotFoundException {
+        return new ResponseEntity<>(movementMapper.toDto(movementService.markInTransit(movementId)), HttpStatus.OK);
     }
 
     /** Receives a movement at its destination and applies its inventory effects (§10, §22). */
     @PostMapping("/movements/{movementId}/receive")
-    public ResponseEntity<Movement> receiveMovement(
+    public ResponseEntity<MovementResponseDTO> receiveMovement(
             @PathVariable Long movementId,
             @RequestBody(required = false) MovementReceiveDTO dto
     ) throws NotFoundException {
-        return new ResponseEntity<>(movementService.receiveMovement(movementId, dto), HttpStatus.OK);
+        return new ResponseEntity<>(
+                movementMapper.toDto(movementService.receiveMovement(movementId, dto)), HttpStatus.OK);
     }
 
     /** Cancels a movement without applying any inventory effect. */
     @PostMapping("/movements/{movementId}/cancel")
-    public ResponseEntity<Movement> cancelMovement(
+    public ResponseEntity<MovementResponseDTO> cancelMovement(
             @PathVariable Long movementId,
             @RequestBody(required = false) Map<String, String> body
     ) throws NotFoundException {
         String reason = (body != null) ? body.get("reason") : null;
-        return new ResponseEntity<>(movementService.cancelMovement(movementId, reason), HttpStatus.OK);
+        return new ResponseEntity<>(
+                movementMapper.toDto(movementService.cancelMovement(movementId, reason)), HttpStatus.OK);
     }
 
     /**
@@ -151,11 +159,12 @@ public class MovementController {
      * movements; inter-location movements should use {@code /dispatch} then {@code /receive}.
      */
     @PostMapping("/movements/{movementId}/complete")
-    public ResponseEntity<Movement> completeMovement(
+    public ResponseEntity<MovementResponseDTO> completeMovement(
             @PathVariable Long movementId,
             @RequestBody(required = false) Map<String, String> body
     ) throws NotFoundException {
         String remarks = (body != null) ? body.get("remarks") : null;
-        return new ResponseEntity<>(movementService.completeMovement(movementId, remarks), HttpStatus.OK);
+        return new ResponseEntity<>(
+                movementMapper.toDto(movementService.completeMovement(movementId, remarks)), HttpStatus.OK);
     }
 }

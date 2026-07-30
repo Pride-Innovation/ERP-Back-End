@@ -14,28 +14,29 @@ import pride.bank.erp.helper.Constants;
 public class RepairMovementController {
 
     private final RepairMovementService repairMovementService;
+    private final MovementMapper movementMapper;
 
     /** §14: send a faulty asset to the Head Office IT store for repair. */
     @PostMapping("/movements/repair-transfer")
-    public ResponseEntity<Movement> transferForRepair(@RequestBody RepairTransferDTO dto) throws NotFoundException {
-        return new ResponseEntity<>(repairMovementService.transferForRepair(dto), HttpStatus.CREATED);
+    public ResponseEntity<MovementResponseDTO> transferForRepair(@RequestBody RepairTransferDTO dto) throws NotFoundException {
+        return new ResponseEntity<>(movementMapper.toDto(repairMovementService.transferForRepair(dto)), HttpStatus.CREATED);
     }
 
     /** §15: issue a temporary replacement asset from the IT store to a user. */
     @PostMapping("/movements/temp-replacement")
-    public ResponseEntity<Movement> issueTemporaryReplacement(@RequestBody TempReplacementDTO dto) throws NotFoundException {
-        return new ResponseEntity<>(repairMovementService.issueTemporaryReplacement(dto), HttpStatus.CREATED);
+    public ResponseEntity<MovementResponseDTO> issueTemporaryReplacement(@RequestBody TempReplacementDTO dto) throws NotFoundException {
+        return new ResponseEntity<>(movementMapper.toDto(repairMovementService.issueTemporaryReplacement(dto)), HttpStatus.CREATED);
     }
 
     /** §16: return a repaired asset to its originating location. */
     @PostMapping("/movements/return-after-repair")
-    public ResponseEntity<Movement> returnAfterRepair(@RequestBody ReturnAfterRepairDTO dto) throws NotFoundException {
-        return new ResponseEntity<>(repairMovementService.returnAfterRepair(dto), HttpStatus.CREATED);
+    public ResponseEntity<MovementResponseDTO> returnAfterRepair(@RequestBody ReturnAfterRepairDTO dto) throws NotFoundException {
+        return new ResponseEntity<>(movementMapper.toDto(repairMovementService.returnAfterRepair(dto)), HttpStatus.CREATED);
     }
 
     /** §17: move an irreparable asset to the Disposal store. */
     @PostMapping("/movements/disposal")
-    public ResponseEntity<Movement> disposeAsset(@RequestBody DisposalDTO dto) throws NotFoundException {
-        return new ResponseEntity<>(repairMovementService.disposeAsset(dto), HttpStatus.CREATED);
+    public ResponseEntity<MovementResponseDTO> disposeAsset(@RequestBody DisposalDTO dto) throws NotFoundException {
+        return new ResponseEntity<>(movementMapper.toDto(repairMovementService.disposeAsset(dto)), HttpStatus.CREATED);
     }
 }

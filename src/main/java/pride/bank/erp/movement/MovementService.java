@@ -436,14 +436,15 @@ public class MovementService {
 
     @Transactional(readOnly = true)
     public Movement findMovement(Long movementId) throws NotFoundException {
-        return movementRepository.findById(movementId)
+        // findDetailById, never findById — see MovementRepository#findDetailById for why.
+        return movementRepository.findDetailById(movementId)
                 .orElseThrow(() -> new NotFoundException("Movement " + movementId + " not found"));
     }
 
     @Transactional(readOnly = true)
-    /**
-     * Movements the caller may see: everything for a cross-branch viewer, otherwise only those
-     * touching their own branch at either end.
+    /*
+      Movements the caller may see: everything for a cross-branch viewer, otherwise only those
+      touching their own branch at either end.
      */
     public Page<Movement> listMovements(Pageable pageable) {
         if (branchScopeService.canViewAllBranches()) {

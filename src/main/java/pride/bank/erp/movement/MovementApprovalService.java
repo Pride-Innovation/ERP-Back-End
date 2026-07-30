@@ -142,7 +142,8 @@ public class MovementApprovalService {
     }
 
     private Movement find(Long id) throws NotFoundException {
-        return movementRepository.findById(id)
+        // findDetailById, never findById — see MovementRepository#findDetailById for why.
+        return movementRepository.findDetailById(id)
                 .orElseThrow(() -> new NotFoundException("Movement " + id + " not found"));
     }
 

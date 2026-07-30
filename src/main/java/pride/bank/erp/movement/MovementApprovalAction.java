@@ -6,6 +6,6 @@ public enum MovementApprovalAction {
     PENDING,
     /** The tier approved; the movement advances to the next tier or to INITIATED. */
     APPROVED,
-    /** The tier rejected; the movement is cancelled and the initiator notified. */
+    /** The tier rejected; the movement is canceled and the initiator notified. */
     REJECTED
 }

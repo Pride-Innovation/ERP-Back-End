@@ -9,6 +9,7 @@ package pride.bank.erp.user;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
 import lombok.AllArgsConstructor;
@@ -67,8 +68,17 @@ public class User implements UserDetails {
     @Column(unique = true)
     private String email;
 
+    /**
+     * WRITE_ONLY rather than @JsonIgnore: the hash must never be serialised out, but Jackson must
+     * still be able to bind a password in should anything deserialise into this type.
+     *
+     * <p>Without this, every endpoint that embeds a User — {@code /requests} was returning 77KB for
+     * five rows — shipped each party's bcrypt hash to the client. Endpoints that map to their own
+     * DTO (users, movements) were never affected; this closes it for the ones that don't.
+     */
     @NotNull(message = Constants.NULL_FIELD_VALIDATOR)
     @NotBlank(message = Constants.BLANK_FIELD_VALIDATOR)
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String password;
     private String staffNumber;
     private String gender;
@@ -164,6 +174,7 @@ public class User implements UserDetails {
      * workflow {@code requesterRoleIds} or step {@code skipIfRequesterRoleIds}.
      * Combines the role implied by {@link #title} with {@link #additionalRoles}.
      */
+    @JsonIgnore
     public Set<Long> getEffectiveRoleIds() {
         Set<Long> ids = new LinkedHashSet<>();
         if (title != null && title.getRole() != null && title.getRole().getId() != null) {
@@ -179,6 +190,12 @@ public class User implements UserDetails {
         return ids;
     }
 
+    /**
+     * Spring Security reads this directly; it is not part of the API contract. Clients derive
+     * permissions from {@code title.role.permissions} + {@code additionalRoles}, so serialising the
+     * expanded authority list only duplicated authorisation data onto the wire.
+     */
+    @JsonIgnore
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         Set<String> permissionNames = new LinkedHashSet<>();
