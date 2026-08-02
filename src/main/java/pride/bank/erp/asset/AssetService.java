@@ -369,6 +369,11 @@ public class AssetService {
         return assetRepository.getAssetTypeSummary();
     }
 
+    /** Branch × category asset counts — the grid behind the dashboard's all-branches widget. */
+    public List<AssetBranchSummaryView> listDashboardAssetReportByBranch() {
+        return assetRepository.getAssetSummaryByBranchAndType();
+    }
+
 
     private List<AssetDAO> mapToDTOList(List<Asset> assets) {
         return assets.stream().map(this::buildAssetDao).toList();

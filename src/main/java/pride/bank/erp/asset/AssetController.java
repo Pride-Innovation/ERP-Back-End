@@ -109,6 +109,15 @@ public class AssetController {
         return new ResponseEntity<>(assetService.listDashboardAssetReport(), HttpStatus.OK);
     }
 
+    /**
+     * Added alongside the route above rather than replacing it: adding the branch dimension
+     * multiplies the row count, so an existing caller expecting one row per category would break.
+     */
+    @GetMapping("/dashboard-asset-report/by-branch")
+    public ResponseEntity<List<AssetBranchSummaryView>> listDashboardAssetReportByBranch() {
+        return new ResponseEntity<>(assetService.listDashboardAssetReportByBranch(), HttpStatus.OK);
+    }
+
     @GetMapping("/assets/statistics")
     public List<AssetTypeStatsProjection> getAssetStatistics() {
         return assetService.getAssetTypeStatistics();

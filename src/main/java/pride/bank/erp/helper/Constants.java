@@ -61,6 +61,36 @@ public class Constants {
     public static final String INVENTORY_ROUTE = GENERAL_ROUTE + "/stocks/**";
     public static final String ASSET_ROUTE = GENERAL_ROUTE + "/assets/**";
 
+    /**
+     * The caller's own assets. Sits under {@link #ASSET_ROUTE} by URL but is a different kind of
+     * resource: the handler takes no id and resolves the holder from the authenticated principal,
+     * so it can only ever return the caller's own records. Matched ahead of ASSET_ROUTE so that
+     * checking what you are personally accountable for does not require READ_ASSET, which governs
+     * the branch-wide register.
+     */
+    public static final String MY_ASSETS_ROUTE = GENERAL_ROUTE + "/assets/my-assets";
+
+    /*
+     * Dashboard reporting routes.
+     *
+     * These sit outside every resource prefix above (they are not under /assets, /requests or
+     * /stocks), so before these constants existed they matched no rule and fell through to
+     * `.anyRequest().authenticated()` — meaning any signed-in user could read national asset
+     * totals and every pending request in the bank. Each now carries the same authority the
+     * dashboard uses to decide whether to render the widget that consumes it.
+     */
+
+    /** Per-category asset totals across EVERY branch — unscoped, hence VIEW_ALL_BRANCHES. */
+    public static final String REPORT_ALL_BRANCH_ASSETS = GENERAL_ROUTE + "/dashboard-asset-report";
+    /** The same totals split by branch. Needs its own matcher — the rule above is an exact path. */
+    public static final String REPORT_ASSETS_BY_BRANCH = GENERAL_ROUTE + "/dashboard-asset-report/by-branch";
+    /** Monthly stocking volumes. */
+    public static final String REPORT_MONTHLY_STOCK = GENERAL_ROUTE + "/monthly-asset-stock";
+    /** The open request queue. */
+    public static final String REPORT_PENDING_REQUESTS = GENERAL_ROUTE + "/latest-pending-request";
+    /** Requested vs delivered per category for the current year. */
+    public static final String REPORT_REQUEST_SUMMARY = GENERAL_ROUTE + "/current-year-summary";
+
     // Request Acknowledgement and Approvals Routes
     public static final String REQUEST_APPROVAL = GENERAL_ROUTE + "/approvals";
     public static final String REQUEST_ISSUANCE = GENERAL_ROUTE + "/issuance/**";

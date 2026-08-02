@@ -30,6 +30,34 @@ public interface AssetRepository extends JpaRepository<Asset, Long> {
             """, nativeQuery = true)
     List<AssetTypeSummaryView> getAssetTypeSummary();
 
+    /**
+     * The same totals as {@link #getAssetTypeSummary()}, but split by branch — one row per
+     * branch/category pair that actually has assets.
+     *
+     * Resolves the category through {@code a.assetType} rather than through the commodity, so this
+     * agrees with {@link #getAssetStatsByType(Long)} and the branch-scoped and national views on
+     * the dashboard cannot disagree about which category an asset belongs to.
+     *
+     * LEFT JOIN on branch on purpose: an asset with no branch yet still counts towards its
+     * category, and dropping it here would make the grid's totals fail to reconcile with the
+     * category totals. Those rows come back with a null {@code branchName}.
+     *
+     * Like the query above, disposed assets are not excluded — both views count every record on
+     * the register.
+     */
+    @Query("""
+            SELECT b.name AS branchName,
+                   at.name AS assetTypeName,
+                   COUNT(a.id) AS totalCount
+            FROM Asset a
+            LEFT JOIN a.branch b
+            JOIN a.assetType at
+            WHERE at.name IS NOT NULL
+            GROUP BY b.name, at.name
+            ORDER BY b.name, at.name
+            """)
+    List<AssetBranchSummaryView> getAssetSummaryByBranchAndType();
+
     @Query("""
             SELECT
                 a.assetType.name AS assetType,

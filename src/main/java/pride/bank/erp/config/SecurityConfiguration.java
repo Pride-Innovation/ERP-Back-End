@@ -110,11 +110,29 @@ public class SecurityConfiguration {
                                 .requestMatchers(HttpMethod.DELETE, INVENTORY_ROUTE).hasAuthority(DELETE_INVENTORY)
                                 .requestMatchers(HttpMethod.PUT, INVENTORY_ROUTE).hasAuthority(UPDATE_INVENTORY)
                                 .requestMatchers(HttpMethod.GET, INVENTORY_ROUTE).hasAuthority(READ_INVENTORY)
-                                // Inventory / Stock Routes
+                                // Asset Routes.
+                                // The self-scoped "my assets" view is matched FIRST — matchers are
+                                // evaluated in order, and /assets/** would otherwise swallow it and
+                                // demand READ_ASSET. That permission governs the branch-wide asset
+                                // register; requiring it to see the items you personally hold would
+                                // mean only administrators could check their own accountability.
+                                // The handler takes no id and reads the holder off the JWT, so
+                                // authentication alone is the correct and sufficient guard here.
+                                .requestMatchers(HttpMethod.GET, MY_ASSETS_ROUTE).authenticated()
                                 .requestMatchers(HttpMethod.POST, ASSET_ROUTE).hasAuthority(CREATE_ASSET)
                                 .requestMatchers(HttpMethod.DELETE, ASSET_ROUTE).hasAuthority(DELETE_ASSET)
                                 .requestMatchers(HttpMethod.PUT, ASSET_ROUTE).hasAuthority(UPDATE_ASSET)
                                 .requestMatchers(HttpMethod.GET, ASSET_ROUTE).hasAuthority(READ_ASSET)
+                                // Dashboard reporting routes.
+                                // Each mirrors the authority the dashboard uses to decide whether to
+                                // render the widget fed by it, so the API and the UI agree on who may
+                                // see what. Without these the reports matched no rule and fell through
+                                // to `.anyRequest().authenticated()`.
+                                .requestMatchers(HttpMethod.GET, REPORT_ASSETS_BY_BRANCH).hasAuthority(VIEW_ALL_BRANCHES)
+                                .requestMatchers(HttpMethod.GET, REPORT_ALL_BRANCH_ASSETS).hasAuthority(VIEW_ALL_BRANCHES)
+                                .requestMatchers(HttpMethod.GET, REPORT_MONTHLY_STOCK).hasAnyAuthority(READ_STORE, READ_INVENTORY)
+                                .requestMatchers(HttpMethod.GET, REPORT_PENDING_REQUESTS).hasAuthority(READ_REQUEST)
+                                .requestMatchers(HttpMethod.GET, REPORT_REQUEST_SUMMARY).hasAuthority(READ_REQUEST)
                                 // Requests approval and Acknowledgements
                                 .requestMatchers(HttpMethod.POST, REQUEST_APPROVAL).hasAuthority(APPROVE_REQUEST)
                                 .requestMatchers(HttpMethod.POST, REQUEST_APPROVAL).hasAuthority(REJECT_REQUEST)

@@ -971,6 +971,26 @@ public class WorkflowEngineService {
             dto.setActorId(log.getActor().getId());
             dto.setActorName(log.getActor().getFirstName() + " " + log.getActor().getLastName());
         }
+
+        // Resolve the step definition behind this log so callers get the approver type as an enum
+        // rather than having to pattern-match the editable stepName. Read-side only — nothing extra
+        // is persisted. A workflow edited after the fact may no longer contain the step order, in
+        // which case these stay null rather than guessing.
+        ApprovalStep step = findStepDefinition(log);
+        if (step != null) {
+            if (step.getApproverType() != null) dto.setApproverType(step.getApproverType().name());
+            if (step.getStepType() != null) dto.setStepType(step.getStepType().name());
+        }
         return dto;
+    }
+
+    /** The workflow step a log entry was written against, or null if it can no longer be matched. */
+    private ApprovalStep findStepDefinition(RequestStepLog log) {
+        RequestWorkflowInstance instance = log.getInstance();
+        if (instance == null || instance.getWorkflow() == null) return null;
+        return instance.getWorkflow().getSteps().stream()
+                .filter(s -> s.getStepOrder() == log.getStepOrder())
+                .findFirst()
+                .orElse(null);
     }
 }
