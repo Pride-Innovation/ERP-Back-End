@@ -229,20 +229,40 @@ public class ApplicationExceptionHandler {
         return errorDetail;
     }
 
+    /**
+     * A required query parameter was omitted — a malformed request, not a refused one.
+     *
+     * <p>This answered 403 Forbidden, which sends anyone debugging straight into permissions and
+     * roles when the actual fault is a missing parameter named in the message. The client cannot
+     * act on "Forbidden" here; it can act on "Bad Request".
+     */
     @ExceptionHandler(MissingServletRequestParameterException.class)
-    @ResponseStatus(HttpStatus.FORBIDDEN)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ProblemDetail handleMissingServletRequestParameterException(MissingServletRequestParameterException ex) {
         ProblemDetail errorDetail = ProblemDetail
-                .forStatusAndDetail(HttpStatus.FORBIDDEN, ex.getMessage());
+                .forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+        errorDetail.setProperty("request_failure", "Bad Request");
         errorDetail.setProperty("message", ex.getMessage());
         return errorDetail;
     }
 
+    /**
+     * The record is not in a state where this action makes sense — a conflict, not a refusal.
+     *
+     * <p>Every lifecycle guard in the movement and consignment flows raises this: "Only a dispatched
+     * consignment can be marked in transit", "this movement travels on a consignment and is
+     * dispatched with it", "the goods have to arrive before this can be handed over". Answering 403
+     * dressed all of them up as permission problems, when each one is telling the caller to do
+     * something first — advice a user can act on, and only if the status does not contradict it.
+     *
+     * <p>409 matches how the optimistic-locking handler above already reports a state clash.
+     */
     @ExceptionHandler(IllegalStateException.class)
-    @ResponseStatus(HttpStatus.FORBIDDEN)
+    @ResponseStatus(HttpStatus.CONFLICT)
     public ProblemDetail handleIllegalStateExceptionException(IllegalStateException ex) {
         ProblemDetail errorDetail = ProblemDetail
-                .forStatusAndDetail(HttpStatus.FORBIDDEN, ex.getMessage());
+                .forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+        errorDetail.setProperty("request_failure", "Conflict");
         errorDetail.setProperty("message", ex.getMessage());
         return errorDetail;
     }

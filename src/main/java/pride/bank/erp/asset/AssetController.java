@@ -40,7 +40,15 @@ public class AssetController {
             @RequestParam(required = false, defaultValue = "0") int pageNumber,
             @RequestParam(required = false, defaultValue = "id") String sortBy,
             @RequestParam(required = false) String assetName,
-            @RequestParam Long assetTypeId,
+            /*
+             * Optional, like every other filter here. It was the one required parameter on the
+             * endpoint, which made a perfectly valid cross-category search — "find this engraved
+             * number, whatever it is" — impossible: the repair transfer, return and disposal flows
+             * all search the whole register because the category is what they are trying to
+             * discover. AssetSearchDao has always skipped the predicate when it is null, so the
+             * annotation was simply stricter than the query behind it.
+             */
+            @RequestParam(required = false) Long assetTypeId,
             @RequestParam(required = false) Long assetStatusId,
             @RequestParam(required = false) Long commodityId,
             @RequestParam(required = false) String engravedNumber,
