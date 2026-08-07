@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pride.bank.erp.asset.Asset;
+import pride.bank.erp.asset.AssetLifecycle;
 import pride.bank.erp.asset.AssetRepository;
 import pride.bank.erp.assetType.AssetType;
 import pride.bank.erp.assetType.RepairDestination;
@@ -45,6 +46,7 @@ public class RepairMovementService {
     private final StatusService statusService;
     private final BranchRepository branchRepository;
     private final InventoryService inventoryService;
+    private final pride.bank.erp.user.UserRepository userRepository;
 
     /**
      * §14: send a faulty asset for repair, routed by its category configuration.
@@ -65,8 +67,13 @@ public class RepairMovementService {
             log.info("Asset {} category '{}' is non-repairable — diverting to disposal", asset.getId(), category.getName());
             return disposeAsset(DisposalDTO.builder()
                     .assetId(dto.getAssetId())
-                    .remarks(dto.getRemarks() != null ? dto.getRemarks()
-                            : "Auto-diverted to disposal: category is not repairable")
+                    .remarks(dto.getRemarks())
+                    // Carries its own justification: a non-repairable asset can fail well inside its
+                    // useful life, and without this the disposal gate would reject the very divert
+                    // the category configuration asked for.
+                    .earlyDisposalReason("Category '"
+                            + (category.getName() != null ? category.getName() : "unnamed")
+                            + "' is not repairable, so the fault cannot be worked on")
                     .build());
         }
 
@@ -222,8 +229,9 @@ public class RepairMovementService {
         // categories, Head Office Admin store for others. It carries the same logistics as the leg
         // above: created bare, an inter-location return stranded in INITIATED because nobody knew
         // it still needed dispatching.
-        if (dto.getTempAssetId() != null) {
-            Asset temp = findAsset(dto.getTempAssetId());
+        Long loanerId = resolveLoanerToReturn(dto, target.recipientUserId());
+        if (loanerId != null) {
+            Asset temp = findAsset(loanerId);
             Store tempSource = currentStoreOf(temp);
             Store poolStore = repairCustodyStoreFor(temp);
             movementService.createMovement(MovementDTO.builder()
@@ -237,15 +245,168 @@ public class RepairMovementService {
                     .deliveryDocuments(dto.getDeliveryDocuments())
                     .remarks("Return of temporary replacement asset issued while asset "
                             + repaired.getId() + " was under repair")
-                    .items(List.of(assetItem(dto.getTempAssetId())))
+                    .items(List.of(assetItem(loanerId)))
                     .build());
         }
         return movement;
     }
 
+    /**
+     * Which loaner, if any, comes back with this return.
+     *
+     * <p>Derived from what is actually out with the recipient rather than asked for. The form used
+     * to carry a manual picker, which made the loaner's return depend on somebody remembering to
+     * select it — and this call is the only thing that returns one, so anything forgotten stayed
+     * with the user indefinitely while the pool ran down.
+     *
+     * <p>An explicit {@code tempAssetId} still wins, and {@code returnLoaner=false} suppresses the
+     * leg for a recipient who is keeping the loaner for now.
+     */
+    private Long resolveLoanerToReturn(ReturnAfterRepairDTO dto, Long recipientUserId) {
+        if (dto.getTempAssetId() != null) return dto.getTempAssetId();
+        if (Boolean.FALSE.equals(dto.getReturnLoaner())) return null;
+        if (recipientUserId == null) return null;
+
+        return movementRepository.findTempReplacementsForUser(recipientUserId).stream()
+                .findFirst()
+                .flatMap(m -> m.getItems().stream()
+                        .filter(i -> i.getAsset() != null)
+                        .findFirst())
+                .map(i -> i.getAsset().getId())
+                .orElse(null);
+    }
+
     /** Where a repaired asset is going, and to whom. */
     private record ReturnTarget(Long locationId, Long recipientUserId,
                                 boolean markAvailableForTemporaryIssuance) {
+    }
+
+    // ── Form previews ────────────────────────────────────────────────────────
+
+    /**
+     * What a repair transfer would do, without doing it: where the asset leaves from, which custody
+     * store it lands in, and therefore whether a courier is involved at all.
+     */
+    @Transactional(readOnly = true)
+    public MovementFlowPreview previewRepairTransfer(Long assetId, RepairDestination override)
+            throws NotFoundException {
+        Asset asset = findAsset(assetId);
+        AssetType category = asset.getAssetType();
+
+        Store source = currentStoreOf(asset);
+        Store custody;
+        if (category != null && !category.isRepairable()) {
+            custody = headOfficeStore(StoreType.DISPOSAL);
+        } else {
+            RepairDestination routing = override != null ? override
+                    : (category != null && category.getRepairDestination() != null
+                            ? category.getRepairDestination() : RepairDestination.IT);
+            custody = switch (routing) {
+                case ADMIN, EXTERNAL -> headOfficeAdminStore();
+                default -> headOfficeStore(StoreType.IT);
+            };
+        }
+        return storeToStore(source, custody).build();
+    }
+
+    /**
+     * Where a repaired asset would go back to, and what loaner would come back with it.
+     *
+     * <p>Answers with a {@code blockedReason} rather than throwing when the origin cannot be
+     * derived, so the form can explain the problem next to the field instead of the user finding out
+     * at submit.
+     */
+    @Transactional(readOnly = true)
+    public MovementFlowPreview previewReturnAfterRepair(Long assetId) throws NotFoundException {
+        Asset repaired = findAsset(assetId);
+        Store source = currentStoreOf(repaired);
+
+        ReturnTarget target;
+        try {
+            target = resolveReturnTarget(repaired, new ReturnAfterRepairDTO());
+        } catch (IllegalArgumentException e) {
+            return MovementFlowPreview.builder()
+                    .sourceStoreName(source.getName())
+                    .sourceLocationName(locationNameOf(source))
+                    .blockedReason(e.getMessage())
+                    .build();
+        }
+
+        Store destStore = storeService.resolveAdminStore(target.locationId());
+        MovementFlowPreview.MovementFlowPreviewBuilder preview = storeToStore(source, destStore)
+                .recipientUserId(target.recipientUserId())
+                .returningToBranchUnassigned(target.markAvailableForTemporaryIssuance());
+
+        if (target.recipientUserId() != null) {
+            User recipient = userOf(target.recipientUserId());
+            preview.recipientUserName(displayName(recipient));
+            // The loaner is derived from what is actually out with this user, so the form can state
+            // it. Asking the user to pick it was the only thing returning loaners to their pool, and
+            // anything they forgot simply never came back.
+            movementRepository.findTempReplacementsForUser(target.recipientUserId()).stream()
+                    .findFirst()
+                    .flatMap(m -> m.getItems().stream().filter(i -> i.getAsset() != null).findFirst())
+                    .ifPresent(item -> preview
+                            .loanerAssetId(item.getAsset().getId())
+                            .loanerAssetLabel(assetLabel(item.getAsset())));
+        }
+        return preview.build();
+    }
+
+    /** Whether issuing this pool asset to this user crosses a location boundary. */
+    @Transactional(readOnly = true)
+    public MovementFlowPreview previewTempReplacement(Long tempAssetId, Long recipientUserId)
+            throws NotFoundException {
+        Asset temp = findAsset(tempAssetId);
+        Store source = currentStoreOf(temp);
+        User recipient = userOf(recipientUserId);
+        Branch destBranch = recipient.getBranch();
+
+        return MovementFlowPreview.builder()
+                .sourceStoreName(source.getName())
+                .sourceLocationName(locationNameOf(source))
+                .destinationLocationName(destBranch != null ? destBranch.getName() : null)
+                .recipientUserId(recipient.getId())
+                .recipientUserName(displayName(recipient))
+                .interLocation(differentLocations(locationIdOf(source),
+                        destBranch != null ? destBranch.getId() : null))
+                .build();
+    }
+
+    private MovementFlowPreview.MovementFlowPreviewBuilder storeToStore(Store source, Store dest) {
+        return MovementFlowPreview.builder()
+                .sourceStoreName(source.getName())
+                .sourceLocationName(locationNameOf(source))
+                .destinationStoreName(dest.getName())
+                .destinationLocationName(locationNameOf(dest))
+                .interLocation(differentLocations(locationIdOf(source), locationIdOf(dest)));
+    }
+
+    /**
+     * Unknown on either side counts as same-location, matching {@code MovementService#deriveCategory}.
+     * The two must agree: if this said "courier needed" and the server disagreed, the form would
+     * collect logistics the movement never uses.
+     */
+    private static boolean differentLocations(Long a, Long b) {
+        return a != null && b != null && !a.equals(b);
+    }
+
+    private static Long locationIdOf(Store store) {
+        return (store != null && store.getLocation() != null) ? store.getLocation().getId() : null;
+    }
+
+    private static String locationNameOf(Store store) {
+        return (store != null && store.getLocation() != null) ? store.getLocation().getName() : null;
+    }
+
+    private static String assetLabel(Asset asset) {
+        String tag = asset.getEngravedNumber() != null ? asset.getEngravedNumber() : ("#" + asset.getId());
+        return asset.getAssetName() != null ? tag + " — " + asset.getAssetName() : tag;
+    }
+
+    private User userOf(Long userId) throws NotFoundException {
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new NotFoundException("User " + userId + " not found"));
     }
 
     /**
@@ -336,23 +497,62 @@ public class RepairMovementService {
         return value == null || value.trim().isEmpty();
     }
 
-    /** §17: move an irreparable asset to the Head Office Disposal store. */
+    /**
+     * §17: move an irreparable or spent asset to the Head Office Disposal store.
+     *
+     * <p>Two gates, both of which used to be absent — anything could be disposed from anywhere,
+     * including a brand-new asset sitting in a branch store:
+     *
+     * <ol>
+     *   <li><b>Where it is.</b> Only stock held in an IT or ADMIN store can be written off. An asset
+     *       still assigned to a user has to be handed back first, so the disposal is decided by a
+     *       storekeeper looking at it rather than by someone using it.</li>
+     *   <li><b>How old it is.</b> Past its category's useful life it needs no justification. Before
+     *       that it still can be — damage and theft do not wait for the depreciation schedule — but
+     *       only with a reason, which is recorded on the movement so an early write-off is never
+     *       indistinguishable from an end-of-life one.</li>
+     * </ol>
+     */
     @Transactional
     public Movement disposeAsset(DisposalDTO dto) throws NotFoundException {
         Asset asset = findAsset(dto.getAssetId());
         Store source = currentStoreOf(asset);
         Store disposalStore = headOfficeStore(StoreType.DISPOSAL);
 
+        if (source.getStoreType() != StoreType.IT && source.getStoreType() != StoreType.ADMIN) {
+            throw new IllegalArgumentException(
+                    "Only assets held in an IT or Admin store can be disposed. This asset is in "
+                            + source.getName() + ". Receive it into a store first.");
+        }
+
+        boolean pastUsefulLife = AssetLifecycle.isPastUsefulLife(asset);
+        String earlyReason = dto.getEarlyDisposalReason();
+        if (!pastUsefulLife && isBlank(earlyReason)) {
+            Integer life = asset.getAssetType() != null ? asset.getAssetType().getUsefulLifeMonths() : null;
+            throw new IllegalArgumentException(
+                    "This asset has not reached the end of its useful life"
+                            + (life != null ? " (" + life + " months, "
+                                    + AssetLifecycle.monthsInService(asset.getDateReceipt()) + " elapsed)" : "")
+                            + ". Give a reason for disposing of it early.");
+        }
+
+        // Kept on the movement's own remarks so the trail carries the justification, not just the act.
+        String remarks = pastUsefulLife
+                ? dto.getRemarks()
+                : ("Early disposal — " + earlyReason.trim()
+                        + (isBlank(dto.getRemarks()) ? "" : ". " + dto.getRemarks().trim()));
+
         Movement movement = movementService.createMovement(MovementDTO.builder()
                 .movementType(MovementType.DISPOSAL_TRANSFER)
                 .sourceStoreId(source.getId())
                 .destStoreId(disposalStore.getId())
-                .remarks(dto.getRemarks())
+                .remarks(remarks)
                 .items(List.of(assetItem(dto.getAssetId())))
                 .build());
 
         setStatus(asset, CODE_PENDING_DISPOSAL);
-        log.info("Disposal movement {} created for asset {}", movement.getId(), asset.getId());
+        log.info("Disposal movement {} created for asset {} ({})", movement.getId(), asset.getId(),
+                pastUsefulLife ? "past useful life" : "early, with reason");
         return movement;
     }
 

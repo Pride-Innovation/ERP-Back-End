@@ -15,6 +15,8 @@ import pride.bank.erp.commodity.CommodityRepository;
 import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.consultant.Consultant;
 import pride.bank.erp.consultant.ConsultantRepository;
+import pride.bank.erp.consignment.Consignment;
+import pride.bank.erp.consignment.ConsignmentStatus;
 import pride.bank.erp.courier.Courier;
 import pride.bank.erp.courier.CourierService;
 import pride.bank.erp.exception.NotFoundException;
@@ -155,13 +157,34 @@ public class MovementService {
                 source != null ? source.getName() : "user " + sourceUser.getId(),
                 dest != null ? dest.getName() : "user " + (recipient != null ? recipient.getId() : null));
 
-        // Standalone movements (opt-in) climb the initiator's approval ladder before dispatch;
-        // this parks the movement in DRAFT and notifies the first tier. Request-fulfilment and
-        // internal movements leave requiresApproval unset and stay INITIATED.
-        if (Boolean.TRUE.equals(dto.getRequiresApproval())) {
+        if (requiresApproval(dto, category, request)) {
             movementApprovalService.startApproval(saved);
         }
         return saved;
+    }
+
+    /**
+     * Whether this movement must clear the initiator's approval ladder before it can be dispatched.
+     *
+     * <p>Decided by policy rather than by the caller. The create form used to expose this as a free
+     * checkbox defaulting to {@code false}, so a user could move stock across locations with no
+     * oversight at all, while the repair flows forced approval unconditionally — the same act
+     * controlled or uncontrolled depending only on which screen it was started from.
+     *
+     * <ul>
+     *   <li>Movements carrying a {@link Request} are exempt: the request already cleared its own
+     *       workflow, and a second, different approval would both duplicate that control and strand
+     *       the fulfilment legs created automatically on its behalf.</li>
+     *   <li>Callers may still opt in explicitly — the repair and return flows do (§14, §16), since
+     *       those are intra-location as often as not.</li>
+     *   <li>Everything else that crosses a location boundary needs approval, including a Head
+     *       Office-initiated branch restock, which has no request to inherit a control from.</li>
+     * </ul>
+     */
+    private boolean requiresApproval(MovementDTO dto, MovementCategory category, Request request) {
+        if (request != null) return false;
+        if (Boolean.TRUE.equals(dto.getRequiresApproval())) return true;
+        return category == MovementCategory.INTER_LOCATION;
     }
 
     /**
@@ -222,6 +245,7 @@ public class MovementService {
         if (movement.getMovementCategory() != MovementCategory.INTER_LOCATION) {
             throw new IllegalStateException("Only inter-location movements are dispatched");
         }
+        requireNotOnConsignment(movement, "dispatched");
         if (movement.getStatus() != MovementStatus.INITIATED && movement.getStatus() != MovementStatus.DRAFT) {
             throw new IllegalStateException("Movement " + movementId + " cannot be dispatched from status " + movement.getStatus());
         }
@@ -261,6 +285,7 @@ public class MovementService {
     @Transactional
     public Movement markInTransit(Long movementId) throws NotFoundException {
         Movement movement = findMovement(movementId);
+        requireNotOnConsignment(movement, "marked in transit");
         if (movement.getStatus() != MovementStatus.DISPATCHED) {
             throw new IllegalStateException("Only a dispatched movement can be marked in transit");
         }
@@ -298,6 +323,7 @@ public class MovementService {
             throw new IllegalStateException("Inter-location movement " + movementId
                     + " must be marked in-transit before it can be received (current: " + movement.getStatus() + ")");
         }
+        requireConsignmentArrived(movement);
         ReceiptStatus receiptStatus = (dto != null && dto.getReceiptStatus() != null)
                 ? dto.getReceiptStatus() : ReceiptStatus.RECEIVED_OK;
         String remarks = (dto != null) ? dto.getRemarks() : null;
@@ -327,6 +353,7 @@ public class MovementService {
                     + " must be dispatched and marked in-transit before it can be completed (current: "
                     + movement.getStatus() + ")");
         }
+        requireConsignmentArrived(movement);
         return finalizeCompletion(movement, ReceiptStatus.RECEIVED_OK, remarks);
     }
 
@@ -354,15 +381,7 @@ public class MovementService {
     /** Applies the ledger (unless already settled), stamps receipt/completion fields, and saves. */
     private Movement finalizeCompletion(Movement movement, ReceiptStatus receiptStatus, String remarks) {
         if (!movement.isInventorySettled()) {
-            // Debit the courier's custody store when one carried this leg (the items already moved
-            // there at IN_TRANSIT); otherwise debit the movement's own source store directly, as an
-            // intra-location movement (no courier ever involved) always does.
-            Store debitFrom = movement.getSourceStore();
-            if (movement.getCourier() != null) {
-                debitFrom = storeRepository.findByCourier_Id(movement.getCourier().getId())
-                        .orElse(movement.getSourceStore());
-            }
-            inventoryService.applyMovementCompletion(movement, debitFrom);
+            inventoryService.applyMovementCompletion(movement, debitSourceFor(movement));
             movement.setInventorySettled(true);
         }
         movement.setStatus(MovementStatus.COMPLETED);
@@ -373,60 +392,77 @@ public class MovementService {
         if (remarks != null && !remarks.isBlank()) {
             movement.setRemarks(remarks);
         }
-        Movement saved = movementRepository.save(movement);
-        maybeCreateDeliveryLeg(saved);
-        return saved;
+        return movementRepository.save(movement);
+    }
+
+    /*
+     * maybeCreateDeliveryLeg has been removed.
+     *
+     * It used to fire here: once a cross-location fulfilment was received into the branch store, it
+     * silently created a second movement from that store to the requester, because one movement
+     * could not represent both the custody stop and the final hand-over. One request produced two
+     * rows, the second one appearing on its own, and a failure was swallowed into a log line nobody
+     * read.
+     *
+     * A Consignment now owns the journey, so the movement runs source → requester throughout and the
+     * branch stop is an event on the consignment: arrival credits the destination store
+     * (InventoryService#applyConsignmentArrival), and the movement completes when its recipient
+     * signs, drawing its items back out of that store. See {@link #debitSourceFor}.
+     */
+
+    /**
+     * Which balance a completing movement draws down.
+     *
+     * <ol>
+     *   <li>Arrived on a consignment → the store the goods landed in. The courier was already
+     *       debited when the load arrived, so debiting it again here would double-count.</li>
+     *   <li>Carried by a courier on its own → the courier's custody store, where the items have sat
+     *       since {@code IN_TRANSIT}.</li>
+     *   <li>Neither → its own source store, as an intra-location movement always does.</li>
+     * </ol>
+     */
+    private Store debitSourceFor(Movement movement) {
+        Consignment consignment = movement.getConsignment();
+        if (consignment != null && consignment.getStatus() == ConsignmentStatus.ARRIVED
+                && consignment.getLandingStore() != null) {
+            return consignment.getLandingStore();
+        }
+        if (movement.getCourier() != null) {
+            return storeRepository.findByCourier_Id(movement.getCourier().getId())
+                    .orElse(movement.getSourceStore());
+        }
+        return movement.getSourceStore();
     }
 
     /**
-     * When a cross-location request-fulfilment leg (HO → branch ADMIN store) is received, the items
-     * are in the branch store but not yet with the requester. This auto-creates the second leg — an
-     * intra-branch delivery from that store to the requester — so the BOM only has to complete it.
-     * No approval (the request was already approved). Idempotent per request.
+     * A movement travelling with others cannot be driven on its own.
+     *
+     * <p>The consignment owns dispatch and transit for everything it carries, and its ledger hops
+     * apply to every movement at once. Letting one be dispatched separately would put its stock
+     * against a courier the rest of the load knows nothing about, and leave two records of the same
+     * van disagreeing about where the goods are.
      */
-    private void maybeCreateDeliveryLeg(Movement completed) {
-        if (completed.getMovementType() != MovementType.ISSUANCE_FULFILLMENT) return;
-        Request request = completed.getRequest();
-        Store landedStore = completed.getDestStore();
-        if (request == null || request.getRequester() == null || landedStore == null) return;
+    private void requireNotOnConsignment(Movement movement, String action) {
+        Consignment consignment = movement.getConsignment();
+        if (consignment != null && consignment.getStatus() != ConsignmentStatus.CANCELLED) {
+            throw new IllegalStateException("Movement " + movement.getId() + " travels on consignment "
+                    + consignment.getReference() + " and is " + action + " with it, not on its own.");
+        }
+    }
 
-        boolean alreadyDelivered = movementRepository.findByRequest_Id(request.getId()).stream()
-                .anyMatch(m -> m.getMovementType() == MovementType.DEPARTMENT_TRANSFER && m.getRecipientUser() != null);
-        if (alreadyDelivered) return;
-
-        List<MovementItemDTO> items = completed.getItems().stream()
-                .map(i -> {
-                    if (i.getCommodity() != null) {
-                        return MovementItemDTO.builder()
-                                .commodityId(i.getCommodity().getId())
-                                .quantity(i.getQuantity())
-                                .build();
-                    } else if (i.getAsset() != null) {
-                        return MovementItemDTO.builder()
-                                .assetId(i.getAsset().getId())
-                                .quantity(1)
-                                .build();
-                    }
-                    return null;
-                })
-                .filter(java.util.Objects::nonNull)
-                .toList();
-        if (items.isEmpty()) return;
-
-        try {
-            createMovement(MovementDTO.builder()
-                    .movementType(MovementType.DEPARTMENT_TRANSFER)
-                    .sourceStoreId(landedStore.getId())
-                    .recipientUserId(request.getRequester().getId())
-                    .requestId(request.getId())
-                    .requiresApproval(false)
-                    .remarks("Auto-created delivery to the requester after cross-location fulfilment")
-                    .items(items)
-                    .build());
-            log.info("Auto-created branch delivery leg to requester {} for request {}",
-                    request.getRequester().getId(), request.getId());
-        } catch (Exception e) {
-            log.warn("Could not auto-create delivery leg for request {}: {}", request.getId(), e.getMessage());
+    /**
+     * The goods have to be at the destination before anyone can sign for them.
+     *
+     * <p>For a movement on a consignment that means the load has arrived. Completing it earlier
+     * would draw stock out of a store it has not reached yet.
+     */
+    private void requireConsignmentArrived(Movement movement) {
+        Consignment consignment = movement.getConsignment();
+        if (consignment == null || consignment.getStatus() == ConsignmentStatus.CANCELLED) return;
+        if (consignment.getStatus() != ConsignmentStatus.ARRIVED) {
+            throw new IllegalStateException("Consignment " + consignment.getReference() + " is "
+                    + consignment.getStatus() + ". The goods have to arrive before this movement can "
+                    + "be handed over.");
         }
     }
 
@@ -441,18 +477,25 @@ public class MovementService {
                 .orElseThrow(() -> new NotFoundException("Movement " + movementId + " not found"));
     }
 
-    @Transactional(readOnly = true)
-    /*
-      Movements the caller may see: everything for a cross-branch viewer, otherwise only those
-      touching their own branch at either end.
+    /**
+     * Movements the caller may see: everything for a cross-branch viewer, otherwise only those
+     * touching their own branch at either end.
+     *
+     * <p>A caller with no branch on record is told so rather than handed an empty page. Returning
+     * nothing made a configuration fault indistinguishable from "there are no movements", which is
+     * the least useful thing an empty table can mean. This matches what the inventory listings
+     * already do via {@code BranchScopeService#resolve}.
      */
+    @Transactional(readOnly = true)
     public Page<Movement> listMovements(Pageable pageable) {
         if (branchScopeService.canViewAllBranches()) {
             return movementRepository.findAll(pageable);
         }
         Long own = branchScopeService.currentUserBranchId();
         if (own == null) {
-            return Page.empty(pageable);
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Your account is not attached to a branch, so movements cannot be shown. "
+                            + "Ask an administrator to set your branch.");
         }
         return movementRepository.findForBranch(own, pageable);
     }

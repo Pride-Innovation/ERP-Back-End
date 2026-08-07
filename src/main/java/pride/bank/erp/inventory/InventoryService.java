@@ -272,6 +272,39 @@ public class InventoryService {
                 movement.getId(), courierStore.getId(), movement.getItems().size());
     }
 
+    /**
+     * The middle leg, used only by consignments: the goods land at the destination.
+     *
+     * <p>Moves every item out of the courier's custody and into the destination's store, and stops
+     * there. No assignment, no disposal, no status beyond restoring what the asset carried before
+     * transit — the goods are in the branch store, not yet with anybody. Each movement then draws
+     * its own items out of that store when its recipient signs.
+     *
+     * <p>This is the step that lets one movement span the whole journey. It used to require a second
+     * movement, created automatically once the first was received, because a movement could hold
+     * only one destination and had to choose between the branch store and the person.
+     *
+     * <p>Idempotency is the caller's responsibility — invoke once, when the consignment arrives.
+     */
+    @Transactional
+    public void applyConsignmentArrival(Movement movement, Store courierStore, Store landingStore) {
+        for (MovementItem item : movement.getItems()) {
+            if (item.getAsset() != null) {
+                relocateAsset(item.getAsset(), landingStore);
+                restorePriorStatus(item);
+            } else if (item.getCommodity() != null) {
+                if (courierStore != null) {
+                    debitConsumable(courierStore, item.getCommodity(), item.getQuantity(),
+                            LedgerContext.of(StockLedgerReason.CUSTODY_IN, "MOVEMENT", movement.getId()));
+                }
+                creditConsumable(landingStore, item.getCommodity(), item.getQuantity(),
+                        LedgerContext.of(StockLedgerReason.TRANSFER_IN, "MOVEMENT", movement.getId()));
+            }
+        }
+        log.info("Applied consignment arrival for movement {} into store {} ({} item(s))",
+                movement.getId(), landingStore.getId(), movement.getItems().size());
+    }
+
     /** Asset-side effect of a completed movement, keyed by its type (§14-17). */
     private void applyAssetEffect(Movement movement, Asset asset, Store dest, User recipient) {
         switch (movement.getMovementType()) {

@@ -28,8 +28,20 @@ public class ReturnAfterRepairDTO {
     private Long recipientUserId;
     /** Required when returning the asset to someone other than its recorded holder. */
     private String overrideReason;
-    /** When set, a second movement returns this temporary asset to the IT store. */
+    /**
+     * Optional. When set, a second movement returns this temporary asset to its pool store.
+     *
+     * <p>Normally left null: the loaner is derived from what is actually out with the recipient. It
+     * was a manual picker on the form, which made returning a loaner depend on the user remembering
+     * to select it — anything forgotten never came back and the pool drained.
+     */
     private Long tempAssetId;
+
+    /**
+     * Set false when the recipient is keeping the loaner for now, so no return leg is created for
+     * it. Null or true derives and returns it.
+     */
+    private Boolean returnLoaner;
     private String courierService;
     private String trackingNumber;
     private LocalDateTime dispatchDate;

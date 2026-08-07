@@ -457,24 +457,13 @@ public class AssetService {
         }
     }
 
-    /** Whole months between the receipt date and today; 0 when missing/unparseable/future. */
+    /**
+     * Whole months between the receipt date and today; 0 when missing/unparseable/future.
+     *
+     * <p>Delegates to {@link AssetLifecycle} so the disposal gate and this panel cannot drift apart.
+     */
     private long monthsSinceReceipt(String dateReceipt) {
-        if (dateReceipt == null || dateReceipt.isBlank()) return 0L;
-        java.time.LocalDate date = parseDateFlexible(dateReceipt.trim());
-        if (date == null) return 0L;
-        long months = java.time.temporal.ChronoUnit.MONTHS.between(date, java.time.LocalDate.now());
-        return Math.max(0L, months);
-    }
-
-    private java.time.LocalDate parseDateFlexible(String value) {
-        try { return java.time.LocalDateTime.parse(value).toLocalDate(); } catch (Exception ignored) { }
-        try { return java.time.OffsetDateTime.parse(value).toLocalDate(); } catch (Exception ignored) { }
-        try { return java.time.LocalDate.parse(value); } catch (Exception ignored) { }
-        int t = value.indexOf('T');
-        if (t > 0) {
-            try { return java.time.LocalDate.parse(value.substring(0, t)); } catch (Exception ignored) { }
-        }
-        return null;
+        return AssetLifecycle.monthsInService(dateReceipt);
     }
 
     /** Currency display with thousands separators and 2 decimals, e.g. 1234567.5 → "1,234,567.50". */
@@ -672,8 +661,17 @@ public class AssetService {
                 );
     }
 
+    /**
+     * Stamps the write-off on the asset itself. Package-private and called only once the asset has
+     * physically reached the Disposal store, so the flag can no longer be set on an asset still
+     * sitting in a branch.
+     *
+     * <p>This was public and reachable from {@code POST /assets/{id}}, which let a caller mark an
+     * asset disposed without moving it anywhere. The endpoint is gone; disposal starts at
+     * {@code POST /movements/disposal}.
+     */
     @Transactional
-    public AssetDAO disposeAsset(Long assetID) throws NotFoundException {
+    AssetDAO markDisposed(Long assetID) throws NotFoundException {
         Asset asset = findOne(assetID);
         asset.setDisposed(true);
         asset.setDisposalDate(LocalDateTime.now());

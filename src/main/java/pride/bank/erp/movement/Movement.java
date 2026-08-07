@@ -110,6 +110,19 @@ public class Movement {
     @NotAudited
     private Branch originLocation;
 
+    /**
+     * The journey carrying this movement, when it travels with others.
+     *
+     * <p>Null for anything that never leaves its location, and for inter-location movements still
+     * waiting to be loaded. While set, the consignment owns the logistics below and drives dispatch,
+     * transit and arrival — this movement's own copies are stamped from it so the per-movement views
+     * and the dispatch note keep working unchanged.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "consignment_id")
+    @NotAudited
+    private pride.bank.erp.consignment.Consignment consignment;
+
     // ── Logistics (populated only for INTER_LOCATION movements) ──────────────
     private String courierService;
     private String trackingNumber;

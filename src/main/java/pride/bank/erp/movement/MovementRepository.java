@@ -14,14 +14,30 @@ public interface MovementRepository extends JpaRepository<Movement, Long> {
      * Movements touching a branch — as origin or destination.
      *
      * <p>A movement belongs to both ends, so a branch user must see one arriving as well as one they
-     * sent. The source can be a user rather than a store (a return), hence the third clause.
+     * sent. Either end can be a store or a person: a return leaves from a user rather than a store,
+     * and a fulfilment ends with a requester rather than a store.
+     *
+     * <p><b>The joins must be explicit and LEFT.</b> Written as dotted paths
+     * ({@code m.sourceStore.location.id}) JPQL emits INNER joins, so a row survived only if all four
+     * associations were non-null — and no movement ever has all four. The query silently returned
+     * nothing for every branch-scoped user, which read as "there are no movements" rather than as a
+     * fault. It went unnoticed because anyone with {@code VIEW_ALL_BRANCHES} takes the unscoped
+     * {@code findAll} path and never runs this.
      */
     @org.springframework.data.jpa.repository.Query("""
             SELECT m FROM Movement m
-            WHERE m.sourceStore.location.id = :branchId
-               OR m.destStore.location.id = :branchId
-               OR m.sourceUser.branch.id = :branchId
-               OR m.recipientUser.branch.id = :branchId
+            LEFT JOIN m.sourceStore ss
+            LEFT JOIN ss.location ssl
+            LEFT JOIN m.destStore ds
+            LEFT JOIN ds.location dsl
+            LEFT JOIN m.sourceUser su
+            LEFT JOIN su.branch sub
+            LEFT JOIN m.recipientUser ru
+            LEFT JOIN ru.branch rub
+            WHERE ssl.id = :branchId
+               OR dsl.id = :branchId
+               OR sub.id = :branchId
+               OR rub.id = :branchId
             """)
     org.springframework.data.domain.Page<Movement> findForBranch(
             @org.springframework.data.repository.query.Param("branchId") Long branchId,
@@ -52,6 +68,26 @@ public interface MovementRepository extends JpaRepository<Movement, Long> {
      */
     java.util.Optional<Movement> findFirstByItems_Asset_IdAndMovementTypeOrderByIdDesc(
             Long assetId, MovementType movementType);
+
+    /**
+     * The loaner currently out with a user, if any: the newest TEMP_REPLACEMENT issued to them that
+     * has not been cancelled.
+     *
+     * <p>Used to work out which temporary asset should come back when a repaired one is returned,
+     * so the return form can state it instead of asking the user to remember and pick it.
+     */
+    @org.springframework.data.jpa.repository.Query("""
+            SELECT m FROM Movement m
+            WHERE m.recipientUser.id = :userId
+              AND m.movementType = pride.bank.erp.movement.MovementType.TEMP_REPLACEMENT
+              AND m.status <> pride.bank.erp.movement.MovementStatus.CANCELLED
+            ORDER BY m.id DESC
+            """)
+    List<Movement> findTempReplacementsForUser(
+            @org.springframework.data.repository.query.Param("userId") Long userId);
+
+    /** Everything riding on one journey. */
+    List<Movement> findByConsignment_Id(Long consignmentId);
 
     List<Movement> findByRequest_Id(Long requestId);
 

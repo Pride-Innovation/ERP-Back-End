@@ -62,6 +62,15 @@ public class MovementResponseDTO {
     private RefSummary repair;
     private RefSummary consultant;
 
+    /**
+     * The journey this movement rides on, if any — {@code name} carries the consignment reference.
+     *
+     * <p>Present so a client can tell a movement that is already loaded from one still waiting, and
+     * so the movement screens can explain why dispatch is unavailable: a consignment is dispatched
+     * as a whole, never one movement at a time.
+     */
+    private ConsignmentSummary consignment;
+
     private List<ItemSummary> items;
 
     private LocalDateTime createDate;
@@ -77,6 +86,17 @@ public class MovementResponseDTO {
     public static class RefSummary {
         private Long id;
         private String name;
+    }
+
+    /** A movement's journey: its reference and where it has got to. */
+    @Data
+    @Builder
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class ConsignmentSummary {
+        private Long id;
+        private String reference;
+        private String status;
     }
 
     /** A party to the movement. Never carries credentials, authorities or a reporting chain. */

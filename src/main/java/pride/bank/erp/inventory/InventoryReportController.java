@@ -178,6 +178,48 @@ public class InventoryReportController {
     }
 
     /**
+     * Loanable pool stock: assets flagged as temporary-pool, unassigned, and sitting in a store.
+     *
+     * <p>Pool assets live in the IT store or the Head Office Admin store depending on their
+     * category's repair routing, so both are searched. Filtered here rather than in the browser —
+     * the picker used to fetch every IT and Admin asset and filter client-side, which silently
+     * returned an incomplete pool as soon as the listing exceeded one page.
+     */
+    @GetMapping("/inventory/assets/temporary-pool")
+    public ResponseEntity<List<Asset>> temporaryPoolAssets() {
+        List<Asset> assets = java.util.stream.Stream
+                .concat(reportService.assetsByStoreType(StoreType.IT).stream(),
+                        reportService.assetsByStoreType(StoreType.ADMIN).stream())
+                .filter(Asset::isTemporaryPool)
+                .filter(a -> a.getAssignedTo() == null)
+                .toList();
+        return new ResponseEntity<>(scopeAssets(assets), HttpStatus.OK);
+    }
+
+    /**
+     * Assets that may be written off, with the age judgement already made.
+     *
+     * <p>Its own endpoint rather than a flag on {@code /inventory/assets} because the disposal picker
+     * asks a different question: not "what is in this store" but "what may I dispose, and does this
+     * one need a reason". Answering that here keeps the rule in one place — the picker previously
+     * listed IT-store assets only, with no notion of eligibility, so a week-old laptop looked exactly
+     * like a five-year-old one.
+     *
+     * <p>Only IT and ADMIN stores are considered, matching the same restriction enforced on write in
+     * {@code RepairMovementService#disposeAsset}.
+     */
+    @GetMapping("/inventory/assets/disposable")
+    public ResponseEntity<List<DisposalCandidateView>> disposalCandidates() {
+        List<Asset> assets = java.util.stream.Stream
+                .concat(reportService.assetsByStoreType(StoreType.IT).stream(),
+                        reportService.assetsByStoreType(StoreType.ADMIN).stream())
+                .toList();
+        return new ResponseEntity<>(
+                scopeAssets(assets).stream().map(DisposalCandidateView::of).toList(),
+                HttpStatus.OK);
+    }
+
+    /**
      * Restricts an asset listing to the caller's branch.
      *
      * <p>Scoped on the store actually holding the asset rather than {@code asset.branch}, so an item

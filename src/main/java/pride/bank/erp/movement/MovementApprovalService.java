@@ -48,18 +48,24 @@ public class MovementApprovalService {
 
     /**
      * Parks a freshly-created standalone movement in DRAFT and notifies the first ladder tier.
-     * If the initiator has nobody above them (no ladder resolved), there is no one to approve, so the
-     * movement is left INITIATED rather than stranded.
+     *
+     * <p>If no approver resolves on the initiator's reporting line this fails the whole creation.
+     * It previously fell back to INITIATED, which meant a movement flagged as requiring approval
+     * proceeded with none at all — and silently, so nobody could tell an approved movement from an
+     * unapproved one. Anyone at the top of their own ladder (or with {@code reportsTo} unset) could
+     * move stock between locations unchecked. An empty chain is a configuration fault, not a
+     * business case, so it is surfaced as one; the caller's transaction rolls back and no movement
+     * is left behind.
      */
     @Transactional
     public void startApproval(Movement movement) {
         List<ResolvedApprover> chain = resolveChain(movement);
         if (chain.isEmpty()) {
-            movement.setStatus(MovementStatus.INITIATED);
-            movement.setCurrentApprover(null);
-            movementRepository.save(movement);
-            log.info("Movement {} required approval but no approver resolved on the initiator's line — auto-initiated", movement.getId());
-            return;
+            log.warn("Movement {} requires approval but no approver resolved for initiator {} — rejecting creation",
+                    movement.getId(), movement.getInitiator() != null ? movement.getInitiator().getId() : null);
+            throw new BadRequestException(
+                    "This movement needs approval, but no approver could be resolved on your reporting line. "
+                            + "Ask an administrator to set your supervisor before initiating it.");
         }
         ResolvedApprover first = chain.get(0);
         movement.setStatus(MovementStatus.DRAFT);

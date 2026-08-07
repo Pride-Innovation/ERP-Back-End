@@ -39,4 +39,35 @@ public class RepairMovementController {
     public ResponseEntity<MovementResponseDTO> disposeAsset(@RequestBody DisposalDTO dto) throws NotFoundException {
         return new ResponseEntity<>(movementMapper.toDto(repairMovementService.disposeAsset(dto)), HttpStatus.CREATED);
     }
+
+    // ── Form previews (read-only) ────────────────────────────────────────────
+    //
+    // Each returns what the corresponding form should display before submitting: the resolved source
+    // and destination, and whether the movement crosses a location boundary — which is what decides
+    // if courier details are asked for. Derived here rather than in the browser so the form and the
+    // write path cannot disagree.
+
+    @GetMapping("/movements/repair-transfer/preview")
+    public ResponseEntity<MovementFlowPreview> previewRepairTransfer(
+            @RequestParam Long assetId,
+            @RequestParam(required = false) pride.bank.erp.assetType.RepairDestination repairDestination
+    ) throws NotFoundException {
+        return new ResponseEntity<>(
+                repairMovementService.previewRepairTransfer(assetId, repairDestination), HttpStatus.OK);
+    }
+
+    @GetMapping("/movements/return-after-repair/preview")
+    public ResponseEntity<MovementFlowPreview> previewReturnAfterRepair(@RequestParam Long assetId)
+            throws NotFoundException {
+        return new ResponseEntity<>(repairMovementService.previewReturnAfterRepair(assetId), HttpStatus.OK);
+    }
+
+    @GetMapping("/movements/temp-replacement/preview")
+    public ResponseEntity<MovementFlowPreview> previewTempReplacement(
+            @RequestParam Long tempAssetId,
+            @RequestParam Long recipientUserId
+    ) throws NotFoundException {
+        return new ResponseEntity<>(
+                repairMovementService.previewTempReplacement(tempAssetId, recipientUserId), HttpStatus.OK);
+    }
 }

@@ -67,6 +67,13 @@ public class MovementMapper {
                         .id(m.getConsultant().getId())
                         .name(m.getConsultant().getName())
                         .build())
+                .consignment(m.getConsignment() == null ? null
+                        : MovementResponseDTO.ConsignmentSummary.builder()
+                        .id(m.getConsignment().getId())
+                        .reference(m.getConsignment().getReference())
+                        .status(m.getConsignment().getStatus() != null
+                                ? m.getConsignment().getStatus().name() : null)
+                        .build())
                 .items(m.getItems() == null ? List.of()
                         : m.getItems().stream().filter(Objects::nonNull).map(this::item).toList())
                 .createDate(m.getCreateDate())

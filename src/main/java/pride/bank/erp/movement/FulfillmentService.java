@@ -145,21 +145,31 @@ public class FulfillmentService {
                 ? MovementType.REPLENISHMENT
                 : MovementType.ISSUANCE_FULFILLMENT;
 
+        // Destination is the requester, not the branch store.
+        //
+        // This movement used to end at the destination's Admin store, which meant it could only ever
+        // describe half the journey; a second movement was then created automatically once it was
+        // received, to carry the goods the last step from that store to the person who asked for
+        // them. One request, two rows, the second appearing on its own.
+        //
+        // The custody stop has not been lost — it belongs to the Consignment this movement travels
+        // on. Arrival credits the branch store, and this movement completes when the requester
+        // signs, drawing its items back out of it. A replenishment, whose requester is the branch's
+        // own Operations Manager, still ends with a person for the same reason: somebody signs for
+        // the stock.
         MovementDTO dto = MovementDTO.builder()
                 .movementType(type)
                 .sourceStoreId(sourceStore.getId())
-                .destStoreId(destStore.getId())
+                .recipientUserId(request.getRequester().getId())
                 .requestId(request.getId())
                 .remarks("Auto-created at issuance approval for cross-location fulfilment")
                 .items(items)
                 .build();
 
-        // Issuance no longer moves cross-location stock (Phase 5): this movement owns the HO→branch
-        // transfer outright. It is created unsettled and applies the ledger when received — debiting
-        // the source ADMIN store and crediting the destination ADMIN store (§13 steps 7-8).
         Movement movement = movementService.createMovement(dto);
-        log.info("Created fulfilment movement {} for request {} ({} → {})",
-                movement.getId(), request.getId(), source.getName(), destination.getName());
+        log.info("Created fulfilment movement {} for request {} ({} → {} for {})",
+                movement.getId(), request.getId(), source.getName(), destination.getName(),
+                request.getRequester().getId());
     }
 
     /** A request raised by a branch's BOM is a stock replenishment rather than a personal issuance. */

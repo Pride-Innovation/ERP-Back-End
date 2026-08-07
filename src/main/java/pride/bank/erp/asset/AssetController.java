@@ -134,12 +134,18 @@ public class AssetController {
         return ResponseEntity.ok(assetService.findAssetByTagName(tagName));
     }
 
-    @PostMapping("/assets/{assetID}")
-    public ResponseEntity<AssetDAO> disposeAsset(@PathVariable Long assetID)
-            throws NotFoundException {
-        AssetDAO response = assetService.disposeAsset(assetID);
-        return new ResponseEntity<>(response, HttpStatus.CREATED);
-    }
+    /*
+     * POST /assets/{assetID} — the flag-only dispose — has been removed.
+     *
+     * It set `disposed = true` and a date. No movement, no store change, no status: an asset could
+     * read as disposed while still physically held in a branch store, and nothing recorded its
+     * journey to the Head Office Disposal store. Meanwhile POST /movements/disposal did the real
+     * work. Two endpoints, the same word, materially different outcomes — and this was the one the
+     * asset page called.
+     *
+     * Disposal is now POST /movements/disposal only (RepairMovementService#disposeAsset), which
+     * raises a DISPOSAL_TRANSFER and enforces the store and useful-life rules.
+     */
 
     @PostMapping("/assets/reassign/{assetID}")
     public ResponseEntity<AssetDAO> reassignAsset(
