@@ -87,6 +87,30 @@ public class MovementMapper {
         return movements == null ? List.of() : movements.stream().map(this::toDto).toList();
     }
 
+    /**
+     * One approval-ladder decision. The record's {@code movement} is deliberately not carried over —
+     * see {@link MovementApprovalRecordDTO} for why touching that proxy broke the trail endpoint.
+     */
+    public MovementApprovalRecordDTO toApprovalDto(MovementApprovalRecord r) {
+        if (r == null) {
+            return null;
+        }
+        return MovementApprovalRecordDTO.builder()
+                .id(r.getId())
+                .actor(user(r.getActor()))
+                .action(r.getAction())
+                .tierRole(r.getTierRole())
+                .tierIndex(r.getTierIndex())
+                .comment(r.getComment())
+                .createDate(r.getCreateDate())
+                .build();
+    }
+
+    public List<MovementApprovalRecordDTO> toApprovalDtoList(List<MovementApprovalRecord> records) {
+        return records == null ? List.of()
+                : records.stream().filter(Objects::nonNull).map(this::toApprovalDto).toList();
+    }
+
     // ── Nested ──────────────────────────────────────────────────────────────
 
     private MovementResponseDTO.UserSummary user(User u) {

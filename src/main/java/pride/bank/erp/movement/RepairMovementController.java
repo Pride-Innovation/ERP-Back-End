@@ -62,6 +62,12 @@ public class RepairMovementController {
         return new ResponseEntity<>(repairMovementService.previewReturnAfterRepair(assetId), HttpStatus.OK);
     }
 
+    @GetMapping("/movements/disposal/preview")
+    public ResponseEntity<MovementFlowPreview> previewDisposal(@RequestParam Long assetId)
+            throws NotFoundException {
+        return new ResponseEntity<>(repairMovementService.previewDisposal(assetId), HttpStatus.OK);
+    }
+
     @GetMapping("/movements/temp-replacement/preview")
     public ResponseEntity<MovementFlowPreview> previewTempReplacement(
             @RequestParam Long tempAssetId,

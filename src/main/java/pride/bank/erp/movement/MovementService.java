@@ -246,7 +246,21 @@ public class MovementService {
             throw new IllegalStateException("Only inter-location movements are dispatched");
         }
         requireNotOnConsignment(movement, "dispatched");
-        if (movement.getStatus() != MovementStatus.INITIATED && movement.getStatus() != MovementStatus.DRAFT) {
+        // DRAFT means the movement is still climbing its approval ladder — startApproval parks it
+        // there and only the final tier flips it back to INITIATED. Accepting DRAFT here let a
+        // cross-location movement be dispatched with none of its approvals given, for the whole
+        // window between creation and sign-off. The Dispatch button was already hidden for DRAFT,
+        // so the ladder was enforced by the UI alone; the consignment path (ConsignmentService
+        // #addMovement) has always required INITIATED.
+        if (movement.getStatus() == MovementStatus.DRAFT) {
+            throw new IllegalStateException("Movement " + movementId + " is still awaiting approval"
+                    + (movement.getCurrentApprover() != null
+                            ? " by " + movement.getCurrentApprover().getFirstName() + " "
+                              + movement.getCurrentApprover().getLastName()
+                            : "")
+                    + " and cannot be dispatched yet.");
+        }
+        if (movement.getStatus() != MovementStatus.INITIATED) {
             throw new IllegalStateException("Movement " + movementId + " cannot be dispatched from status " + movement.getStatus());
         }
         if (isBlank(dto.getTrackingNumber())) {
@@ -269,7 +283,10 @@ public class MovementService {
         movement.setTrackingNumber(dto.getTrackingNumber());
         movement.setDispatchDate(dto.getDispatchDate() != null ? dto.getDispatchDate() : LocalDateTime.now());
         movement.setExpectedDeliveryDate(dto.getExpectedDeliveryDate());
-        movement.setDeliveryDocuments(dto.getDeliveryDocuments());
+        // Appended, not replaced. An EXTERNAL repair transfer is rejected at creation without its
+        // signed vendor hand-over documents, and replacing the list here destroyed them the moment
+        // the movement was dispatched — leaving only the courier's note behind.
+        appendDeliveryDocuments(movement, dto.getDeliveryDocuments());
         movement.setStatus(MovementStatus.DISPATCHED);
         log.info("Dispatched movement {} to courier {} (plate {}, tracking {})",
                 movementId, courier.getName(), dto.getPlateNumber(), dto.getTrackingNumber());
@@ -432,6 +449,31 @@ public class MovementService {
                     .orElse(movement.getSourceStore());
         }
         return movement.getSourceStore();
+    }
+
+    /**
+     * Adds dispatch paperwork to whatever the movement already carries.
+     *
+     * <p>Both dispatch paths used to assign the list outright. That was fine while the only
+     * documents were the courier's, but an EXTERNAL repair transfer cannot be created without its
+     * signed vendor hand-over documents, so replacing the list silently destroyed them — and only
+     * on cross-location external repairs, which are the ones where the paperwork matters most.
+     *
+     * <p>Shared with {@code ConsignmentService#dispatch} so a movement in a van and a movement on
+     * its own keep their documents the same way.
+     */
+    public static void appendDeliveryDocuments(Movement movement, List<String> documents) {
+        if (documents == null || documents.isEmpty()) {
+            return;
+        }
+        if (movement.getDeliveryDocuments() == null) {
+            movement.setDeliveryDocuments(new ArrayList<>());
+        }
+        for (String document : documents) {
+            if (document != null && !movement.getDeliveryDocuments().contains(document)) {
+                movement.getDeliveryDocuments().add(document);
+            }
+        }
     }
 
     /**

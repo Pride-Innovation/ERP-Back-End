@@ -198,7 +198,10 @@ public class ConsignmentService {
             movement.setTrackingNumber(dto.getTrackingNumber());
             movement.setDispatchDate(consignment.getDispatchDate());
             movement.setExpectedDeliveryDate(dto.getExpectedDeliveryDate());
-            movement.setDeliveryDocuments(new ArrayList<>(dto.getDeliveryDocuments()));
+            // Appended rather than replaced, for the same reason a solo dispatch appends: a movement
+            // may already carry paperwork of its own (an EXTERNAL repair's signed vendor hand-over)
+            // that the consignment's dispatch note does not supersede.
+            MovementService.appendDeliveryDocuments(movement, dto.getDeliveryDocuments());
             movement.setStatus(MovementStatus.DISPATCHED);
             movementRepository.save(movement);
         }

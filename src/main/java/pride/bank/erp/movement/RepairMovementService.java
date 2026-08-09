@@ -113,10 +113,10 @@ public class RepairMovementService {
                 .destStoreId(custody.getId())
                 .repairId(dto.getRepairId())
                 .consultantId(consultantId)
-                .courierService(dto.getCourierService())
-                .trackingNumber(dto.getTrackingNumber())
-                .dispatchDate(dto.getDispatchDate())
-                .expectedDeliveryDate(dto.getExpectedDeliveryDate())
+                // Courier, tracking number and delivery dates are not taken here — they belong to
+                // the dispatch, which overwrites them anyway (see MovementService#dispatchMovement
+                // and ConsignmentService#dispatch). deliveryDocuments stays: for an EXTERNAL repair
+                // it is the signed vendor hand-over paperwork, required before this movement exists.
                 .deliveryDocuments(dto.getDeliveryDocuments())
                 .remarks(dto.getRemarks())
                 // Officer-initiated faulty-item transfer is a standalone movement → climbs the
@@ -163,11 +163,8 @@ public class RepairMovementService {
                 .movementType(MovementType.TEMP_REPLACEMENT)
                 .sourceStoreId(source.getId())
                 .recipientUserId(dto.getRecipientUserId())
-                .courierService(dto.getCourierService())
-                .trackingNumber(dto.getTrackingNumber())
-                .dispatchDate(dto.getDispatchDate())
-                .expectedDeliveryDate(dto.getExpectedDeliveryDate())
-                .deliveryDocuments(dto.getDeliveryDocuments())
+                // No logistics: a loaner going out is dispatched like anything else, and dispatch is
+                // where the courier and dates are recorded.
                 .remarks(dto.getRemarks())
                 .items(List.of(assetItem(dto.getTempAssetId())))
                 .build());
@@ -204,11 +201,7 @@ public class RepairMovementService {
                 .sourceStoreId(source.getId())
                 .destStoreId(destStore.getId())
                 .recipientUserId(target.recipientUserId())
-                .courierService(dto.getCourierService())
-                .trackingNumber(dto.getTrackingNumber())
-                .dispatchDate(dto.getDispatchDate())
-                .expectedDeliveryDate(dto.getExpectedDeliveryDate())
-                .deliveryDocuments(dto.getDeliveryDocuments())
+                // No logistics — recorded at dispatch, as for every other travelling movement.
                 .remarks(dto.getRemarks())
                 // Admin returns the repaired item — a standalone movement that climbs the initiator's
                 // (admin's) approval ladder before dispatch.
@@ -238,11 +231,8 @@ public class RepairMovementService {
                     .movementType(MovementType.RETURN_AFTER_REPAIR)
                     .sourceStoreId(tempSource.getId())
                     .destStoreId(poolStore.getId())
-                    .courierService(dto.getCourierService())
-                    .trackingNumber(dto.getTrackingNumber())
-                    .dispatchDate(dto.getDispatchDate())
-                    .expectedDeliveryDate(dto.getExpectedDeliveryDate())
-                    .deliveryDocuments(dto.getDeliveryDocuments())
+                    // No logistics — recorded at dispatch. This leg was also inheriting the other
+                    // movement's courier details, describing a journey it does not necessarily share.
                     .remarks("Return of temporary replacement asset issued while asset "
                             + repaired.getId() + " was under repair")
                     .items(List.of(assetItem(loanerId)))
@@ -307,6 +297,44 @@ public class RepairMovementService {
             };
         }
         return storeToStore(source, custody).build();
+    }
+
+    /**
+     * Where a disposal would send the asset, and whether that is a journey.
+     *
+     * <p>A branch write-off travels to the Head Office disposal store, so it has to be dispatched
+     * like any other inter-location movement. Without this the disposal form was the only one of the
+     * four that could not say so, and the operator learned it only after the movement existed.
+     *
+     * <p>Reports the store-type rule as a {@code blockedReason} rather than throwing, so the form can
+     * show it beside the field. {@link #disposeAsset} enforces the same rule on write.
+     */
+    @Transactional(readOnly = true)
+    public MovementFlowPreview previewDisposal(Long assetId) throws NotFoundException {
+        Asset asset = findAsset(assetId);
+        Store source = currentStoreOf(asset);
+
+        String blocked = disposableFromStore(source);
+        if (blocked != null) {
+            return MovementFlowPreview.builder()
+                    .sourceStoreName(source.getName())
+                    .sourceLocationName(locationNameOf(source))
+                    .blockedReason(blocked)
+                    .build();
+        }
+        return storeToStore(source, headOfficeStore(StoreType.DISPOSAL)).build();
+    }
+
+    /**
+     * Why this store cannot be disposed from, or null when it can. Shared by the preview and the
+     * write path so the form cannot state one rule while the server applies another.
+     */
+    private String disposableFromStore(Store source) {
+        if (source.getStoreType() != StoreType.IT && source.getStoreType() != StoreType.ADMIN) {
+            return "Only assets held in an IT or Admin store can be disposed. This asset is in "
+                    + source.getName() + ". Receive it into a store first.";
+        }
+        return null;
     }
 
     /**
@@ -519,10 +547,9 @@ public class RepairMovementService {
         Store source = currentStoreOf(asset);
         Store disposalStore = headOfficeStore(StoreType.DISPOSAL);
 
-        if (source.getStoreType() != StoreType.IT && source.getStoreType() != StoreType.ADMIN) {
-            throw new IllegalArgumentException(
-                    "Only assets held in an IT or Admin store can be disposed. This asset is in "
-                            + source.getName() + ". Receive it into a store first.");
+        String blocked = disposableFromStore(source);
+        if (blocked != null) {
+            throw new IllegalArgumentException(blocked);
         }
 
         boolean pastUsefulLife = AssetLifecycle.isPastUsefulLife(asset);

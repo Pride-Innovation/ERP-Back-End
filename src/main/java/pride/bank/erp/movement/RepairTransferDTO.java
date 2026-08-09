@@ -6,7 +6,6 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import pride.bank.erp.assetType.RepairDestination;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -31,10 +30,10 @@ public class RepairTransferDTO {
     private Long tempAssetId;
     private Long affectedUserId;
 
-    private String courierService;
-    private String trackingNumber;
-    private LocalDateTime dispatchDate;
-    private LocalDateTime expectedDeliveryDate;
+    /**
+     * The signed vendor hand-over paperwork for an EXTERNAL repair — required before the movement
+     * may be created, which is why it is captured here and not at dispatch like a courier's note.
+     */
     private List<String> deliveryDocuments;
     private String remarks;
 }

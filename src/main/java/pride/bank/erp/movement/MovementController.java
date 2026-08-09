@@ -90,11 +90,17 @@ public class MovementController {
                 HttpStatus.CREATED);
     }
 
-    /** Movement approval audit trail (pending / approved / rejected per tier). */
+    /**
+     * Movement approval audit trail (pending / approved / rejected per tier).
+     *
+     * <p>Mapped to a DTO rather than returned as entities: each record holds a LAZY movement, and
+     * initialising that proxy while writing the response exceeded the database's 61-table join limit.
+     */
     @GetMapping("/movements/{movementId}/approvals")
-    public ResponseEntity<List<MovementApprovalRecord>> approvalTrail(@PathVariable Long movementId) {
+    public ResponseEntity<List<MovementApprovalRecordDTO>> approvalTrail(@PathVariable Long movementId) {
         return new ResponseEntity<>(
-                movementApprovalRecordRepository.findByMovement_IdOrderByCreateDateAsc(movementId),
+                movementMapper.toApprovalDtoList(
+                        movementApprovalRecordRepository.findByMovement_IdOrderByCreateDateAsc(movementId)),
                 HttpStatus.OK);
     }
 
