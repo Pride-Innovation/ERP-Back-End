@@ -10,8 +10,14 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class TempReplacementDTO {
+public class TempReplacementDTO implements ApprovalBypassRequest {
     private Long tempAssetId;
     private Long recipientUserId;
     private String remarks;
+
+    /** Set once the initiator has confirmed they want to proceed with no approver available. */
+    private Boolean proceedWithoutApproval;
+
+    /** Why the movement is proceeding unapproved. Recorded on the approval trail. */
+    private String bypassReason;
 }

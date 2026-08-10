@@ -37,6 +37,9 @@ public class RepairMovementService {
 
     private static final String CODE_IN_MAINTENANCE = "inMaintenance";
     private static final String CODE_PENDING_DISPOSAL = "pendingDisposal";
+    private static final String CODE_ISSUANCE_AVAILABLE = "issuanceAvailable";
+    private static final String CODE_ASSET_ASSIGNED = "assetAssigned";
+    private static final String CODE_SENT_TO_STORE = "sentToStore";
 
     private final MovementService movementService;
     private final MovementRepository movementRepository;
@@ -84,9 +87,12 @@ public class RepairMovementService {
                         : RepairDestination.IT);
 
         // Captured BEFORE the assignment is closed below — once it is closed, the system no longer
-        // knows who had the asset, and this is what the return leg aims at.
+        // knows who had the asset, and this is what the return leg aims at. The status goes with
+        // them: it is about to become "In Maintenance", and the return has to put back whatever the
+        // asset actually read before the fault rather than guessing at one.
         User originHolder = activeHolderOf(asset);
         Branch originLocation = asset.getBranch();
+        String preRepairStatus = asset.getAssetStatus() != null ? asset.getAssetStatus().getStatus() : null;
 
         Store source = currentStoreOf(asset);
         Store custody;
@@ -124,6 +130,8 @@ public class RepairMovementService {
                 .requiresApproval(true)
                 .originHolderId(originHolder != null ? originHolder.getId() : null)
                 .originLocationId(originLocation != null ? originLocation.getId() : null)
+                .restoreStatusCode(preRepairStatus)
+                .proceedWithoutApproval(dto.getProceedWithoutApproval()).bypassReason(dto.getBypassReason())
                 .items(List.of(assetItem(dto.getAssetId())))
                 .build());
 
@@ -166,6 +174,7 @@ public class RepairMovementService {
                 // No logistics: a loaner going out is dispatched like anything else, and dispatch is
                 // where the courier and dates are recorded.
                 .remarks(dto.getRemarks())
+                .proceedWithoutApproval(dto.getProceedWithoutApproval()).bypassReason(dto.getBypassReason())
                 .items(List.of(assetItem(dto.getTempAssetId())))
                 .build());
     }
@@ -201,11 +210,13 @@ public class RepairMovementService {
                 .sourceStoreId(source.getId())
                 .destStoreId(destStore.getId())
                 .recipientUserId(target.recipientUserId())
+                .restoreStatusCode(statusToRestore(repaired, target))
                 // No logistics — recorded at dispatch, as for every other travelling movement.
                 .remarks(dto.getRemarks())
                 // Admin returns the repaired item — a standalone movement that climbs the initiator's
                 // (admin's) approval ladder before dispatch.
                 .requiresApproval(true)
+                .proceedWithoutApproval(dto.getProceedWithoutApproval()).bypassReason(dto.getBypassReason())
                 .items(List.of(assetItem(dto.getAssetId())))
                 .build());
 
@@ -235,6 +246,7 @@ public class RepairMovementService {
                     // movement's courier details, describing a journey it does not necessarily share.
                     .remarks("Return of temporary replacement asset issued while asset "
                             + repaired.getId() + " was under repair")
+                    .proceedWithoutApproval(dto.getProceedWithoutApproval()).bypassReason(dto.getBypassReason())
                     .items(List.of(assetItem(loanerId)))
                     .build());
         }
@@ -493,6 +505,35 @@ public class RepairMovementService {
         return new ReturnTarget(originBranchId, null, true);
     }
 
+    /**
+     * What the asset should read once it has been handed back.
+     *
+     * <ol>
+     *   <li><b>Holder gone</b> → {@code issuanceAvailable}. The asset returns to the branch
+     *       unassigned as pool stock, so it must read as available to lend rather than as whatever
+     *       its departed owner left it on.</li>
+     *   <li><b>Otherwise</b> → the status recorded on the repair transfer: exactly what the asset
+     *       read before the fault. An asset that was awaiting detail completion goes back to that,
+     *       not to a status it never had.</li>
+     *   <li><b>No snapshot</b> → {@code assetAssigned} when it is going to a person, else
+     *       {@code sentToStore}. Only reachable for repairs already in flight when the snapshot was
+     *       introduced; without a fallback those would come back still reading In Maintenance.</li>
+     * </ol>
+     */
+    private String statusToRestore(Asset repaired, ReturnTarget target) {
+        if (target.markAvailableForTemporaryIssuance()) {
+            return CODE_ISSUANCE_AVAILABLE;
+        }
+        String recorded = movementRepository
+                .findFirstByItems_Asset_IdAndMovementTypeOrderByIdDesc(repaired.getId(), MovementType.REPAIR_TRANSFER)
+                .map(Movement::getRestoreStatusCode)
+                .orElse(null);
+        if (recorded != null && !recorded.isBlank()) {
+            return recorded;
+        }
+        return target.recipientUserId() != null ? CODE_ASSET_ASSIGNED : CODE_SENT_TO_STORE;
+    }
+
     /** The holder recorded on this asset's repair transfer, else its current assignment. */
     private User originHolderFor(Asset asset) {
         return movementRepository
@@ -574,6 +615,7 @@ public class RepairMovementService {
                 .sourceStoreId(source.getId())
                 .destStoreId(disposalStore.getId())
                 .remarks(remarks)
+                .proceedWithoutApproval(dto.getProceedWithoutApproval()).bypassReason(dto.getBypassReason())
                 .items(List.of(assetItem(dto.getAssetId())))
                 .build());
 

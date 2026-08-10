@@ -111,6 +111,22 @@ public class Movement {
     private Branch originLocation;
 
     /**
+     * The asset status this movement is responsible for putting back when it completes.
+     *
+     * <p>Captured on a {@link MovementType#REPAIR_TRANSFER} — the status the asset held <i>before</i>
+     * it was stamped In Maintenance — and copied onto the matching return, which is what actually
+     * applies it. The transfer records it; the return restores it.
+     *
+     * <p>Without it a repaired asset came back to its owner still reading "In Maintenance". Nothing
+     * on the return path cleared the flag, and {@code restorePriorStatus} then put it back anyway,
+     * because the status it had snapshotted at custody hand-off was itself In Maintenance.
+     *
+     * <p>Null on movements created before this was recorded, and on every other movement type.
+     */
+    @Column(name = "restore_status_code", length = 60)
+    private String restoreStatusCode;
+
+    /**
      * The journey carrying this movement, when it travels with others.
      *
      * <p>Null for anything that never leaves its location, and for inter-location movements still
@@ -179,6 +195,18 @@ public class Movement {
 
     @Builder.Default
     private int approvalTierIndex = 0;
+
+    /**
+     * True when this movement needed approval, none could be resolved, and the initiator chose to
+     * proceed regardless.
+     *
+     * <p>Denormalised from the approval trail so a listing can badge it without reading the trail
+     * for every row. The trail carries who confirmed it and why; this is only the flag that makes
+     * the exception visible at a glance, which is the whole point of allowing it at all.
+     */
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean approvalBypassed = false;
 
     private LocalDateTime completionDate;
 

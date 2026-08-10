@@ -29,6 +29,8 @@ public class MovementDTO {
     // land on the wrong person in the first place.
     private Long originHolderId;
     private Long originLocationId;
+    /** The asset status a repair transfer records, for its return leg to restore. */
+    private String restoreStatusCode;
 
     // Logistics (used only when the derived category is INTER_LOCATION)
     private String courierService;
@@ -52,6 +54,19 @@ public class MovementDTO {
      * wired in their own phases so half-built flows are never stranded pending approval.
      */
     private Boolean requiresApproval;
+
+    /**
+     * Set once the initiator has been told no approver could be resolved and has confirmed they want
+     * to continue anyway.
+     *
+     * <p>Deliberately a second, explicit call rather than something the first request can assert:
+     * the client only learns approval is impossible from the failure, so a payload that arrives
+     * already carrying this has not shown the warning to anybody.
+     */
+    private Boolean proceedWithoutApproval;
+
+    /** Why the movement is proceeding unapproved. Recorded on the trail; required when bypassing. */
+    private String bypassReason;
 
     private List<MovementItemDTO> items;
 }

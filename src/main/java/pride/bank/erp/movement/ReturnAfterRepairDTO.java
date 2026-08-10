@@ -13,7 +13,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ReturnAfterRepairDTO {
+public class ReturnAfterRepairDTO implements ApprovalBypassRequest {
     private Long assetId;
     /**
      * Optional. Left null, the destination is derived from the holder recorded when the asset was
@@ -40,4 +40,10 @@ public class ReturnAfterRepairDTO {
      */
     private Boolean returnLoaner;
     private String remarks;
+
+    /** Set once the initiator has confirmed they want to proceed with no approver available. */
+    private Boolean proceedWithoutApproval;
+
+    /** Why the movement is proceeding unapproved. Recorded on the approval trail. */
+    private String bypassReason;
 }

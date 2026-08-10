@@ -17,7 +17,7 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class RepairTransferDTO {
+public class RepairTransferDTO implements ApprovalBypassRequest {
     private Long assetId;
     private Long repairId;
 
@@ -36,4 +36,10 @@ public class RepairTransferDTO {
      */
     private List<String> deliveryDocuments;
     private String remarks;
+
+    /** Set once the initiator has confirmed they want to proceed with no approver available. */
+    private Boolean proceedWithoutApproval;
+
+    /** Why the movement is proceeding unapproved. Recorded on the approval trail. */
+    private String bypassReason;
 }

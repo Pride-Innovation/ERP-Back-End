@@ -56,6 +56,7 @@ public class MovementMapper {
                 .initiator(user(m.getInitiator()))
                 .currentApprover(user(m.getCurrentApprover()))
                 .approvalTierIndex(m.getApprovalTierIndex())
+                .approvalBypassed(m.isApprovalBypassed())
                 .completionDate(m.getCompletionDate())
                 .inventorySettled(m.isInventorySettled())
                 .custodyTransferSettled(m.isCustodyTransferSettled())

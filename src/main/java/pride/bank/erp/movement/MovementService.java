@@ -19,6 +19,7 @@ import pride.bank.erp.consignment.Consignment;
 import pride.bank.erp.consignment.ConsignmentStatus;
 import pride.bank.erp.courier.Courier;
 import pride.bank.erp.courier.CourierService;
+import pride.bank.erp.exception.BadRequestException;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.FileUpload;
 import pride.bank.erp.inventory.InventoryService;
@@ -137,6 +138,7 @@ public class MovementService {
                 .recipientUser(recipient)
                 .originHolder(resolveUser(dto.getOriginHolderId()))
                 .originLocation(resolveBranch(dto.getOriginLocationId()))
+                .restoreStatusCode(dto.getRestoreStatusCode())
                 .courierService(dto.getCourierService())
                 .trackingNumber(dto.getTrackingNumber())
                 .dispatchDate(dto.getDispatchDate())
@@ -158,7 +160,12 @@ public class MovementService {
                 dest != null ? dest.getName() : "user " + (recipient != null ? recipient.getId() : null));
 
         if (requiresApproval(dto, category, request)) {
-            movementApprovalService.startApproval(saved);
+            boolean bypass = Boolean.TRUE.equals(dto.getProceedWithoutApproval());
+            if (bypass && isBlank(dto.getBypassReason())) {
+                throw new BadRequestException(
+                        "Proceeding without approval needs a reason, so the exception is on the record.");
+            }
+            movementApprovalService.startApproval(saved, bypass, dto.getBypassReason());
         }
         return saved;
     }

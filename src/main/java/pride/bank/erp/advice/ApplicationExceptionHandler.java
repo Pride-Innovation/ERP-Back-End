@@ -23,6 +23,8 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import pride.bank.erp.exception.AccountBlockedException;
+import pride.bank.erp.exception.BadRequestException;
+import pride.bank.erp.exception.NoApproverException;
 import pride.bank.erp.exception.NotFoundException;
 
 import java.io.IOException;
@@ -126,6 +128,38 @@ public class ApplicationExceptionHandler {
                 ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Validation error");
 
         errorDetail.setProperty("properties", errors);
+        return errorDetail;
+    }
+
+    /**
+     * A request the server understood but will not act on as written.
+     *
+     * <p>Was unhandled, so it fell through to Spring's default error path and surfaced as a bare 500
+     * — the message never reached the client, turning actionable advice into "Internal Server Error".
+     */
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    @ExceptionHandler(BadRequestException.class)
+    public ProblemDetail handleBadRequest(BadRequestException ex) {
+        ProblemDetail errorDetail = ProblemDetail
+                .forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+        errorDetail.setProperty("request_failure", "Bad Request");
+        errorDetail.setProperty("message", ex.getMessage());
+        return errorDetail;
+    }
+
+    /**
+     * No approver could be resolved for a movement that needs one.
+     *
+     * <p>Carries {@code errorCode} so the client can recognize this specific case and offer to
+     * proceed without approval, rather than parsing the message text.
+     */
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    @ExceptionHandler(NoApproverException.class)
+    public ProblemDetail handleNoApprover(NoApproverException ex) {
+        ProblemDetail errorDetail = ProblemDetail
+                .forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+        errorDetail.setProperty("errorCode", "NO_APPROVER");
+        errorDetail.setProperty("message", ex.getMessage());
         return errorDetail;
     }
 

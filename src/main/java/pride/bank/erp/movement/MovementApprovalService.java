@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import pride.bank.erp.appnotification.AppNotificationService;
 import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.exception.BadRequestException;
+import pride.bank.erp.exception.NoApproverException;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.user.User;
 import pride.bank.erp.workflow.ApproverChainResolver;
@@ -59,13 +60,39 @@ public class MovementApprovalService {
      */
     @Transactional
     public void startApproval(Movement movement) {
+        startApproval(movement, false, null);
+    }
+
+    /**
+     * @param proceedWithoutApproval the initiator has been told no approver could be found and has
+     *                               chosen to continue regardless
+     * @param bypassReason           why — recorded on the trail, and worth insisting on
+     */
+    @Transactional
+    public void startApproval(Movement movement, boolean proceedWithoutApproval, String bypassReason) {
         List<ResolvedApprover> chain = resolveChain(movement);
         if (chain.isEmpty()) {
-            log.warn("Movement {} requires approval but no approver resolved for initiator {} — rejecting creation",
-                    movement.getId(), movement.getInitiator() != null ? movement.getInitiator().getId() : null);
-            throw new BadRequestException(
-                    "This movement needs approval, but no approver could be resolved on your reporting line. "
-                            + "Ask an administrator to set your supervisor before initiating it.");
+            if (!proceedWithoutApproval) {
+                log.warn("Movement {} requires approval but no approver resolved for initiator {} — rejecting creation",
+                        movement.getId(), movement.getInitiator() != null ? movement.getInitiator().getId() : null);
+                throw new NoApproverException(
+                        "This movement needs approval, but no approver could be resolved on your reporting line. "
+                                + "Ask an administrator to set your supervisor, or confirm that you want to "
+                                + "proceed without approval.");
+            }
+            // Proceeding, but on the record. The BYPASSED tier names who authorised it and why, so
+            // the movement can never be mistaken later for one that cleared a ladder.
+            movement.setStatus(MovementStatus.INITIATED);
+            movement.setCurrentApprover(null);
+            movement.setApprovalBypassed(true);
+            movementRepository.save(movement);
+            record(movement, currentUserService.getCurrentUser(), MovementApprovalAction.BYPASSED,
+                    "No approver on the initiator's line", 0, bypassReason);
+            log.warn("Movement {} proceeded WITHOUT approval — confirmed by user {} ({})",
+                    movement.getId(),
+                    currentUserService.getCurrentUser() != null ? currentUserService.getCurrentUser().getId() : null,
+                    bypassReason);
+            return;
         }
         ResolvedApprover first = chain.get(0);
         movement.setStatus(MovementStatus.DRAFT);

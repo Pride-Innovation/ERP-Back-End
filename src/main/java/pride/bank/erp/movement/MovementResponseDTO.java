@@ -54,6 +54,9 @@ public class MovementResponseDTO {
     private UserSummary initiator;
     private UserSummary currentApprover;
     private int approvalTierIndex;
+
+    /** True when this movement proceeded with no approver available, on a confirmed exception. */
+    private boolean approvalBypassed;
     private LocalDateTime completionDate;
     private boolean inventorySettled;
     private boolean custodyTransferSettled;

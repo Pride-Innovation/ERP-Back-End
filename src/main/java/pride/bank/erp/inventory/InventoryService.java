@@ -210,6 +210,27 @@ public class InventoryService {
     }
 
     /**
+     * Puts back the status this movement is carrying, when it has one.
+     *
+     * <p>Set on a return-after-repair by {@code RepairMovementService}: the status the asset held
+     * before the fault, or {@code issuanceAvailable} when its holder has left and it comes back as
+     * pool stock. Applied here rather than at creation because the asset is only really back with
+     * its owner once the movement completes.
+     *
+     * <p>Runs before {@code restorePriorStatus}, which then correctly stands down — it only acts on
+     * an asset still reading In Transit.
+     */
+    private void applyRestoreStatus(Movement movement, Asset asset) {
+        String code = movement.getRestoreStatusCode();
+        if (code == null || code.isBlank()) return;
+        Status restored = findStatusOrNull(code);
+        if (restored != null) {
+            asset.setAssetStatus(restored);
+            assetRepository.save(asset);
+        }
+    }
+
+    /**
      * Undoes the "In Transit" stamp on receipt: puts back the status the asset carried before the
      * courier took custody (snapshotted on the movement line). Skips when there is no snapshot
      * (no courier leg) or the status has already been changed to something other than In Transit
@@ -336,6 +357,11 @@ public class InventoryService {
                     // showing as assigned to the borrower.
                     returnAssetToStore(asset, dest);
                 }
+                // Clear the maintenance flag. Custody alone never did: assignAssetToUser moves the
+                // holder and touches no status, so a repaired asset reached its owner still reading
+                // "In Maintenance" — and restorePriorStatus then put that same value back, because
+                // the status it had snapshotted at hand-off was In Maintenance too.
+                applyRestoreStatus(movement, asset);
             }
             default -> {                                 // ISSUANCE_FULFILLMENT / DEPARTMENT_TRANSFER / REPLENISHMENT
                 if (recipient != null) {
