@@ -42,6 +42,7 @@ public class InventoryService {
 
     /** Asset status stamped while the courier holds custody (§9). */
     private static final String CODE_IN_TRANSIT = "inTransit";
+    private static final String CODE_ASSET_ASSIGNED = "assetAssigned";
 
     // ── Consumable balances ─────────────────────────────────────────────────
 
@@ -221,11 +222,15 @@ public class InventoryService {
      * an asset still reading In Transit.
      */
     private void applyRestoreStatus(Movement movement, Asset asset) {
-        String code = movement.getRestoreStatusCode();
+        setStatusIfKnown(asset, movement.getRestoreStatusCode());
+    }
+
+    /** Sets a status by code, leaving the asset alone when the code is absent or unseeded. */
+    private void setStatusIfKnown(Asset asset, String code) {
         if (code == null || code.isBlank()) return;
-        Status restored = findStatusOrNull(code);
-        if (restored != null) {
-            asset.setAssetStatus(restored);
+        Status status = findStatusOrNull(code);
+        if (status != null) {
+            asset.setAssetStatus(status);
             assetRepository.save(asset);
         }
     }
@@ -338,6 +343,15 @@ public class InventoryService {
             case TEMP_REPLACEMENT -> {
                 if (recipient != null) {
                     assignAssetToUser(asset, recipient, true); // temporary assignment
+                    // A loaner out with someone is no longer available to lend. assignAssetToUser
+                    // moves custody and touches no status, so without this the asset reached its
+                    // borrower still reading "Available for Issuance" — and restorePriorStatus put
+                    // that value straight back, having snapshotted it at custody hand-off.
+                    //
+                    // Assigned, not a status of its own: the loan is already recorded on the
+                    // assignment history as `temporary`, and a second marker for the same fact would
+                    // only give the two a chance to disagree.
+                    setStatusIfKnown(asset, CODE_ASSET_ASSIGNED);
                 } else if (dest != null) {
                     relocateAsset(asset, dest);
                 }

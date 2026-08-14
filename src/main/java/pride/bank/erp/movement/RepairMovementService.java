@@ -246,6 +246,11 @@ public class RepairMovementService {
                     // movement's courier details, describing a journey it does not necessarily share.
                     .remarks("Return of temporary replacement asset issued while asset "
                             + repaired.getId() + " was under repair")
+                    // Back on the shelf and lendable again. Issuing the loaner marks it Assigned, so
+                    // without this it would sit in the pool store reading as though it were still out
+                    // with the borrower — and the picker's "unassigned" test would be the only thing
+                    // keeping it visible.
+                    .restoreStatusCode(CODE_ISSUANCE_AVAILABLE)
                     .proceedWithoutApproval(dto.getProceedWithoutApproval()).bypassReason(dto.getBypassReason())
                     .items(List.of(assetItem(loanerId)))
                     .build());
