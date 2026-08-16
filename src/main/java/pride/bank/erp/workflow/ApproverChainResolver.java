@@ -93,6 +93,23 @@ public class ApproverChainResolver {
     }
 
     /**
+     * A movement initiator's resolved ladder, carrying its own explanation when nothing resolved.
+     *
+     * @param stops       the approval chain; empty when nobody could be resolved
+     * @param emptyReason why {@code stops} is empty, as a complete sentence an administrator can act
+     *                    on — null whenever {@code stops} is non-empty
+     */
+    public record InitiatorChain(List<ResolvedApprover> stops, String emptyReason) {
+        static InitiatorChain of(List<ResolvedApprover> stops) {
+            return new InitiatorChain(stops, null);
+        }
+
+        static InitiatorChain empty(String reason) {
+            return new InitiatorChain(List.of(), reason);
+        }
+    }
+
+    /**
      * Resolves the ordered approval chain for {@code requester} under {@code workflow}.
      * Returns an empty list when the workflow declares no ladder-role approval steps,
      * or when the requester has no branch / title to resolve against.
@@ -215,29 +232,144 @@ public class ApproverChainResolver {
      * user. Returns an empty list when the initiator has no branch/title or nobody sits above them.
      */
     public List<ResolvedApprover> resolveInitiatorChain(User initiator) {
-        List<ResolvedApprover> chain = new ArrayList<>();
-        if (initiator == null || initiator.getBranch() == null || initiator.getBranch().getId() == null) {
-            return chain;
+        return resolveInitiatorChainDetailed(initiator).stops();
+    }
+
+    /**
+     * The initiator's chain, and — when it comes back empty — why, in terms an administrator can
+     * act on.
+     *
+     * <p>"No approver could be resolved" is true of half a dozen different faults: no branch on the
+     * record, no title, a title that reports to nothing, a rung whose title nobody in the branch
+     * holds, a holder on leave with no delegate, or a line that resolves back to the initiator. They
+     * need different fixes, so the refusal names the one that actually applies instead of asking
+     * everybody to go and check their supervisor.
+     */
+    public InitiatorChain resolveInitiatorChainDetailed(User initiator) {
+        if (initiator == null) {
+            return InitiatorChain.empty("No initiator is recorded against this movement.");
         }
+        if (initiator.getBranch() == null || initiator.getBranch().getId() == null) {
+            return InitiatorChain.empty("Your user record has no branch, so there is no reporting "
+                    + "line to follow.");
+        }
+        if (initiator.getTitle() == null) {
+            return InitiatorChain.empty("Your user record has no job title, so there is no reporting "
+                    + "line to follow.");
+        }
+
         Long branchId = initiator.getBranch().getId();
+        String branchName = branchName(initiator);
+        List<Title> ladder = ladder(initiator);
+        if (ladder.isEmpty()) {
+            return InitiatorChain.empty("Your job title (" + titleName(initiator.getTitle()) + ") is not "
+                    + "linked to a title above it, so nobody is recorded as senior to you.");
+        }
+
+        List<ResolvedApprover> chain = new ArrayList<>();
+        List<String> failures = new ArrayList<>();
         String ceilingRole = ceilingRole(initiator);
         Set<String> handled = new HashSet<>();
-        for (Title rung : ladder(initiator)) {
+        for (Title rung : ladder) {
             String roleName = roleName(rung);
             if (roleName == null) continue;
             String key = roleName.toUpperCase();
             if (isLadderRole(key) && !handled.contains(key)) {
                 handled.add(key);
-                User eff = effectiveApprover(holderInBranch(rung, branchId));
+                User holder = holderInBranch(rung, branchId);
+                User eff = effectiveApprover(holder);
                 if (eff != null && !sameUser(eff, initiator)) {
                     chain.add(ResolvedApprover.builder()
                             .roleName(roleName).approver(eff)
                             .note("Resolved from the initiator's reporting line").build());
+                } else {
+                    failures.add(describeRungFailure(rung, holder, eff, initiator, branchName));
                 }
             }
             if (roleName.equalsIgnoreCase(ceilingRole)) break;
         }
-        return chain;
+        if (!chain.isEmpty()) {
+            return InitiatorChain.of(chain);
+        }
+
+        ResolvedApprover fallback = resolveInitiatorFallback(initiator, branchId, ceilingRole);
+        if (fallback != null) {
+            return InitiatorChain.of(List.of(fallback));
+        }
+
+        // No lead-in phrase: this sentence follows one that already says "on your reporting line",
+        // and naming it twice reads like the message has lost its place.
+        String detail = failures.isEmpty()
+                // Nothing even reached a ladder-role rung, and the fallback found no senior either.
+                ? "nobody senior to you in " + branchName + " could be found"
+                : String.join("; ", failures);
+        return InitiatorChain.empty(capitalise(detail) + ".");
+    }
+
+    /**
+     * Nobody on the ladder holds one of the five approval roles — or those who do are absent, vacant
+     * or the initiator themselves. Falls back to the nearest actual senior in the branch, capped at
+     * the branch ceiling.
+     *
+     * <p>This is the same safety net {@link #resolveDetailed} already applies to requests. Without
+     * it, movement approval was strictly stricter than request approval: a user whose reporting line
+     * is real but whose seniors carry titles outside the five hardcoded role names could raise a
+     * request perfectly well and yet be refused every movement, because the code declined to
+     * consider the very person it would have routed a request to.
+     */
+    private ResolvedApprover resolveInitiatorFallback(User initiator, Long branchId, String ceilingRole) {
+        for (Title rung : ladder(initiator)) {
+            User eff = effectiveApprover(holderInBranch(rung, branchId));
+            if (eff != null && !sameUser(eff, initiator)) {
+                return ResolvedApprover.builder()
+                        // The real rung role, not null: the approval trail records this name, and a
+                        // blank tier on the trail is worth less than an unwhitelisted but true one.
+                        .roleName(roleName(rung))
+                        .approver(eff)
+                        .fallback(true)
+                        .note("Fallback: nobody on the initiator's line holds an approval role")
+                        .build();
+            }
+            if (ceilingRole.equalsIgnoreCase(roleName(rung))) {
+                break; // never climb past the branch ceiling
+            }
+        }
+        return null;
+    }
+
+    /** Why one ladder rung produced nobody. Reuses the holder already looked up — no second query. */
+    private String describeRungFailure(Title rung, User holder, User effective, User initiator, String branchName) {
+        if (holder == null) {
+            return "no one in " + branchName + " holds the title " + titleName(rung);
+        }
+        if (effective == null) {
+            return displayName(holder) + " (" + titleName(rung) + ") is on leave with no acting user";
+        }
+        // effective is the initiator — they sit at this rung themselves.
+        return titleName(rung) + " resolves to you";
+    }
+
+    private String titleName(Title title) {
+        if (title == null) return "unknown";
+        return title.getName() != null ? title.getName() : ("#" + title.getId());
+    }
+
+    private String branchName(User user) {
+        String name = user.getBranch() != null ? user.getBranch().getName() : null;
+        return name != null ? name : "your branch";
+    }
+
+    private String capitalise(String sentence) {
+        if (sentence == null || sentence.isEmpty()) return sentence;
+        return Character.toUpperCase(sentence.charAt(0)) + sentence.substring(1);
+    }
+
+    private String displayName(User user) {
+        if (user == null) return "The holder";
+        String first = user.getFirstName() != null ? user.getFirstName() : "";
+        String last = user.getLastName() != null ? user.getLastName() : "";
+        String full = (first + " " + last).trim();
+        return full.isEmpty() ? ("User " + user.getId()) : full;
     }
 
     private boolean isLadderRole(String key) {

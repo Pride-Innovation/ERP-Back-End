@@ -70,14 +70,21 @@ public class MovementApprovalService {
      */
     @Transactional
     public void startApproval(Movement movement, boolean proceedWithoutApproval, String bypassReason) {
-        List<ResolvedApprover> chain = resolveChain(movement);
+        ApproverChainResolver.InitiatorChain resolved = resolveChainDetailed(movement);
+        List<ResolvedApprover> chain = resolved.stops();
         if (chain.isEmpty()) {
             if (!proceedWithoutApproval) {
-                log.warn("Movement {} requires approval but no approver resolved for initiator {} — rejecting creation",
-                        movement.getId(), movement.getInitiator() != null ? movement.getInitiator().getId() : null);
+                log.warn("Movement {} requires approval but no approver resolved for initiator {} — "
+                                + "rejecting creation. Reason: {}",
+                        movement.getId(), movement.getInitiator() != null ? movement.getInitiator().getId() : null,
+                        resolved.emptyReason());
+                // The specific fault is carried in the message rather than left to the reader to
+                // guess at: "no approver" covers a missing branch, a missing title, a title that
+                // reports to nothing and a vacant or absent rung, and each wants a different fix.
                 throw new NoApproverException(
                         "This movement needs approval, but no approver could be resolved on your reporting line. "
-                                + "Ask an administrator to set your supervisor, or confirm that you want to "
+                                + resolved.emptyReason()
+                                + " Ask an administrator to correct this, or confirm that you want to "
                                 + "proceed without approval.");
             }
             // Proceeding, but on the record. The BYPASSED tier names who authorised it and why, so
@@ -86,8 +93,11 @@ public class MovementApprovalService {
             movement.setCurrentApprover(null);
             movement.setApprovalBypassed(true);
             movementRepository.save(movement);
+            // The diagnosis goes on the trail too — a year from now "no approver on the line" says
+            // nothing about whether the line was broken or genuinely empty.
             record(movement, currentUserService.getCurrentUser(), MovementApprovalAction.BYPASSED,
-                    "No approver on the initiator's line", 0, bypassReason);
+                    "No approver on the initiator's line", 0,
+                    clampComment(bypassReason + " [" + resolved.emptyReason() + "]"));
             log.warn("Movement {} proceeded WITHOUT approval — confirmed by user {} ({})",
                     movement.getId(),
                     currentUserService.getCurrentUser() != null ? currentUserService.getCurrentUser().getId() : null,
@@ -151,10 +161,28 @@ public class MovementApprovalService {
 
     // ─────────────────────────────────────────────────────────────────────────
 
+    /**
+     * Keeps a trail comment inside {@code MovementApprovalRecord.comment}'s 1000 characters.
+     *
+     * <p>The bypass reason is free text the user types, and the diagnosis is appended to it. This is
+     * the one path that must not fail on a write: it is reached only after the user has been told
+     * approval is impossible and has chosen to proceed, so losing the movement to an oversized
+     * column would be the worst possible moment to be strict about it.
+     */
+    private static String clampComment(String comment) {
+        if (comment == null || comment.length() <= 1000) {
+            return comment;
+        }
+        return comment.substring(0, 997) + "...";
+    }
+
     private List<ResolvedApprover> resolveChain(Movement movement) {
-        return (movement.getInitiator() != null)
-                ? approverChainResolver.resolveInitiatorChain(movement.getInitiator())
-                : List.of();
+        return resolveChainDetailed(movement).stops();
+    }
+
+    /** As {@link #resolveChain}, but keeping the resolver's explanation for an empty result. */
+    private ApproverChainResolver.InitiatorChain resolveChainDetailed(Movement movement) {
+        return approverChainResolver.resolveInitiatorChainDetailed(movement.getInitiator());
     }
 
     private void guardActionable(Movement movement, User actor) {
