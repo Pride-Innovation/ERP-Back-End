@@ -43,6 +43,8 @@ public class MovementApprovalService {
     private final ApproverChainResolver approverChainResolver;
     private final CurrentUserService currentUserService;
     private final AppNotificationService notificationService;
+    /** Mail is the redundant channel — an approver who is not logged in has no other prompt. */
+    private final pride.bank.erp.notification.Email email;
 
     @Value("${front-end.environment}")
     private String frontEndUrl;
@@ -134,8 +136,9 @@ public class MovementApprovalService {
             movement.setCurrentApprover(null);
             movement.setStatus(MovementStatus.INITIATED);
             movementRepository.save(movement);
-            notifyInitiator(movement, "Movement approved",
-                    "Movement #" + movement.getId() + " is fully approved and ready to dispatch.");
+            notifyInitiatorOfOutcome(movement, "Movement approved",
+                    "Movement #" + movement.getId() + " is fully approved and ready to dispatch.",
+                    MovementApprovalAction.APPROVED, comment);
         }
         return movement;
     }
@@ -153,9 +156,10 @@ public class MovementApprovalService {
             movement.setRemarks(comment);
         }
         movementRepository.save(movement);
-        notifyInitiator(movement, "Movement rejected",
+        notifyInitiatorOfOutcome(movement, "Movement rejected",
                 "Movement #" + movement.getId() + " was rejected"
-                        + (comment != null && !comment.isBlank() ? ": " + comment : "."));
+                        + (comment != null && !comment.isBlank() ? ": " + comment : "."),
+                MovementApprovalAction.REJECTED, comment);
         return movement;
     }
 
@@ -220,6 +224,13 @@ public class MovementApprovalService {
                 .build());
     }
 
+    /**
+     * Tells the tier now holding the decision, in-app and by email.
+     *
+     * <p>Mail matters here more than elsewhere: the movement list no longer carries a "pending my
+     * approval" table, so an approver who is not logged in has no other prompt. The in-app
+     * notification is written first and does not depend on mail succeeding.
+     */
     private void notifyApprover(Movement movement, User approver) {
         if (approver == null) return;
         notificationService.createAndPush(
@@ -229,13 +240,69 @@ public class MovementApprovalService {
                 "MOVEMENT_PENDING",
                 movement.getId(),
                 movementLink(movement));
+
+        email.sendMovementEmail(
+                approver.getEmail(),
+                displayName(approver),
+                movement.getId(),
+                typeLabel(movement),
+                routeLabel(movement),
+                movementLink(movement),
+                null,   // no outcome yet — this is the request for a decision
+                null);
     }
 
+    /**
+     * Tells the initiator what the ladder decided. Only fires on the final outcome — approved or
+     * rejected — not on each tier passing it along, which would be noise for someone who only needs
+     * to know whether they can dispatch.
+     */
     private void notifyInitiator(Movement movement, String title, String message) {
         if (movement.getInitiator() == null) return;
         notificationService.createAndPush(
                 movement.getInitiator(), title, message, "MOVEMENT_UPDATE",
                 movement.getId(), movementLink(movement));
+    }
+
+    /** As above, plus the mail carrying the decision and whatever the approver said about it. */
+    private void notifyInitiatorOfOutcome(Movement movement, String title, String message,
+                                          MovementApprovalAction outcome, String comment) {
+        notifyInitiator(movement, title, message);
+        if (movement.getInitiator() == null) return;
+        email.sendMovementEmail(
+                movement.getInitiator().getEmail(),
+                displayName(movement.getInitiator()),
+                movement.getId(),
+                typeLabel(movement),
+                routeLabel(movement),
+                movementLink(movement),
+                outcome.name(),
+                comment);
+    }
+
+    /** Read on this thread, where the session is open — see {@code Email#sendMovementEmail}. */
+    private static String typeLabel(Movement movement) {
+        return movement.getMovementType() == null ? null
+                : movement.getMovementType().name().replace('_', ' ').toLowerCase();
+    }
+
+    /** "Head Office IT Store → Gulu Branch", with either end possibly being a person. */
+    private static String routeLabel(Movement movement) {
+        String from = movement.getSourceStore() != null
+                ? movement.getSourceStore().getName()
+                : displayName(movement.getSourceUser());
+        String to = movement.getDestStore() != null
+                ? movement.getDestStore().getName()
+                : displayName(movement.getRecipientUser());
+        if (from == null && to == null) return null;
+        return (from == null ? "—" : from) + " → " + (to == null ? "—" : to);
+    }
+
+    private static String displayName(User user) {
+        if (user == null) return null;
+        String name = ((user.getFirstName() != null ? user.getFirstName() : "") + " "
+                + (user.getLastName() != null ? user.getLastName() : "")).trim();
+        return name.isEmpty() ? null : name;
     }
 
     private String movementLink(Movement movement) {

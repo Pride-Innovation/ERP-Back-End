@@ -103,6 +103,138 @@ public class Email {
     }
 
     /**
+     * Movement mail — an approval request, or the outcome once the ladder has finished.
+     *
+     * <p>Takes only primitives, deliberately. Every other template here reads JPA entities while
+     * rendering, which is why {@link Email} cannot be {@code @Async} as a whole; this one has
+     * nothing lazy to touch, so a caller can hand it values pulled inside its own transaction and
+     * stop worrying about the session boundary.
+     *
+     * <p>Never throws. A movement must not fail to be created, approved or rejected because an SMTP
+     * host is unreachable — the in-app notification has already been written by then, and mail is
+     * the redundant channel, not the authoritative one.
+     *
+     * @param outcome  null for "needs your approval"; otherwise the decision reached
+     *                 ({@code APPROVED} / {@code REJECTED}), which flips the accent and the wording
+     * @param comment  the approver's note, when there is one
+     */
+    public boolean sendMovementEmail(
+            String recipientEmail,
+            String recipientName,
+            Long movementId,
+            String movementType,
+            String route,
+            String link,
+            String outcome,
+            String comment
+    ) {
+        if (recipientEmail == null || recipientEmail.isBlank()) {
+            logger.warn("No email address for movement {} notification — skipping mail", movementId);
+            return false;
+        }
+        try {
+            boolean rejected = "REJECTED".equalsIgnoreCase(outcome);
+            boolean decided = outcome != null && !outcome.isBlank();
+
+            String headline = decided
+                    ? (rejected ? "Movement rejected" : "Movement approved")
+                    : "A movement needs your approval";
+            String subject = decided
+                    ? format("Movement #%d %s", movementId, rejected ? "rejected" : "approved")
+                    : format("Approval needed — Movement #%d", movementId);
+            String accent = rejected ? "#B91C1C" : TEAL_PRIMARY;
+            String accentSoft = rejected ? "#d33b3b" : TEAL_SECONDARY;
+            String buttonText = decided ? "View movement" : "Review and approve";
+
+            String body = decided
+                    ? (rejected
+                    ? format("Movement <strong>#%d</strong> was rejected and will not proceed.", movementId)
+                    : format("Movement <strong>#%d</strong> has cleared its approval ladder and is ready to "
+                            + "be dispatched.", movementId))
+                    : format("Movement <strong>#%d</strong> is waiting on your decision. Nothing moves — and no "
+                            + "stock leaves its store — until it is approved.", movementId);
+
+            String htmlContent = getMovementEmailContent(
+                    headline, recipientName, body, movementType, route, link, buttonText,
+                    accent, accentSoft, comment);
+
+            mailDispatcher.send(cleanRecipient(recipientEmail), subject, htmlContent, "movement");
+            return true;
+        } catch (Exception e) {
+            logger.error("Failed to build movement email for {} (movement {})", recipientEmail, movementId, e);
+            return false;
+        }
+    }
+
+    /** Body for {@link #sendMovementEmail} — same brand furniture as the other templates. */
+    private String getMovementEmailContent(
+            String headline,
+            String recipientName,
+            String body,
+            String movementType,
+            String route,
+            String link,
+            String buttonText,
+            String accent,
+            String accentSoft,
+            String comment
+    ) {
+        String greetingName = (recipientName == null || recipientName.isBlank()) ? "there" : recipientName;
+
+        String detailRows = ""
+                + rowIfPresent("Type", movementType)
+                + rowIfPresent("Route", route)
+                + rowIfPresent("Comment", comment);
+
+        return format(
+                "<!DOCTYPE html>"
+                        + "<html lang='en'><head><meta charset='UTF-8'>"
+                        + "<meta name='viewport' content='width=device-width, initial-scale=1.0'>"
+                        + "<title>%s</title></head>"
+                        + "<body style='margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,Arial,sans-serif;background-color:#f0f4f8;'>"
+                        + "<div style='padding:40px 20px;'>"
+                        + "<div style='max-width:620px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 18px 40px rgba(0,0,0,0.08);'>"
+
+                        // Header
+                        + "<div style='background:linear-gradient(135deg,%s 0%%,%s 100%%);padding:36px 30px;text-align:center;'>"
+                        + "<img src='cid:logoImage' alt='Pride Bank' style='max-width:220px;height:auto;filter:brightness(0) invert(1);margin-bottom:14px;' />"
+                        + "<h1 style='color:#ffffff;margin:0;font-size:21px;font-weight:500;'>%s</h1>"
+                        + "</div>"
+
+                        // Body
+                        + "<div style='padding:36px 34px;'>"
+                        + "<p style='color:#2d3748;font-size:16px;margin:0 0 18px;'>Dear <strong>%s</strong>,</p>"
+                        + "<p style='color:#4a5568;font-size:15px;line-height:1.7;margin:0 0 24px;'>%s</p>"
+                        + "<table style='width:100%%;border-collapse:collapse;background:#f7fafc;border-radius:10px;overflow:hidden;'>%s</table>"
+                        + "<div style='text-align:center;margin:32px 0 8px;'>"
+                        + "<a href='%s' style='display:inline-block;background:%s;color:#ffffff;text-decoration:none;padding:13px 32px;border-radius:8px;font-weight:600;font-size:15px;'>%s</a>"
+                        + "</div>"
+                        + "<p style='color:#94a3b8;font-size:12px;text-align:center;margin:18px 0 0;'>"
+                        + "If the button does not work, copy this link into your browser:<br/>%s</p>"
+                        + "</div>"
+
+                        // Footer
+                        + "<div style='background:#f7fafc;padding:18px 30px;text-align:center;border-top:1px solid #e2e8f0;'>"
+                        + "<p style='color:#94a3b8;font-size:12px;margin:0;'>Pride Bank Limited — automated message, please do not reply.</p>"
+                        + "</div>"
+                        + "</div></div></body></html>",
+                headline, accent, accentSoft, headline, greetingName, body, detailRows,
+                link, accent, buttonText, link);
+    }
+
+    /** One label/value row in the movement detail table; omitted entirely when there is no value. */
+    private String rowIfPresent(String label, String value) {
+        if (value == null || value.isBlank()) return "";
+        return format(
+                "<tr>"
+                        + "<td style='padding:11px 16px;color:#718096;font-size:12px;font-weight:700;"
+                        + "text-transform:uppercase;letter-spacing:0.05em;width:110px;'>%s</td>"
+                        + "<td style='padding:11px 16px;color:#2d3748;font-size:14px;font-weight:600;'>%s</td>"
+                        + "</tr>",
+                label, value);
+    }
+
+    /**
      * Generates the HTML content for authentication emails (account creation & password reset).
      * The {@code reason} parameter is dual-purpose:
      * - "reset"        → generates a password-reset link

@@ -200,7 +200,7 @@ public class Movement {
      * True when this movement needed approval, none could be resolved, and the initiator chose to
      * proceed regardless.
      *
-     * <p>Denormalised from the approval trail so a listing can badge it without reading the trail
+     * <p>Denormalized from the approval trail so a listing can badge it without reading the trail
      * for every row. The trail carries who confirmed it and why; this is only the flag that makes
      * the exception visible at a glance, which is the whole point of allowing it at all.
      */
