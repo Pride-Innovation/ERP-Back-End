@@ -15,6 +15,10 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.*;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import pride.bank.erp.auditing.trail.AuditEventType;
+import pride.bank.erp.auditing.trail.AuditModule;
+import pride.bank.erp.auditing.trail.AuditService;
+import pride.bank.erp.auditing.trail.AuditSeverity;
 import pride.bank.erp.config.JwtService;
 import pride.bank.erp.exception.AccountBlockedException;
 import pride.bank.erp.exception.NotFoundException;
@@ -44,6 +48,11 @@ public class AuthenticationService {
     private final TokenRepository tokenRepository;
     private final Email email;
     private final TitleService titleService;
+    /**
+     * Sign-in activity is invisible to Hibernate Envers — logging in changes no entity — so it is
+     * recorded explicitly here or not at all.
+     */
+    private final AuditService auditService;
 
     public AuthenticationResponse register(RegisterRequest request, Long titleId)
             throws NotFoundException {
@@ -63,6 +72,9 @@ public class AuthenticationService {
                 .isAccountNonLocked(false)
                 .build();
         User savedUser = userRepository.save(user);
+        auditService.record(AuditEventType.CREATED, AuditModule.USERS, "USER_REGISTERED",
+                "Registered user account " + savedUser.getEmail(),
+                AuditSeverity.WARNING, "User", savedUser.getId());
         AuthenticationResponse response = generateToken(savedUser, title);
         email.sendEmailVerification(
                 user.getEmail(),
@@ -81,19 +93,40 @@ public class AuthenticationService {
         return response;
     }
 
+    /**
+     * Signs a user in.
+     *
+     * <p>Every exit from this method is audited, successful or not. A trail that recorded only
+     * successful logins would be silent on exactly the activity worth watching: someone working
+     * through passwords against a real account, or repeatedly probing one that is already blocked.
+     * Those records are written with {@code REQUIRES_NEW} inside {@link AuditService}, so the throw
+     * that follows a refusal unwinds the attempt without taking the record of it along.
+     */
     public AuthenticationResponse authenticate(AuthenticationRequest request) throws NotFoundException {
         User user = userRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new NotFoundException("User not found"));
+                .orElseThrow(() -> {
+                    // No user, so no id and no name — the attempted address is the whole of what is
+                    // known, and is worth keeping: repeated attempts against addresses that do not
+                    // exist look quite different from a member of staff mistyping their own.
+                    auditService.recordAs(null, request.getEmail(),
+                            AuditEventType.REJECTED, AuditModule.SYSTEM, "LOGIN_FAILED_UNKNOWN_USER",
+                            "Failed sign-in attempt for unknown address " + request.getEmail(),
+                            AuditSeverity.WARNING);
+                    return new NotFoundException("User not found");
+                });
 
         if (!user.isEnabled()) {
+            auditRefusal(user, "LOGIN_REFUSED_ACCOUNT_DISABLED", "disabled");
             throw new DisabledException("Account is disabled. Please contact Admin");
         }
 
         if (user.isBlocked()) {
+            auditRefusal(user, "LOGIN_REFUSED_ACCOUNT_BLOCKED", "blocked");
             throw new AccountBlockedException("Your account has been blocked. Please contact your admin.");
         }
 
         if (!user.isAccountNonLocked()) {
+            auditRefusal(user, "LOGIN_REFUSED_ACCOUNT_LOCKED", "locked pending email verification");
             throw new LockedException("Account is locked. Please verify your email.");
         }
 
@@ -105,10 +138,20 @@ public class AuthenticationService {
                 user.setAccountNonLocked(false);
                 user.setFailedLoginAttempts(0);
                 userRepository.save(user);
+                // Critical: an account locking itself out is either an attack or a member of staff
+                // about to be unable to work. Both want someone to look.
+                auditService.recordAs(user, user.getEmail(),
+                        AuditEventType.REJECTED, AuditModule.SYSTEM, "ACCOUNT_AUTO_BLOCKED",
+                        "Account blocked automatically after 3 failed sign-in attempts",
+                        AuditSeverity.CRITICAL);
                 throw new AccountBlockedException("Your account has been blocked after multiple failed login attempts. Please contact your admin.");
             }
             userRepository.save(user);
             int remaining = 3 - attempts;
+            auditService.recordAs(user, user.getEmail(),
+                    AuditEventType.REJECTED, AuditModule.SYSTEM, "LOGIN_FAILED_BAD_PASSWORD",
+                    "Failed sign-in attempt (" + attempts + " of 3) — incorrect password",
+                    AuditSeverity.WARNING);
             throw new BadCredentialsException("Invalid email or password. " + remaining + " attempt(s) remaining before account lockout.");
         }
 
@@ -126,7 +169,18 @@ public class AuthenticationService {
         );
 
         revokeAllUserTokens(user);
-        return generateToken(user, user.getTitle());
+        AuthenticationResponse response = generateToken(user, user.getTitle());
+        auditService.recordAs(user, user.getEmail(),
+                AuditEventType.LOGIN, AuditModule.SYSTEM, "LOGIN_SUCCEEDED",
+                "Signed in", AuditSeverity.INFO);
+        return response;
+    }
+
+    /** A sign-in refused by the state of the account rather than by the password. */
+    private void auditRefusal(User user, String action, String state) {
+        auditService.recordAs(user, user.getEmail(),
+                AuditEventType.REJECTED, AuditModule.SYSTEM, action,
+                "Sign-in refused — account is " + state, AuditSeverity.WARNING);
     }
 
     private AuthenticationResponse generateToken(User user, Title title) {
@@ -224,6 +278,10 @@ public class AuthenticationService {
         User user = optionalUser.get();
         user.setEnabled(true);
         userRepository.save(user);
+
+        auditService.recordAs(user, user.getEmail(),
+                AuditEventType.UPDATED, AuditModule.USERS, "ACCOUNT_VERIFIED",
+                "Verified their account by email", AuditSeverity.INFO);
 
         return createResponse("success", "Account verified successfully.");
     }

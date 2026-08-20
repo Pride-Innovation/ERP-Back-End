@@ -72,6 +72,7 @@ public class StockService {
     private final CurrentUserService currentUserService;
     private final ApplicationEventPublisher eventPublisher;
     private final StockReversalService stockReversalService;
+    private final pride.bank.erp.auditing.trail.AuditService auditService;
 
     // Status codes (stable across re-seeds) — replace brittle magic numeric IDs.
     private static final String STATUS_REQUIRE_UPDATE  = "requireUpdate";
@@ -269,6 +270,15 @@ public class StockService {
 
         List<StockCommodity> stockCommodities = stockCommodityRepository.findByStockId(savedStock.getId());
         savedStock.setCommodities(commodityWithDetailsDao(stockCommodities));
+
+        // Any opening delivery above is recorded separately by recordReceipt, so a stock created with
+        // goods already in hand produces both the order and its first GRN on the trail.
+        auditService.record(pride.bank.erp.auditing.trail.AuditEventType.CREATED,
+                pride.bank.erp.auditing.trail.AuditModule.INVENTORY, "STOCK_ORDER_CREATED",
+                "Raised purchase order " + savedStock.getLpoNumber()
+                        + " with " + stockCommodities.size() + " commodity line(s)",
+                pride.bank.erp.auditing.trail.AuditSeverity.INFO,
+                "Stock", savedStock.getId());
 
         return savedStock;
     }
@@ -498,6 +508,14 @@ public class StockService {
         }
         recomputeStatus(stock);
         stockRepository.save(stock);
+
+        auditService.record(pride.bank.erp.auditing.trail.AuditEventType.CREATED,
+                pride.bank.erp.auditing.trail.AuditModule.INVENTORY, "STOCK_RECEIVED",
+                "Received " + grnReport.getName() + " against LPO " + stock.getLpoNumber()
+                        + " into " + destination.getName()
+                        + " — " + creditToStore.size() + " commodity line(s)",
+                pride.bank.erp.auditing.trail.AuditSeverity.INFO,
+                "Stock", stock.getId());
 
         return receipt;
     }
@@ -989,6 +1007,12 @@ public class StockService {
         stock.setDisposed(true);
         stock.setDisposalDate(LocalDateTime.now());
         stockRepository.save(stock);
+
+        auditService.record(pride.bank.erp.auditing.trail.AuditEventType.DELETED,
+                pride.bank.erp.auditing.trail.AuditModule.INVENTORY, "STOCK_DELETED",
+                "Deleted purchase order " + stock.getLpoNumber() + " and its GRNs",
+                pride.bank.erp.auditing.trail.AuditSeverity.WARNING,
+                "Stock", stockID);
 
         return DeleteResponse.builder()
                 .message(String.format("Stock with ID %d and its associated data have been marked as deleted.", stockID))

@@ -85,6 +85,19 @@ public interface AssetRepository extends JpaRepository<Asset, Long> {
 
     Optional<Asset> findByEngravedNumber(@Param("tagName") String tagName);
 
+    /*
+     * Duplicate guards for the bulk import.
+     *
+     * <p>Case-insensitive because an engraved number is transcribed by hand from a physical label,
+     * and "PBL/IT/0412" and "pbl/it/0412" are the same asset however they were typed.
+     *
+     * <p>Without these, re-uploading a spreadsheet duplicated the whole estate — and a retry after a
+     * partial failure is the normal way a migration goes, not an edge case.
+     */
+    boolean existsByEngravedNumberIgnoreCase(String engravedNumber);
+
+    boolean existsBySerialNumberIgnoreCase(String serialNumber);
+
     List<Asset> findByStockId(Long stockId);
 
     List<Asset> findByAssetTypeId(@Param("assetTypeId") Long assetTypeId);

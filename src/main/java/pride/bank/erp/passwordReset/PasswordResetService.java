@@ -11,6 +11,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import pride.bank.erp.auditing.trail.AuditEventType;
+import pride.bank.erp.auditing.trail.AuditModule;
+import pride.bank.erp.auditing.trail.AuditService;
+import pride.bank.erp.auditing.trail.AuditSeverity;
 import pride.bank.erp.config.JwtService;
 import pride.bank.erp.notification.Email;
 import pride.bank.erp.user.User;
@@ -28,12 +32,23 @@ public class PasswordResetService {
     private final JwtService jwtService;
     private final BCryptPasswordEncoder passwordEncoder;
     private final PasswordResetRepository passwordResetRepository;
+    /** Password changes are credential events; they belong in the trail whoever initiated them. */
+    private final AuditService auditService;
 
     @Transactional
     public Map<String, Object> requestPasswordReset(String email) {
         return userRepository.findByEmail(email)
                 .map(this::sendResetPasswordEmail)
-                .orElseGet(() -> createResponse(false, "Incorrect user email address", null));
+                .orElseGet(() -> {
+                    // Recorded even though the response tells the caller nothing useful: a run of
+                    // reset requests against addresses that do not exist is someone guessing at who
+                    // works here.
+                    auditService.recordAs(null, email,
+                            AuditEventType.REJECTED, AuditModule.SYSTEM, "PASSWORD_RESET_UNKNOWN_USER",
+                            "Password reset requested for unknown address " + email,
+                            AuditSeverity.WARNING);
+                    return createResponse(false, "Incorrect user email address", null);
+                });
     }
 
     private Map<String, Object> sendResetPasswordEmail(User user) {
@@ -60,6 +75,10 @@ public class PasswordResetService {
                     null
             );
         }
+
+        auditService.recordAs(user, user.getEmail(),
+                AuditEventType.SYSTEM, AuditModule.SYSTEM, "PASSWORD_RESET_REQUESTED",
+                "Requested a password reset link", AuditSeverity.WARNING);
 
         return createResponse(
                 true,
@@ -97,6 +116,12 @@ public class PasswordResetService {
     private Map<String, Object> updatePassword(User user, String newPassword) {
         user.setPassword(passwordEncoder.encode(newPassword));
         userRepository.save(user);
+
+        // Critical: a completed password change is the point at which control of an account can pass
+        // to someone else. If a reset was not expected, this is the row that says when.
+        auditService.recordAs(user, user.getEmail(),
+                AuditEventType.UPDATED, AuditModule.USERS, "PASSWORD_RESET_COMPLETED",
+                "Password was reset", AuditSeverity.CRITICAL);
 
         return createResponse(true, "Password reset successfully.", user.getEmail());
     }

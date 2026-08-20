@@ -203,6 +203,27 @@ public class AssetController {
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 
+    /**
+     * The dropdown sources, field configuration and row limits for an import template.
+     *
+     * <p>One call rather than the five the browser would otherwise make, and — more importantly —
+     * the same server that validates an import decides what the template offers, so the two cannot
+     * drift into a template whose dropdown values the importer rejects.
+     */
+    @GetMapping("/assets/import-template/{assetTypeId}")
+    public ResponseEntity<AssetImportTemplateDTO> assetImportTemplate(@PathVariable Long assetTypeId)
+            throws NotFoundException {
+        return new ResponseEntity<>(assetService.buildImportTemplate(assetTypeId), HttpStatus.OK);
+    }
+
+    /**
+     * Imports one batch of spreadsheet rows.
+     *
+     * <p>A batch, not a file: the browser splits a spreadsheet into {@code batchSize} chunks and
+     * posts them in sequence. A whole file in one request would exceed both the 2MB multipart limit
+     * and the client's 60-second timeout somewhere past two thousand rows, and would do it after
+     * committing an unknown number of them.
+     */
     @PostMapping("assets/bulk-insert")
     public ResponseEntity<Map<String, Object>> bulkInsertAsset(
             @RequestParam("assets") String assets,

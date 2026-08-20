@@ -64,6 +64,25 @@ public class UserService {
     private final LeaveRepository leaveRepository;
     private final TitleRepository titleRepository;
     private final RoleRepository roleRepository;
+    /**
+     * Account state changes are how access to this system is granted and taken away, so all of them
+     * are recorded at WARNING or above.
+     */
+    private final pride.bank.erp.auditing.trail.AuditService auditService;
+
+    /** Records a user-account event, tagged to the account it was performed on. */
+    private void audit(pride.bank.erp.auditing.trail.AuditEventType eventType, String action,
+                       User target, String description,
+                       pride.bank.erp.auditing.trail.AuditSeverity severity) {
+        auditService.record(eventType, pride.bank.erp.auditing.trail.AuditModule.USERS,
+                action, description, severity, "User", target.getId());
+    }
+
+    private static String describe(User user) {
+        String name = ((user.getFirstName() == null ? "" : user.getFirstName()) + " "
+                + (user.getLastName() == null ? "" : user.getLastName())).trim();
+        return (name.isEmpty() ? "user" : name) + " (" + user.getEmail() + ")";
+    }
 
     public User findUser(Long userId) throws NotFoundException {
         return userRepository.findById(userId)
@@ -149,6 +168,11 @@ public class UserService {
         }
 
         User savedUser = userRepository.save(newUser);
+        audit(pride.bank.erp.auditing.trail.AuditEventType.CREATED, "USER_CREATED", savedUser,
+                "Created account " + describe(savedUser)
+                        + (branch == null ? "" : " at " + branch.getName())
+                        + (title == null ? "" : ", title " + title.getName()),
+                pride.bank.erp.auditing.trail.AuditSeverity.WARNING);
         Response emailResponse = new Response("success",
                 "Account created successfully. A verification email has been sent to " + savedUser.getEmail() + ".");
         return UserResponse
@@ -163,6 +187,9 @@ public class UserService {
     public User updateUser(@NonNull UserDTO request, Long userId)
             throws NotFoundException {
         User user = findUser(userId);
+        // Captured before the setters overwrite it — the audit sentence below names the change, and a
+        // title change re-routes this person's approval ladder.
+        Title previousTitle = user.getTitle();
         Title title = titleService.findTitle(request.getTitle());
 
         // Duplicate checks excluding the current user's own values
@@ -201,20 +228,44 @@ public class UserService {
         user.setBlocked(request.isBlocked());
         user.setBranch(branch);
 
-        return userRepository.save(user);
+        User saved = userRepository.save(user);
+        /*
+         * The title is called out because it is not cosmetic: ApproverChainResolver walks the title's
+         * reportsTo line to decide who approves this person's movements, so changing it silently
+         * re-routes their approvals.
+         *
+         * Field-level before-and-after is left to Envers, which mirrors this entity already.
+         */
+        StringBuilder detail = new StringBuilder("Updated account " + describe(saved));
+        if (title != null && (previousTitle == null || !title.getId().equals(previousTitle.getId()))) {
+            detail.append(" — title ")
+                    .append(previousTitle == null ? "none" : previousTitle.getName())
+                    .append(" → ").append(title.getName());
+        }
+        audit(pride.bank.erp.auditing.trail.AuditEventType.UPDATED, "USER_UPDATED", saved,
+                detail.toString(), pride.bank.erp.auditing.trail.AuditSeverity.WARNING);
+        return saved;
     }
 
     public User deleteUser(Long userId) throws NotFoundException {
         User user = findUser(userId);
         user.setEnabled(false);
-        return userRepository.save(user);
+        User saved = userRepository.save(user);
+        audit(pride.bank.erp.auditing.trail.AuditEventType.DELETED, "USER_DISABLED", saved,
+                "Disabled account " + describe(saved),
+                pride.bank.erp.auditing.trail.AuditSeverity.CRITICAL);
+        return saved;
     }
 
     public User blockUser(Long userId) throws NotFoundException {
         User user = findUser(userId);
         user.setBlocked(true);
         user.setAccountNonLocked(false);
-        return userRepository.save(user);
+        User saved = userRepository.save(user);
+        audit(pride.bank.erp.auditing.trail.AuditEventType.UPDATED, "USER_BLOCKED", saved,
+                "Blocked account " + describe(saved),
+                pride.bank.erp.auditing.trail.AuditSeverity.CRITICAL);
+        return saved;
     }
 
     public User enableUser(Long userId) throws NotFoundException {
@@ -222,7 +273,11 @@ public class UserService {
         user.setEnabled(true);
         user.setAccountNonLocked(true);
         user.setBlocked(false);
-        return userRepository.save(user);
+        User saved = userRepository.save(user);
+        audit(pride.bank.erp.auditing.trail.AuditEventType.UPDATED, "USER_ENABLED", saved,
+                "Enabled account " + describe(saved),
+                pride.bank.erp.auditing.trail.AuditSeverity.CRITICAL);
+        return saved;
     }
 
     @Transactional
@@ -231,7 +286,12 @@ public class UserService {
         user.setAccountNonLocked(true);
         user.setBlocked(false);
         user.setFailedLoginAttempts(0);
-        return userRepository.save(user);
+        User saved = userRepository.save(user);
+        // Pairs with ACCOUNT_AUTO_BLOCKED: the trail should show both the lockout and who lifted it.
+        audit(pride.bank.erp.auditing.trail.AuditEventType.UPDATED, "USER_UNBLOCKED", saved,
+                "Unblocked account " + describe(saved) + " and reset its failed sign-in count",
+                pride.bank.erp.auditing.trail.AuditSeverity.CRITICAL);
+        return saved;
     }
 
     @Transactional

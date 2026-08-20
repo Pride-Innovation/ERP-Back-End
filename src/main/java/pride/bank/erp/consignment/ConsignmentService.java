@@ -5,6 +5,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pride.bank.erp.branch.Branch;
+import pride.bank.erp.auditing.trail.AuditEventType;
+import pride.bank.erp.auditing.trail.AuditModule;
+import pride.bank.erp.auditing.trail.AuditSeverity;
 import pride.bank.erp.branch.BranchRepository;
 import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.courier.Courier;
@@ -50,6 +53,7 @@ public class ConsignmentService {
     private final CurrentUserService currentUserService;
     /** Hand-overs delegate here so there is only ever one implementation of receiving a movement. */
     private final MovementService movementService;
+    private final pride.bank.erp.auditing.trail.AuditService auditService;
 
     // ── Assembly ─────────────────────────────────────────────────────────────
 
@@ -84,6 +88,10 @@ public class ConsignmentService {
         }
         log.info("Created consignment {} ({} → {})", consignment.getReference(),
                 source.getName(), destination.getName());
+        audit(AuditEventType.CREATED, "CONSIGNMENT_CREATED", consignment,
+                "Opened consignment " + consignment.getReference() + " ("
+                        + source.getName() + " → " + destination.getName() + ")",
+                AuditSeverity.INFO);
         return findConsignment(consignment.getId());
     }
 
@@ -207,6 +215,11 @@ public class ConsignmentService {
         }
         log.info("Dispatched consignment {} with {} movement(s) via {} (plate {})",
                 consignment.getReference(), movements.size(), courier.getName(), dto.getPlateNumber());
+        audit(AuditEventType.UPDATED, "CONSIGNMENT_DISPATCHED", consignment,
+                "Dispatched consignment " + consignment.getReference() + " carrying "
+                        + movements.size() + " movement(s) via " + courier.getName()
+                        + (isBlank(dto.getPlateNumber()) ? "" : ", plate " + dto.getPlateNumber()),
+                AuditSeverity.INFO);
         return findConsignment(consignmentId);
     }
 
@@ -231,6 +244,10 @@ public class ConsignmentService {
             movementRepository.save(movement);
         }
         consignment.setStatus(ConsignmentStatus.IN_TRANSIT);
+        audit(AuditEventType.UPDATED, "CONSIGNMENT_IN_TRANSIT", consignment,
+                "Consignment " + consignment.getReference()
+                        + " in transit — custody transferred to " + courierStore.getName(),
+                AuditSeverity.INFO);
         return consignmentRepository.save(consignment);
     }
 
@@ -265,6 +282,11 @@ public class ConsignmentService {
         consignment.setReceivingOfficer(currentUserService.getCurrentUser());
         log.info("Consignment {} arrived at {} — stock credited to {}", consignment.getReference(),
                 consignment.getDestLocation().getName(), landingStore.getName());
+        audit(AuditEventType.UPDATED, "CONSIGNMENT_ARRIVED", consignment,
+                "Consignment " + consignment.getReference() + " arrived at "
+                        + consignment.getDestLocation().getName() + " — stock credited to "
+                        + landingStore.getName(),
+                AuditSeverity.INFO);
         return consignmentRepository.save(consignment);
     }
 
@@ -319,6 +341,12 @@ public class ConsignmentService {
         }
 
         log.info("Handed over {} movement(s) from consignment {}", handedOver, consignment.getReference());
+        // The individual hand-overs are each recorded by MovementService#finalizeCompletion. This row
+        // is the batch itself, so the trail shows one branch session rather than only its parts.
+        audit(AuditEventType.UPDATED, "CONSIGNMENT_HANDED_OVER", consignment,
+                "Handed over " + handedOver + " movement(s) from consignment "
+                        + consignment.getReference(),
+                AuditSeverity.INFO);
         return findConsignment(consignmentId);
     }
 
@@ -352,7 +380,18 @@ public class ConsignmentService {
         if (reason != null && !reason.isBlank()) {
             consignment.setRemarks(reason);
         }
+        audit(AuditEventType.DELETED, "CONSIGNMENT_CANCELLED", consignment,
+                "Cancelled consignment " + consignment.getReference()
+                        + (isBlank(reason) ? "" : " — " + reason),
+                AuditSeverity.WARNING);
         return consignmentRepository.save(consignment);
+    }
+
+    /** Records a consignment event, tagged to the consignment itself. */
+    private void audit(AuditEventType eventType, String action, Consignment consignment,
+                       String description, AuditSeverity severity) {
+        auditService.record(eventType, AuditModule.MOVEMENT, action, description, severity,
+                "Consignment", consignment.getId());
     }
 
     // ── Reads ────────────────────────────────────────────────────────────────

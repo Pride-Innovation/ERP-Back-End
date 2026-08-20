@@ -74,6 +74,7 @@ public class WorkflowEngineService {
     private final ApproverChainResolver approverChainResolver;
     private final pride.bank.erp.issuance.IssuanceRepository issuanceRepository;
     private final pride.bank.erp.issuedAsset.IssuedAssetLifecycleService issuedAssetLifecycleService;
+    private final pride.bank.erp.auditing.trail.AuditService auditService;
 
     @Value("${application.admin.email}")
     private String adminEmail;
@@ -187,7 +188,26 @@ public class WorkflowEngineService {
                     stepLogRepository.save(logEntry);
                 });
 
-        if (logAction == StepLogAction.REJECTED) {
+        /*
+         * Recorded here rather than inside handleRejection/handleAdvancement so there is exactly one
+         * row per decision. Those methods also run on escalation and on system-driven steps, where
+         * nobody decided anything and a row would misattribute the outcome.
+         */
+        boolean rejected = logAction == StepLogAction.REJECTED;
+        auditService.record(
+                rejected ? pride.bank.erp.auditing.trail.AuditEventType.REJECTED
+                        : pride.bank.erp.auditing.trail.AuditEventType.APPROVED,
+                pride.bank.erp.auditing.trail.AuditModule.REQUESTS,
+                "REQUEST_" + logAction.name(),
+                logAction.name().charAt(0) + logAction.name().substring(1).toLowerCase()
+                        + " request #" + requestId + " at step " + currentOrder
+                        + (currentStep == null ? "" : " (" + currentStep.getStepName() + ")")
+                        + (comment == null || comment.isBlank() ? "" : ": " + comment),
+                rejected ? pride.bank.erp.auditing.trail.AuditSeverity.WARNING
+                        : pride.bank.erp.auditing.trail.AuditSeverity.INFO,
+                "Request", requestId);
+
+        if (rejected) {
             handleRejection(instance, request, actor, comment);
         } else {
             handleAdvancement(instance, workflow, currentStep, request, actor, comment);

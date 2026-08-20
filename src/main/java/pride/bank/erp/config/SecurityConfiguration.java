@@ -67,7 +67,6 @@ public class SecurityConfiguration {
                                         VERIFY_EMAIL,
                                         REQUEST_PASSWORD_RESET,
                                         RESET_PASSWORD,
-                                        AUDIT_ROUTE, // Audit route for test purpose
                                         "/swagger-ui/**",
                                         "/swagger-ui.html",
                                         "/v3/api-docs/**",
@@ -139,6 +138,17 @@ public class SecurityConfiguration {
                                 .requestMatchers(HttpMethod.POST, REQUEST_ISSUANCE).hasAuthority(ISSUE_ITEMS)
                                 .requestMatchers(HttpMethod.POST, REQUEST_ACKNOWLEDGEMENT).hasAuthority(ACKNOWLEDGE_REQUEST)
                                 .requestMatchers(HttpMethod.POST, ISSUANCE_APPROVAL).hasAuthority(APPROVE_ISSUANCE)
+
+                                // Audit — the activity log, the Envers revision views, and the
+                                // endpoint reports call to record an export.
+                                //
+                                // This route used to sit in the permitAll block above, marked "for
+                                // test purpose". That made every recorded action in the bank — with
+                                // the actor and their IP address — readable by anyone who could
+                                // reach the host, without a token. Authentication is the floor;
+                                // restricting it to an audit authority belongs with the wider
+                                // permissions pass.
+                                .requestMatchers(AUDIT_ROUTE).authenticated()
 
                                 .anyRequest()
                                 .authenticated()

@@ -13,6 +13,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pride.bank.erp.appnotification.AppNotificationService;
+import pride.bank.erp.auditing.trail.AuditEventType;
+import pride.bank.erp.auditing.trail.AuditModule;
+import pride.bank.erp.auditing.trail.AuditSeverity;
 import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.exception.BadRequestException;
 import pride.bank.erp.exception.NoApproverException;
@@ -45,6 +48,7 @@ public class MovementApprovalService {
     private final AppNotificationService notificationService;
     /** Mail is the redundant channel — an approver who is not logged in has no other prompt. */
     private final pride.bank.erp.notification.Email email;
+    private final pride.bank.erp.auditing.trail.AuditService auditService;
 
     @Value("${front-end.environment}")
     private String frontEndUrl;
@@ -104,6 +108,13 @@ public class MovementApprovalService {
                     movement.getId(),
                     currentUserService.getCurrentUser() != null ? currentUserService.getCurrentUser().getId() : null,
                     bypassReason);
+            // Critical, and the reason this module was instrumented first. A movement that skipped
+            // its ladder is indistinguishable on the list from one that cleared it; this row is what
+            // tells them apart to anyone not reading the approval trail itself.
+            audit(AuditEventType.SYSTEM, "MOVEMENT_APPROVAL_BYPASSED", movement,
+                    "Movement #" + movement.getId() + " proceeded WITHOUT approval — "
+                            + bypassReason + " [" + resolved.emptyReason() + "]",
+                    AuditSeverity.CRITICAL);
             return;
         }
         ResolvedApprover first = chain.get(0);
@@ -132,6 +143,10 @@ public class MovementApprovalService {
             movementRepository.save(movement);
             record(movement, tier.getApprover(), MovementApprovalAction.PENDING, tier.getRoleName(), next, null);
             notifyApprover(movement, tier.getApprover());
+            audit(AuditEventType.APPROVED, "MOVEMENT_APPROVED_TIER", movement,
+                    "Approved movement #" + movement.getId() + " at tier " + (next) + " — now with "
+                            + tier.getRoleName() + (isBlank(comment) ? "" : ": " + comment),
+                    AuditSeverity.INFO);
         } else {
             movement.setCurrentApprover(null);
             movement.setStatus(MovementStatus.INITIATED);
@@ -139,6 +154,10 @@ public class MovementApprovalService {
             notifyInitiatorOfOutcome(movement, "Movement approved",
                     "Movement #" + movement.getId() + " is fully approved and ready to dispatch.",
                     MovementApprovalAction.APPROVED, comment);
+            audit(AuditEventType.APPROVED, "MOVEMENT_APPROVED_FINAL", movement,
+                    "Gave final approval to movement #" + movement.getId()
+                            + " — cleared for dispatch" + (isBlank(comment) ? "" : ": " + comment),
+                    AuditSeverity.INFO);
         }
         return movement;
     }
@@ -160,6 +179,10 @@ public class MovementApprovalService {
                 "Movement #" + movement.getId() + " was rejected"
                         + (comment != null && !comment.isBlank() ? ": " + comment : "."),
                 MovementApprovalAction.REJECTED, comment);
+        audit(AuditEventType.REJECTED, "MOVEMENT_REJECTED", movement,
+                "Rejected movement #" + movement.getId() + " — cancelled"
+                        + (isBlank(comment) ? "" : ": " + comment),
+                AuditSeverity.WARNING);
         return movement;
     }
 
@@ -178,6 +201,17 @@ public class MovementApprovalService {
             return comment;
         }
         return comment.substring(0, 997) + "...";
+    }
+
+    /** Records an approval event under the Movement module, tagged to the movement itself. */
+    private void audit(AuditEventType eventType, String action, Movement movement,
+                       String description, AuditSeverity severity) {
+        auditService.record(eventType, AuditModule.MOVEMENT, action, description, severity,
+                "Movement", movement.getId());
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     private List<ResolvedApprover> resolveChain(Movement movement) {
@@ -305,7 +339,16 @@ public class MovementApprovalService {
         return name.isEmpty() ? null : name;
     }
 
+    /**
+     * Deep link to the movement itself, not the list.
+     *
+     * <p>The route is {@code /assets-mgt/movement/view/:id}. This previously built
+     * {@code /assets-mgt/movement?id=N}, and nothing on the list page reads that query param — so
+     * every approval email and bell notification dropped the approver on the full list to hunt for
+     * the movement by hand. That matters more now that the "pending my approval" table is gone: the
+     * link is the route to the decision.
+     */
     private String movementLink(Movement movement) {
-        return frontEndUrl + "/assets-mgt/movement?id=" + movement.getId();
+        return frontEndUrl + "/assets-mgt/movement/view/" + movement.getId();
     }
 }

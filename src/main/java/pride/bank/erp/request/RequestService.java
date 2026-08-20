@@ -68,6 +68,7 @@ public class RequestService {
     private static final String STATIONERY_TYPE = "Stationery";
 
     private final RequestRepository requestRepository;
+    private final pride.bank.erp.auditing.trail.AuditService auditService;
     private final FileUpload fileUpload;
     private final RequestSearchDao requestSearchDao;
     private final StatusService statusService;
@@ -174,6 +175,12 @@ public class RequestService {
         List<RequestCommodity> requestCommodities = requestCommodityRepository.findByRequestId(savedRequest.getId());
         List<CommodityWithQuantityDTO> commodities = commodityWithQuantityDTO(requestCommodities);
         savedRequest.setCommodities(commodities);
+
+        auditService.record(pride.bank.erp.auditing.trail.AuditEventType.CREATED,
+                pride.bank.erp.auditing.trail.AuditModule.REQUESTS, "REQUEST_CREATED",
+                "Raised request #" + savedRequest.getId() + " for " + commodities.size() + " item line(s)",
+                pride.bank.erp.auditing.trail.AuditSeverity.INFO,
+                "Request", savedRequest.getId());
 
         String emailStatus = "Notification pending";
 
@@ -367,6 +374,11 @@ public class RequestService {
             request.setDeletionDate(LocalDateTime.now());
             requestRepository.save(request);
             log.info("Successfully marked request ID {} as deleted", id);
+            auditService.record(pride.bank.erp.auditing.trail.AuditEventType.DELETED,
+                    pride.bank.erp.auditing.trail.AuditModule.REQUESTS, "REQUEST_DELETED",
+                    "Deleted request #" + id,
+                    pride.bank.erp.auditing.trail.AuditSeverity.WARNING,
+                    "Request", id);
             return new DeleteResponse(Constants.DELETED_SUCCESSFULLY, true);
         } else {
             log.warn("Failed to delete request - ID {} not found", id);

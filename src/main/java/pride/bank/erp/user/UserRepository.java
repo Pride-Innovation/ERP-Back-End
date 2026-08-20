@@ -22,6 +22,17 @@ import java.util.Optional;
 public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByEmail(String email);
 
+    /**
+     * Resolves the holder named on an asset-import row.
+     *
+     * <p>Staff number rather than name: two people share a name often enough that matching on one
+     * would silently assign assets to the wrong person, and a staff number is what an asset register
+     * exported from an older system actually carries.
+     */
+    Optional<User> findByStaffNumberIgnoreCase(String staffNumber);
+
+    Optional<User> findByEmailIgnoreCase(String email);
+
     boolean existsByEmail(String email);
 
     boolean existsByStaffNumber(String staffNumber);

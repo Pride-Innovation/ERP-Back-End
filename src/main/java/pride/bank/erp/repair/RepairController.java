@@ -45,6 +45,31 @@ public class RepairController {
         }
     }
 
+    /**
+     * Every repair across the estate — the maintenance report's source.
+     *
+     * <p>Distinct from {@code /assets/repairs/{assetId}} below, which answers only for one asset and
+     * so could never support a report asking what has been repaired bank-wide.
+     */
+    @GetMapping(value = "/assets/repairs")
+    public ResponseEntity<Page<RepairDTO>> listAllRepairs(
+            @RequestParam(required = false, defaultValue = "50") int pageSize,
+            @RequestParam(required = false, defaultValue = "0") int pageNumber,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) Long assetTypeId,
+            @RequestParam(required = false)
+            @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME)
+            java.time.LocalDateTime startDate,
+            @RequestParam(required = false)
+            @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME)
+            java.time.LocalDateTime endDate
+    ) {
+        Pageable pageable = PageRequest.of(pageNumber, pageSize,
+                org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "repairStartDate"));
+        return new ResponseEntity<>(
+                repairService.listAllRepairs(status, assetTypeId, startDate, endDate, pageable), HttpStatus.OK);
+    }
+
     @GetMapping(value = "/assets/repairs/{assetId}")
     public ResponseEntity<Page<RepairDTO>> listRepairDetails(
             @PathVariable Long assetId,

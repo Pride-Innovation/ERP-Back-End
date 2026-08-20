@@ -37,6 +37,10 @@ import pride.bank.erp.user.User;
 import pride.bank.erp.user.UserRepository;
 
 import java.time.LocalDateTime;
+import pride.bank.erp.auditing.trail.AuditEventType;
+import pride.bank.erp.auditing.trail.AuditModule;
+import pride.bank.erp.auditing.trail.AuditSeverity;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -66,6 +70,11 @@ public class MovementService {
     private final FileUpload fileUpload;
     private final CourierService courierService;
     private final IssuedAssetLifecycleService issuedAssetLifecycleService;
+    /**
+     * Stock physically leaving a building is the highest-consequence thing this application does, so
+     * every state change on a movement goes on the audit trail.
+     */
+    private final pride.bank.erp.auditing.trail.AuditService auditService;
 
     @Transactional
     public Movement createMovement(MovementDTO dto) throws NotFoundException {
@@ -159,6 +168,11 @@ public class MovementService {
                 source != null ? source.getName() : "user " + sourceUser.getId(),
                 dest != null ? dest.getName() : "user " + (recipient != null ? recipient.getId() : null));
 
+        audit(AuditEventType.CREATED, "MOVEMENT_CREATED", saved,
+                "Created " + typeLabel(saved) + " movement #" + saved.getId()
+                        + " (" + routeLabel(saved) + ") with " + saved.getItems().size() + " item(s)",
+                AuditSeverity.INFO);
+
         if (requiresApproval(dto, category, request)) {
             boolean bypass = Boolean.TRUE.equals(dto.getProceedWithoutApproval());
             if (bypass && isBlank(dto.getBypassReason())) {
@@ -168,6 +182,38 @@ public class MovementService {
             movementApprovalService.startApproval(saved, bypass, dto.getBypassReason());
         }
         return saved;
+    }
+
+    // ── Audit trail ───────────────────────────────────────────────────────────
+
+    /** Records a movement event under the Movement module, tagged to the movement itself. */
+    private void audit(AuditEventType eventType, String action, Movement movement,
+                       String description, AuditSeverity severity) {
+        auditService.record(eventType, AuditModule.MOVEMENT, action, description, severity,
+                "Movement", movement.getId());
+    }
+
+    private static String typeLabel(Movement movement) {
+        return movement.getMovementType() == null ? "movement"
+                : movement.getMovementType().name().replace('_', ' ').toLowerCase();
+    }
+
+    /** "Head Office IT Store → Gulu Branch", with either end possibly being a person. */
+    private static String routeLabel(Movement movement) {
+        String from = movement.getSourceStore() != null
+                ? movement.getSourceStore().getName()
+                : personName(movement.getSourceUser());
+        String to = movement.getDestStore() != null
+                ? movement.getDestStore().getName()
+                : personName(movement.getRecipientUser());
+        return (from == null ? "—" : from) + " → " + (to == null ? "—" : to);
+    }
+
+    private static String personName(User user) {
+        if (user == null) return null;
+        String name = ((user.getFirstName() == null ? "" : user.getFirstName()) + " "
+                + (user.getLastName() == null ? "" : user.getLastName())).trim();
+        return name.isEmpty() ? user.getEmail() : name;
     }
 
     /**
@@ -297,7 +343,14 @@ public class MovementService {
         movement.setStatus(MovementStatus.DISPATCHED);
         log.info("Dispatched movement {} to courier {} (plate {}, tracking {})",
                 movementId, courier.getName(), dto.getPlateNumber(), dto.getTrackingNumber());
-        return movementRepository.save(movement);
+        Movement saved = movementRepository.save(movement);
+        audit(AuditEventType.UPDATED, "MOVEMENT_DISPATCHED", saved,
+                "Dispatched movement #" + saved.getId() + " (" + routeLabel(saved) + ") via "
+                        + courier.getName()
+                        + (isBlank(dto.getPlateNumber()) ? "" : ", plate " + dto.getPlateNumber())
+                        + (isBlank(dto.getTrackingNumber()) ? "" : ", tracking " + dto.getTrackingNumber()),
+                AuditSeverity.INFO);
+        return saved;
     }
 
     /**
@@ -324,7 +377,14 @@ public class MovementService {
             movement.setCustodyTransferSettled(true);
         }
         movement.setStatus(MovementStatus.IN_TRANSIT);
-        return movementRepository.save(movement);
+        Movement saved = movementRepository.save(movement);
+        // The point custody actually changes hands — the items are now booked to the courier, not
+        // the source store. Worth its own row rather than being folded into dispatch.
+        audit(AuditEventType.UPDATED, "MOVEMENT_IN_TRANSIT", saved,
+                "Movement #" + saved.getId() + " in transit — custody transferred to "
+                        + saved.getCourier().getName(),
+                AuditSeverity.INFO);
+        return saved;
     }
 
     /**
@@ -399,6 +459,11 @@ public class MovementService {
         if (movement.getRequest() != null) {
             issuedAssetLifecycleService.restoreToAvailable(movement.getRequest());
         }
+
+        audit(AuditEventType.DELETED, "MOVEMENT_CANCELLED", saved,
+                "Cancelled movement #" + saved.getId() + " (" + routeLabel(saved) + ")"
+                        + (isBlank(reason) ? "" : " — " + reason),
+                AuditSeverity.WARNING);
         return saved;
     }
 
@@ -416,7 +481,16 @@ public class MovementService {
         if (remarks != null && !remarks.isBlank()) {
             movement.setRemarks(remarks);
         }
-        return movementRepository.save(movement);
+        Movement saved = movementRepository.save(movement);
+        // Anything other than a clean receipt is flagged: a short or damaged delivery is the
+        // discrepancy someone will need to reconstruct later.
+        boolean clean = receiptStatus == ReceiptStatus.RECEIVED_OK;
+        audit(AuditEventType.UPDATED, "MOVEMENT_COMPLETED", saved,
+                "Completed movement #" + saved.getId() + " (" + routeLabel(saved) + ") — received "
+                        + receiptStatus.name().replace('_', ' ').toLowerCase()
+                        + (isBlank(remarks) ? "" : ": " + remarks),
+                clean ? AuditSeverity.INFO : AuditSeverity.WARNING);
+        return saved;
     }
 
     /*

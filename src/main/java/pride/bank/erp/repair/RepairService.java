@@ -29,6 +29,22 @@ public class RepairService {
     private final FileUpload fileUpload;
     private final StatusService statusService;
     private final AssetRepository assetRepository;
+    private final pride.bank.erp.auditing.trail.AuditService auditService;
+
+    /** Records a maintenance event, tagged to the asset rather than the repair record. */
+    private void audit(pride.bank.erp.auditing.trail.AuditEventType eventType, String action,
+                       Asset asset, String description) {
+        auditService.record(eventType, pride.bank.erp.auditing.trail.AuditModule.MAINTENANCE,
+                action, description, pride.bank.erp.auditing.trail.AuditSeverity.INFO,
+                "Asset", asset.getId());
+    }
+
+    /** "Dell Latitude 5540 (PBL/IT/0412)" — the tag is how staff identify an item. */
+    private static String describe(Asset asset) {
+        String name = asset.getAssetName() == null ? "asset" : asset.getAssetName();
+        String tag = asset.getEngravedNumber();
+        return (tag == null || tag.isBlank()) ? name + " (#" + asset.getId() + ")" : name + " (" + tag + ")";
+    }
 
     @Transactional
     public AssetDAO createRepair(Long assetId,
@@ -74,12 +90,23 @@ public class RepairService {
                 .build();
 
         repairRepository.save(repair);
+        audit(pride.bank.erp.auditing.trail.AuditEventType.CREATED, "REPAIR_RAISED", asset,
+                "Sent " + describe(asset) + " for repair by " + technician + " — " + repairReason);
         return assetService.buildAssetDao(asset);
     }
 
     @Transactional
     public Page<RepairDTO> listRepairDetails(Long assetId, Pageable pageable) {
         return repairRepository.findByAssetId(assetId, pageable)
+                .map(this::convertToDTO);
+    }
+
+    /** Repairs across every asset, for the maintenance report. Each filter is optional. */
+    public Page<RepairDTO> listAllRepairs(
+            String status, Long assetTypeId,
+            java.time.LocalDateTime from, java.time.LocalDateTime to,
+            Pageable pageable) {
+        return repairRepository.findForReport(status, assetTypeId, from, to, pageable)
                 .map(this::convertToDTO);
     }
 
@@ -94,6 +121,9 @@ public class RepairService {
                 .make(asset.getMake())
                 .model(asset.getModel())
                 .engravedNumber(asset.getEngravedNumber())
+                // Carried so the maintenance report can say where a repaired asset belongs; without
+                // it every row read "—" under Branch.
+                .branch(asset.getBranch())
                 .assetType(asset.getAssetType() != null ?
                         AssetType.builder()
                                 .id(asset.getAssetType().getId())
@@ -150,6 +180,10 @@ public class RepairService {
         repair.setCompletionNotes(completionNotes);
         repair.setCompletionDocuments(documentPaths);
         repair.setStatus("Completed");
-        return repairRepository.save(repair);
+        Repair saved = repairRepository.save(repair);
+        audit(pride.bank.erp.auditing.trail.AuditEventType.UPDATED, "REPAIR_COMPLETED", asset,
+                "Completed repair on " + describe(asset) + " — returned to store"
+                        + (completionNotes == null || completionNotes.isBlank() ? "" : ": " + completionNotes));
+        return saved;
     }
 }

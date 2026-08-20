@@ -19,11 +19,17 @@ import pride.bank.erp.assetAssignmentHostory.AssetAssignmentHistory;
 import pride.bank.erp.assetAssignmentHostory.AssetAssignmentHistoryRepository;
 import pride.bank.erp.assetType.AssetType;
 import pride.bank.erp.assetType.AssetTypeService;
+import pride.bank.erp.auditing.trail.AuditEventType;
+import pride.bank.erp.auditing.trail.AuditModule;
+import pride.bank.erp.auditing.trail.AuditSeverity;
 import pride.bank.erp.branch.Branch;
+import pride.bank.erp.branch.BranchRepository;
 import pride.bank.erp.branch.BranchService;
 import pride.bank.erp.commodity.Commodity;
+import pride.bank.erp.commodity.CommodityRepository;
 import pride.bank.erp.commodity.CommodityService;
 import pride.bank.erp.config.CurrentUserService;
+import pride.bank.erp.exception.BadRequestException;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.FileUpload;
 import pride.bank.erp.inventory.InventoryService;
@@ -36,14 +42,17 @@ import pride.bank.erp.store.Store;
 import pride.bank.erp.store.StoreRepository;
 import pride.bank.erp.store.StoreService;
 import pride.bank.erp.status.Status;
+import pride.bank.erp.status.StatusRepository;
 import pride.bank.erp.status.StatusService;
 import pride.bank.erp.stock.Stock;
 import pride.bank.erp.stock.StockRepository;
 import pride.bank.erp.stockCommodity.StockCommodity;
 import pride.bank.erp.stockCommodity.StockCommodityRepository;
 import pride.bank.erp.supplier.Supplier;
+import pride.bank.erp.supplier.SupplierRepository;
 import pride.bank.erp.supplier.SupplierService;
 import pride.bank.erp.user.User;
+import pride.bank.erp.user.UserRepository;
 import pride.bank.erp.user.UserService;
 
 import java.io.IOException;
@@ -51,10 +60,14 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
@@ -81,6 +94,20 @@ public class AssetService {
     private final InventoryService inventoryService;
     private final MovementService movementService;
     private final pride.bank.erp.config.BranchScopeService branchScopeService;
+    private final pride.bank.erp.auditing.trail.AuditService auditService;
+    /*
+     * Repositories, not the matching services, for the bulk import.
+     *
+     * Every one of these is needed for a by-name lookup that must return "not found" rather than
+     * throw or invent a default — the services either wrap the miss in a NotFoundException carrying
+     * the wrong message for a spreadsheet row, or fall back silently, which is the behaviour the
+     * rewritten importer exists to remove.
+     */
+    private final BranchRepository branchRepository;
+    private final UserRepository userRepository;
+    private final SupplierRepository supplierRepository;
+    private final CommodityRepository commodityRepository;
+    private final StatusRepository statusRepository;
 
     /** Upper bound on assets scanned in-memory when computing the derived "due for disposal" list. */
     private static final int DISPOSAL_SCAN_LIMIT = 10_000;
@@ -206,7 +233,40 @@ public class AssetService {
                 .commodity(commodity)
                 .temporaryPool(Boolean.TRUE.equals(request.getTemporaryPool()))
                 .build();
-        return assetRepository.save(asset);
+        Asset saved = assetRepository.save(asset);
+        auditAsset(AuditEventType.CREATED, "ASSET_CREATED", saved,
+                "Registered asset " + describe(saved)
+                        + (branch == null ? "" : " at " + branch.getName()),
+                AuditSeverity.INFO);
+        return saved;
+    }
+
+    // ── Audit trail ───────────────────────────────────────────────────────────
+
+    /** Records an asset event, tagged to the asset so its whole history can be pulled by id. */
+    private void auditAsset(AuditEventType eventType, String action, Asset asset,
+                            String description, AuditSeverity severity) {
+        auditService.record(eventType, AuditModule.ASSETS, action, description, severity,
+                "Asset", asset.getId());
+    }
+
+    /**
+     * "Dell Latitude 5540 (PBL/IT/0412)".
+     *
+     * <p>The engraved number is what staff actually use to identify an item, so it goes in the
+     * sentence rather than leaving the reader to look the id up.
+     */
+    private static String describe(Asset asset) {
+        String name = asset.getAssetName() == null ? "asset" : asset.getAssetName();
+        String tag = asset.getEngravedNumber();
+        return (tag == null || tag.isBlank()) ? name + " (#" + asset.getId() + ")" : name + " (" + tag + ")";
+    }
+
+    private static String personName(User user) {
+        if (user == null) return null;
+        String name = ((user.getFirstName() == null ? "" : user.getFirstName()) + " "
+                + (user.getLastName() == null ? "" : user.getLastName())).trim();
+        return name.isEmpty() ? user.getEmail() : name;
     }
 
     private Sort.Direction determineSortDirection(String direction) {
@@ -323,7 +383,36 @@ public class AssetService {
         if (request.getTemporaryPool() != null) {
             asset.setTemporaryPool(request.getTemporaryPool());
         }
-        return buildAssetDao(assetRepository.save(asset));
+        Asset saved = assetRepository.save(asset);
+
+        /*
+         * One row per edit, not one per changed field.
+         *
+         * Envers already holds the field-level before-and-after for every column on this entity; the
+         * trail's job is to say that someone edited this asset, when, and from where. Duplicating the
+         * column diff here would double the storage to answer a question Envers answers better.
+         *
+         * The two changes that are called out are the ones with consequences elsewhere: who holds the
+         * asset, and what state it is in.
+         */
+        StringBuilder detail = new StringBuilder("Updated asset " + describe(saved));
+        if (!sameUser(oldAssignedTo, assignedTo)) {
+            detail.append(" — holder ")
+                    .append(oldAssignedTo == null ? "unassigned" : personName(oldAssignedTo))
+                    .append(" → ")
+                    .append(assignedTo == null ? "unassigned" : personName(assignedTo));
+        }
+        if (status != null && oldStatus != null && !status.getId().equals(oldStatus.getId())) {
+            detail.append(" — status ").append(oldStatus.getName()).append(" → ").append(status.getName());
+        }
+        auditAsset(AuditEventType.UPDATED, "ASSET_UPDATED", saved, detail.toString(), AuditSeverity.INFO);
+
+        return buildAssetDao(saved);
+    }
+
+    private static boolean sameUser(User a, User b) {
+        if (a == null || b == null) return a == b;
+        return a.getId() != null && a.getId().equals(b.getId());
     }
 
     /**
@@ -676,6 +765,11 @@ public class AssetService {
         asset.setDisposed(true);
         asset.setDisposalDate(LocalDateTime.now());
         Asset data = assetRepository.save(asset);
+        // Filed under Disposal rather than Assets: it is the end of the item's life, and the people
+        // who audit write-offs will be filtering for exactly this.
+        auditService.record(AuditEventType.DELETED, AuditModule.DISPOSAL, "ASSET_DISPOSED",
+                "Disposed of asset " + describe(data), AuditSeverity.WARNING,
+                "Asset", data.getId());
         return buildAssetDao(data);
     }
 
@@ -699,6 +793,10 @@ public class AssetService {
             addEndDateForPreviousAssignedTo(assetID, previousUserId);
         }
         notifyUserAfterAssignment(user, asset);
+        auditAsset(AuditEventType.UPDATED, "ASSET_ASSIGNED", asset,
+                "Assigned asset " + describe(asset) + " to " + personName(user)
+                        + (asset.getBranch() == null ? "" : " at " + asset.getBranch().getName()),
+                AuditSeverity.INFO);
         return data;
     }
 
@@ -777,7 +875,16 @@ public class AssetService {
         asset.setAssetStatus(statusService.findByStatusCode(
                 asset.isTemporaryPool() ? "issuanceAvailable" : "sentToStore"));
 
-        return buildAssetDao(assetRepository.save(asset));
+        Asset saved = assetRepository.save(asset);
+        // The RETURN_TO_STORE movement above is audited in its own right, but only when someone was
+        // holding the asset — and it says nothing about the pool flag, which decides whether the item
+        // can be loaned out again.
+        auditAsset(AuditEventType.UPDATED, "ASSET_SENT_TO_STORE", saved,
+                "Sent asset " + describe(saved) + " to " + destination.getName()
+                        + (holder == null ? "" : ", handed back by " + personName(holder))
+                        + (saved.isTemporaryPool() ? " — held as temporary pool stock" : ""),
+                AuditSeverity.INFO);
+        return buildAssetDao(saved);
     }
 
     /** Where an asset goes when no store is named: the ADMIN store of the branch holding it. */
@@ -793,46 +900,321 @@ public class AssetService {
         return storeService.resolveAdminStore(branch);
     }
 
+    /**
+     * The largest number of rows one request may carry.
+     *
+     * <p>Two hard ceilings sit behind this: {@code spring.servlet.multipart.max-request-size} is 2MB,
+     * which a ~700-byte JSON row exhausts at roughly 2,900 rows, and the browser's HTTP client gives
+     * up after 60 seconds, which at 15-40ms of lookups and a save per row falls somewhere around
+     * 2,400. A single large request therefore fails somewhere past two thousand rows — and it fails
+     * opaquely, after committing an unknown number of them.
+     *
+     * <p>So the browser chunks a file into batches of this size and posts them in sequence. Each
+     * batch is well inside both limits, progress is visible, and because rows commit independently a
+     * failed batch costs nothing that came before it.
+     */
+    public static final int BULK_IMPORT_BATCH_LIMIT = 200;
+
+    /** Rows one spreadsheet may carry. Not a technical limit — see {@link #buildImportTemplate}. */
+    public static final int BULK_IMPORT_MAX_ROWS = 2_000;
+
+    /**
+     * The dropdown sources, field configuration and limits behind an asset import template.
+     *
+     * <p>{@link #BULK_IMPORT_MAX_ROWS} is a judgement rather than a ceiling: with the file chunked
+     * into {@link #BULK_IMPORT_BATCH_LIMIT}-row requests there is no technical reason a larger one
+     * could not be processed. It exists because somebody has to read the failures — two thousand
+     * error rows is already more than anyone will work through in one sitting — and because it keeps
+     * the blast radius of a badly prepared file small enough to be worth redoing.
+     */
+    @Transactional(readOnly = true)
+    public AssetImportTemplateDTO buildImportTemplate(Long assetTypeId) throws NotFoundException {
+        AssetType assetType = assetTypeService.findOneAssetType(assetTypeId);
+
+        // Resolved through the allow-list rather than by listing every status, so the dropdown can
+        // only ever offer what insertSingleAssetRow will accept.
+        List<String> statusNames = AssetImportStatuses.IMPORTABLE.stream()
+                .map(code -> statusRepository.findByStatus(code).orElse(null))
+                .filter(Objects::nonNull)
+                .map(Status::getName)
+                .toList();
+
+        List<String> staff = userRepository.findAll().stream()
+                .filter(u -> u.getStaffNumber() != null && !u.getStaffNumber().isBlank())
+                .filter(User::isEnabled)
+                .map(u -> u.getStaffNumber() + " — "
+                        + ((u.getFirstName() == null ? "" : u.getFirstName()) + " "
+                        + (u.getLastName() == null ? "" : u.getLastName())).trim())
+                .sorted()
+                .toList();
+
+        return AssetImportTemplateDTO.builder()
+                .assetTypeId(assetType.getId())
+                .assetTypeName(assetType.getName())
+                .fieldConfig(assetType.getFieldConfig())
+                .branches(branchRepository.findAll().stream()
+                        .map(Branch::getName).filter(Objects::nonNull).sorted().toList())
+                .suppliers(supplierRepository.findAll().stream()
+                        .map(Supplier::getName).filter(Objects::nonNull).sorted().toList())
+                .commodities(commodityRepository.findAllByAssetType_Id(assetTypeId).stream()
+                        .map(Commodity::getName).filter(Objects::nonNull).distinct().sorted().toList())
+                .statuses(statusNames)
+                .staff(staff)
+                .batchSize(BULK_IMPORT_BATCH_LIMIT)
+                .maxRows(BULK_IMPORT_MAX_ROWS)
+                .build();
+    }
+
+    /**
+     * Creates assets from a spreadsheet, one row at a time.
+     *
+     * <p>Rewritten from a version that wrapped the whole loop in a single try/catch. That shape had
+     * three faults which together made a failed import impossible to recover from: the first bad row
+     * abandoned every row after it while leaving the ones before it committed; the response carried
+     * no counts and no row numbers, so nobody could tell what had happened or how far it got; and
+     * nothing checked for duplicates, so the natural response — fix the file and upload it again —
+     * duplicated every asset that had already succeeded.
+     *
+     * <p>Now each row is attempted and reported on its own, exactly as {@code bulkInsertUsers} does,
+     * and the result names the failures by spreadsheet row so the file can be corrected and safely
+     * re-uploaded.
+     *
+     * <p>Deliberately not {@code @Transactional}: each {@code save} runs in its own implicit
+     * transaction, so a row that throws rolls back only itself.
+     *
+     * @param assetTypeID the category being imported into. Comes from the page rather than a column
+     *                    — the assets screen is per-category, and it keeps the template narrower.
+     */
     public Map<String, Object> bulkInsertAsset(List<BulkAssetDTO> assetList, Long assetTypeID)
             throws NotFoundException {
-        Branch defaultBranch = branchService.findBranch(1L); // Default to Head Office
-        Status status = statusService.findByStatusCode("requireUpdate"); // Requires detail completion
         AssetType assetType = assetTypeService.findOneAssetType(assetTypeID);
+        int total = assetList == null ? 0 : assetList.size();
 
-        Map<String, Object> data = new HashMap<>();
-
-        try {
-            for (BulkAssetDTO dto : assetList) {
-                Branch branch = branchService.findBranchByName(dto.getLocation());
-
-                if (branch == null) {
-                    branch = defaultBranch;
-                }
-                LocalDate dateReceipt = LocalDate.of(1899, 12, 30).plusDays(dto.getDateOfPmVerification());
-                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-                String dateReceiptString = dateReceipt.format(formatter);
-
-                Asset asset = Asset.builder()
-                        .assetName(dto.getProductName())
-                        .engravedNumber(dto.getAssetTag())
-                        .serialNumber(dto.getAssetSerialNo())
-                        .model(dto.getModel())
-                        .branch(branch)
-                        .assetStatus(status)
-                        .disposed(false)
-                        .assetType(assetType)
-                        .dateReceipt(dateReceiptString)
-                        .build();
-                assetRepository.save(asset);
-            }
-
-            data.put("message", "Assets created");
-            data.put("success", true);
-        } catch (Exception e) {
-            data.put("message", e.getMessage());
-            data.put("success", false);
+        if (total > BULK_IMPORT_BATCH_LIMIT) {
+            throw new BadRequestException("An import batch may carry at most "
+                    + BULK_IMPORT_BATCH_LIMIT + " rows; this one has " + total + ".");
         }
-        return data;
+
+        List<Map<String, Object>> errors = new ArrayList<>();
+        int successCount = 0;
+
+        /*
+         * Engraved numbers and serials seen earlier in this batch.
+         *
+         * A spreadsheet repeating a tag on rows 12 and 84 is at least as likely as one clashing with
+         * the database — a copy-paste while preparing the file does it. Checking only the database
+         * would let both rows through, since neither is committed when the other is validated.
+         */
+        Set<String> engravedInBatch = new HashSet<>();
+        Set<String> serialsInBatch = new HashSet<>();
+
+        for (int i = 0; i < total; i++) {
+            BulkAssetDTO dto = assetList.get(i);
+            long rowNumber = dto.getNo() != null ? dto.getNo() : (i + 1);
+
+            try {
+                insertSingleAssetRow(dto, assetType, engravedInBatch, serialsInBatch);
+                successCount++;
+            } catch (Exception e) {
+                Map<String, Object> err = new LinkedHashMap<>();
+                err.put("row", rowNumber);
+                err.put("assetName", dto.getAssetName());
+                err.put("engravedNumber", dto.getEngravedNumber());
+                err.put("serialNumber", dto.getSerialNumber());
+                err.put("error", e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+                errors.add(err);
+            }
+        }
+
+        if (successCount > 0) {
+            auditService.record(AuditEventType.CREATED, AuditModule.ASSETS, "ASSETS_BULK_IMPORTED",
+                    "Imported " + successCount + " of " + total + " " + assetType.getName()
+                            + " asset(s) from a spreadsheet"
+                            + (errors.isEmpty() ? "" : " — " + errors.size() + " row(s) failed"),
+                    errors.isEmpty() ? AuditSeverity.WARNING : AuditSeverity.CRITICAL);
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        // As with users: "success" means some row landed, not that every row was perfect. A partial
+        // import is a normal outcome and the caller distinguishes it by comparing inserted to total.
+        result.put("success", successCount > 0);
+        result.put("total", total);
+        result.put("inserted", successCount);
+        result.put("failed", errors.size());
+        result.put("errors", errors);
+        return result;
+    }
+
+    /**
+     * Validates and saves one spreadsheet row.
+     *
+     * <p>Every lookup is strict. The previous importer fell back to Head Office whenever a branch
+     * name did not match, so a typo filed the asset in the wrong building and said nothing — the
+     * kind of error that is only discovered during a physical count a year later. A name that does
+     * not resolve is a row error naming the value that failed, and the row is skipped.
+     */
+    private void insertSingleAssetRow(BulkAssetDTO dto, AssetType assetType,
+                                      Set<String> engravedInBatch, Set<String> serialsInBatch)
+            throws NotFoundException {
+
+        String assetName = AssetImportParsing.trimToNull(dto.getAssetName());
+        String engravedNumber = AssetImportParsing.trimToNull(dto.getEngravedNumber());
+        String serialNumber = AssetImportParsing.trimToNull(dto.getSerialNumber());
+
+        if (assetName == null) throw new BadRequestException("Asset Name is required.");
+        if (engravedNumber == null) throw new BadRequestException("Engraved Number is required.");
+
+        // ── Duplicates, against this batch and against what is already recorded ──
+        if (!engravedInBatch.add(engravedNumber.toLowerCase())) {
+            throw new BadRequestException("Engraved Number '" + engravedNumber
+                    + "' appears more than once in this file.");
+        }
+        if (assetRepository.existsByEngravedNumberIgnoreCase(engravedNumber)) {
+            throw new BadRequestException("Engraved Number '" + engravedNumber
+                    + "' is already recorded against another asset.");
+        }
+        if (serialNumber != null) {
+            if (!serialsInBatch.add(serialNumber.toLowerCase())) {
+                throw new BadRequestException("Serial Number '" + serialNumber
+                        + "' appears more than once in this file.");
+            }
+            if (assetRepository.existsBySerialNumberIgnoreCase(serialNumber)) {
+                throw new BadRequestException("Serial Number '" + serialNumber
+                        + "' is already recorded against another asset.");
+            }
+        }
+
+        // ── Placement ────────────────────────────────────────────────────────
+        String locationName = AssetImportParsing.trimToNull(dto.getLocation());
+        if (locationName == null) throw new BadRequestException("Location / Branch is required.");
+        Branch branch = branchRepository.findByNameIgnoreCase(locationName)
+                .orElseThrow(() -> new BadRequestException(
+                        "Location / Branch '" + locationName + "' was not found."));
+
+        User holder = resolveImportHolder(dto.getAssignedTo());
+        // The holder's branch wins: an asset is where the person holding it is, and a register
+        // exported from an older system routinely disagrees with itself on this.
+        if (holder != null && holder.getBranch() != null) {
+            branch = holder.getBranch();
+        }
+
+        Status status = resolveImportStatus(dto.getStatus());
+
+        // ── Classification ───────────────────────────────────────────────────
+        Supplier supplier = null;
+        String supplierName = AssetImportParsing.trimToNull(dto.getSupplier());
+        if (supplierName != null) {
+            supplier = supplierRepository.findByNameIgnoreCase(supplierName)
+                    .orElseThrow(() -> new BadRequestException(
+                            "Supplier '" + supplierName + "' was not found."));
+        }
+
+        Commodity commodity = null;
+        String commodityName = AssetImportParsing.trimToNull(dto.getCommodity());
+        if (commodityName != null) {
+            commodity = commodityRepository
+                    .findByNameIgnoreCaseAndAssetType_Id(commodityName, assetType.getId())
+                    .orElseThrow(() -> new BadRequestException("Commodity '" + commodityName
+                            + "' was not found under " + assetType.getName() + "."));
+        }
+
+        Asset asset = Asset.builder()
+                .assetName(assetName)
+                .engravedNumber(engravedNumber)
+                .serialNumber(serialNumber)
+                .tagName(AssetImportParsing.trimToNull(dto.getTagName()))
+                .assetType(assetType)
+                .commodity(commodity)
+                .supplier(supplier)
+                .branch(branch)
+                .assignedTo(holder)
+                .assetStatus(status)
+                .dateReceipt(AssetImportParsing.parseDate(dto.getDateReceived(), "Date Received"))
+                .purchaseCost(AssetImportParsing.parseMoney(dto.getPurchaseCost(), "Purchase Cost"))
+                .costOfTheAsset(AssetImportParsing.parseMoney(dto.getCostOfTheAsset(), "Cost of the Asset"))
+                .netValueB(AssetImportParsing.trimToNull(dto.getNetBookValue()))
+                .assetDepreciationRate(AssetImportParsing.trimToNull(dto.getDepreciationRate()))
+                .unitOfMeasure(AssetImportParsing.trimToNull(dto.getUnitOfMeasure()))
+                .make(AssetImportParsing.trimToNull(dto.getMake()))
+                .model(AssetImportParsing.trimToNull(dto.getModel()))
+                .description(AssetImportParsing.trimToNull(dto.getDescription()))
+                .hostname(AssetImportParsing.trimToNull(dto.getHostname()))
+                .ipAddress(AssetImportParsing.parseIpAddress(dto.getIpAddress()))
+                .macAddress(AssetImportParsing.parseMacAddress(dto.getMacAddress()))
+                .ram(AssetImportParsing.trimToNull(dto.getRam()))
+                .cpuSpeed(AssetImportParsing.trimToNull(dto.getCpuSpeed()))
+                .hardDiskSize(AssetImportParsing.trimToNull(dto.getHardDiskSize()))
+                .interfaceType(AssetImportParsing.trimToNull(dto.getInterfaceType()))
+                .disposed(false)
+                .build();
+
+        Asset saved = assetRepository.save(asset);
+
+        /*
+         * The holder gets an assignment-history row but no email.
+         *
+         * The history matters — it is what the asset trail and the return-after-repair flow read to
+         * know who an item belongs to, and an imported asset with a holder and no history would look
+         * like it had never been given to anyone. The email does not: a migration would send every
+         * member of staff one "you have been assigned an asset" message per item they already have.
+         */
+        if (holder != null) {
+            updateAssetAssignmentHistory(saved, holder);
+        }
+    }
+
+    /**
+     * The staff member named on an import row, by staff number or email.
+     *
+     * <p>Not by name: two people share one often enough that matching on it would hand assets to the
+     * wrong person silently, which is worse than refusing the row.
+     */
+    private User resolveImportHolder(String raw) {
+        String value = AssetImportParsing.trimToNull(raw);
+        if (value == null) {
+            return null;
+        }
+        // The template's dropdown emits "PBL0001 — Jane Doe"; take the identifier off the front so a
+        // hand-typed staff number and a picked option both work.
+        String identifier = value.contains("—") ? value.substring(0, value.indexOf('—')).trim() : value;
+
+        return userRepository.findByStaffNumberIgnoreCase(identifier)
+                .or(() -> userRepository.findByEmailIgnoreCase(identifier))
+                .orElseThrow(() -> new BadRequestException("Assigned To '" + value
+                        + "' matched no staff number or email address."));
+    }
+
+    /**
+     * The status an imported row should start in.
+     *
+     * <p>Blank means "Require Update", which flags the asset as needing its details completed — the
+     * honest state for most of a legacy migration. A named status is honoured, but only if it is one
+     * an asset can actually be in: the status table is shared with requests, stock and the approval
+     * ladders, and filing a laptop as "BOM Approved" would leave it somewhere no screen can move it
+     * out of.
+     */
+    private Status resolveImportStatus(String raw) throws NotFoundException {
+        String value = AssetImportParsing.trimToNull(raw);
+        if (value == null) {
+            return statusService.findByStatusCode(AssetImportStatuses.DEFAULT);
+        }
+
+        // The template shows display names ("Available for Issuance"); a hand-edited file or an older
+        // export may carry the code ("issuanceAvailable"). Both resolve.
+        Status match = statusRepository.findByStatus(value).orElseGet(() ->
+                statusRepository.findAll().stream()
+                        .filter(s -> value.equalsIgnoreCase(s.getName()) || value.equalsIgnoreCase(s.getStatus()))
+                        .findFirst()
+                        .orElse(null));
+
+        if (match == null) {
+            throw new BadRequestException("Status '" + value + "' was not found.");
+        }
+        if (!AssetImportStatuses.isImportable(match.getStatus())) {
+            throw new BadRequestException("Status '" + value
+                    + "' is not a status an asset can be imported in.");
+        }
+        return match;
     }
 
     private void updateAssetAssignmentHistory(
