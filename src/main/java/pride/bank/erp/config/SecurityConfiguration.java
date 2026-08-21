@@ -96,6 +96,19 @@ public class SecurityConfiguration {
                                 .requestMatchers(HttpMethod.DELETE, PERMISSION_ROUTE).hasAuthority(DELETE_PERMISSION)
                                 .requestMatchers(HttpMethod.PUT, PERMISSION_ROUTE).hasAuthority(UPDATE_PERMISSION)
                                 // Request Routes
+                                /*
+                                 * The two dashboard request widgets, declared before the general
+                                 * /requests/** rule below so the more specific match wins.
+                                 *
+                                 * They accept the dashboard permission as well as READ_REQUEST,
+                                 * because the dashboard axis is meant to stand on its own: someone
+                                 * granted DASH_VIEW_REQUESTS to see their queue should not also need
+                                 * the permission that opens the full requests listing.
+                                 */
+                                .requestMatchers(HttpMethod.GET, GENERAL_ROUTE + "/requests/awaiting-me")
+                                .hasAnyAuthority(READ_REQUEST, DASH_VIEW_REQUESTS)
+                                .requestMatchers(HttpMethod.GET, GENERAL_ROUTE + "/requests/open")
+                                .hasAnyAuthority(READ_REQUEST, DASH_VIEW_REQUESTS)
                                 .requestMatchers(HttpMethod.GET, REQUEST_ROUTE).hasAuthority(READ_REQUEST)
                                 .requestMatchers(HttpMethod.POST, REQUEST_ROUTE).hasAuthority(CREATE_REQUEST)
                                 .requestMatchers(HttpMethod.PUT, REQUEST_ROUTE).hasAuthority(UPDATE_REQUEST)

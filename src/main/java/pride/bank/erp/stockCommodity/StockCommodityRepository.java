@@ -62,6 +62,40 @@ public interface StockCommodityRepository extends JpaRepository<StockCommodity, 
             """, nativeQuery = true)
     List<MonthlyStockSummaryDTO> getMonthlyStockSummaryForLastSixMonths();
 
+    /**
+     * The same six-month stocking summary, narrowed to a branch.
+     *
+     * <p>The query above has no branch predicate at all, so the stocking trend showed the same
+     * national figure to every user regardless of where they work — the one dashboard widget that
+     * was neither scoped nor guarded. Null means the national roll-up, so one query serves both.
+     *
+     * <p>Stock carries its own branch (goods are received *into* a station), so the scope is applied
+     * there rather than through the requester or the commodity.
+     */
+    @Query(value = """
+                SELECT
+                    DATE_FORMAT(s.create_date, '%Y-%m') AS month,
+                    at.name AS assetType,
+                    SUM(sc.delivered_quantity) AS totalQuantity
+                FROM
+                    stock_commodity sc
+                JOIN
+                    stock s ON sc.stock_id = s.id
+                JOIN
+                    commodity c ON sc.commodity_id = c.id
+                JOIN
+                    asset_type at ON c.asset_type_id = at.id
+                WHERE
+                    s.create_date >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 5 MONTH), '%Y-%m-01')
+                    AND (:branchId IS NULL OR s.branch_id = :branchId)
+                GROUP BY
+                    DATE_FORMAT(s.create_date, '%Y-%m'), at.name
+                ORDER BY
+                    month ASC
+            """, nativeQuery = true)
+    List<MonthlyStockSummaryDTO> getMonthlyStockSummaryForLastSixMonthsScoped(
+            @Param("branchId") Long branchId);
+
 
     @Query(value = """
                 SELECT c.name AS commodity_name, SUM(sc.ordered_quantity) AS total_quantity

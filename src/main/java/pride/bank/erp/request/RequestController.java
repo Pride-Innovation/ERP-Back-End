@@ -235,11 +235,50 @@ public class RequestController {
         }
     }
 
+    /**
+     * Requested vs delivered per category, current year, scoped to the viewer.
+     *
+     * @param branchId the branch the dashboard's selector is focused on; only meaningful at ALL
+     *                 scope, and naming another branch without it is refused rather than rewritten.
+     */
     @GetMapping("/current-year-summary")
-    public ResponseEntity<List<AssetRequestSummaryDTO>> getCurrentYearRequestSummary() {
-        return ResponseEntity.ok(requestService.getCurrentYearRequestSummary());
+    public ResponseEntity<List<AssetRequestSummaryDTO>> getCurrentYearRequestSummary(
+            @RequestParam(required = false) Long branchId) {
+        return ResponseEntity.ok(requestService.getCurrentYearRequestSummary(branchId));
     }
 
+
+    /**
+     * Requests waiting on the signed-in user's own decision.
+     *
+     * <p>Assigned to them individually, or to a unit they belong to for a group step. A request
+     * leaves this list the moment they act on it, because approving moves the workflow's current
+     * approver to the next tier.
+     *
+     * <p>Deliberately takes no scope or branch parameter: "who is being waited on" is a fact about
+     * the workflow, not a question of breadth. Widening it by branch would show an approver work
+     * that is not theirs to do.
+     */
+    @GetMapping("/requests/awaiting-me")
+    public ResponseEntity<Page<RequestDTO>> findAwaitingMyDecision(
+            @RequestParam(required = false, defaultValue = "25") int pageSize,
+            @RequestParam(required = false, defaultValue = "0") int pageNumber) {
+        return ResponseEntity.ok(requestService.findAwaitingMyDecision(pageSize, pageNumber));
+    }
+
+    /**
+     * Open requests — raised and not yet finished — within the viewer's dashboard scope.
+     *
+     * <p>A request stays open through every approval tier, through issuance and through the movement
+     * carrying the item, and drops off only when the requester acknowledges receipt.
+     */
+    @GetMapping("/requests/open")
+    public ResponseEntity<Page<RequestDTO>> findOpenRequests(
+            @RequestParam(required = false, defaultValue = "25") int pageSize,
+            @RequestParam(required = false, defaultValue = "0") int pageNumber,
+            @RequestParam(required = false) Long branchId) {
+        return ResponseEntity.ok(requestService.findOpenRequests(pageSize, pageNumber, branchId));
+    }
 
     @GetMapping("/latest-pending-request")
     public ResponseEntity<Page<RequestDTO>> findLatestPendingRequestsWithDetails(

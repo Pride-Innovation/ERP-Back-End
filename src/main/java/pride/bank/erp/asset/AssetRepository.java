@@ -71,6 +71,52 @@ public interface AssetRepository extends JpaRepository<Asset, Long> {
             ORDER BY a.assetType.name
             """)
     List<AssetTypeStatsProjection> getAssetStatsByType(@Param("branchId") Long branchId);
+    /**
+     * The same per-category totals, narrowed to whatever the viewer's dashboard scope allows.
+     *
+     * <p>Replaces {@link #getAssetStatsByType(Long)} for the dashboard, which took a branch id and
+     * nothing else — so the figures were always one branch's, and a Head Office user's headline
+     * numbers showed Head Office's own assets rather than the bank's, with nothing on screen saying
+     * so. Both filters are null-tolerant, which lets one query serve all three scopes:
+     *
+     * <ul>
+     *   <li>both null — every branch (the national roll-up, for DASH_SCOPE_ALL)</li>
+     *   <li>branchId set — one branch (BRANCH, or ALL focused through the selector)</li>
+     *   <li>ownerId set — only what that person holds (SELF)</li>
+     * </ul>
+     *
+     * <p>The four state counts partition the total exactly — an asset is disposed, or it is one of
+     * the three live states. The live buckets each carry an explicit {@code disposed <> true} guard
+     * because {@code assigned} was previously defined as "not in-maintenance and not require-update",
+     * which swept every written-off asset into the In Use figure.
+     *
+     * <p>{@code branch} and {@code assignedTo} are reached through explicit LEFT joins rather than
+     * dotted paths. A dotted path builds an INNER join that sits in the FROM clause and filters
+     * before the null check is ever evaluated, so the national roll-up would silently drop every
+     * asset with no branch — and the SELF case every asset with no holder. That trap has already
+     * cost this codebase a branch-scoped movement listing and an asset location filter.
+     */
+    @Query("""
+            SELECT
+                at.name AS assetType,
+                COUNT(a.id) AS total,
+                SUM(CASE WHEN a.disposed = true THEN 1 ELSE 0 END) AS disposed,
+                SUM(CASE WHEN a.disposed <> true AND a.assetStatus.status = 'inMaintenance' THEN 1 ELSE 0 END) AS inMaintenance,
+                SUM(CASE WHEN a.disposed <> true AND a.assetStatus.status = 'requireUpdate' THEN 1 ELSE 0 END) AS unassigned,
+                SUM(CASE WHEN a.disposed <> true AND a.assetStatus.status NOT IN ('inMaintenance', 'requireUpdate') THEN 1 ELSE 0 END) AS assigned
+            FROM Asset a
+            JOIN a.assetType at
+            LEFT JOIN a.branch b
+            LEFT JOIN a.assignedTo holder
+            WHERE (:branchId IS NULL OR b.id = :branchId)
+              AND (:ownerId IS NULL OR holder.id = :ownerId)
+            GROUP BY at.name
+            ORDER BY at.name
+            """)
+    List<AssetTypeStatsProjection> getAssetStatsScoped(
+            @Param("branchId") Long branchId,
+            @Param("ownerId") Long ownerId);
+
 
     @Query("""
                 SELECT a

@@ -61,6 +61,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -108,6 +109,8 @@ public class AssetService {
     private final SupplierRepository supplierRepository;
     private final CommodityRepository commodityRepository;
     private final StatusRepository statusRepository;
+    /** Decides how far a dashboard query may reach — see DashboardScopeService. */
+    private final pride.bank.erp.dashboard.DashboardScopeService dashboardScopeService;
 
     /** Upper bound on assets scanned in-memory when computing the derived "due for disposal" list. */
     private static final int DISPOSAL_SCAN_LIMIT = 10_000;
@@ -713,21 +716,55 @@ public class AssetService {
                 .build();
     }
 
-    public List<AssetTypeStatsProjection> getAssetTypeStatistics() {
-        Long branchId = currentUserService.getCurrentUser().getBranch().getId();
-        return assetRepository.getAssetStatsByType(branchId);
+    /**
+     * Per-category asset counts for the dashboard, narrowed to the viewer's scope.
+     *
+     * <p>This used to read {@code currentUser.getBranch().getId()} unconditionally, which had two
+     * consequences. A Head Office user holding VIEW_ALL_BRANCHES got Head Office's own assets rather
+     * than a national roll-up — the headline figures on the page were not what their label implied.
+     * And a user with no duty station on record hit a NullPointerException before the query ran.
+     *
+     * <p>Both are gone: {@link DashboardScopeService} decides the branch (null meaning the roll-up)
+     * and the owner (non-null only at SELF scope, so a branch officer's figures count what he holds
+     * rather than what his branch holds).
+     *
+     * @param requestedBranchId the branch the page's selector is focused on; ignored below ALL scope
+     *                          except that naming someone else's branch is refused outright
+     */
+    public List<AssetTypeStatsProjection> getAssetTypeStatistics(Long requestedBranchId) {
+        Long branchId = dashboardScopeService.resolveBranch(requestedBranchId);
+        Long ownerId = dashboardScopeService.resolveOwner();
+        return assetRepository.getAssetStatsScoped(branchId, ownerId);
     }
 
+    /**
+     * The signed-in user's own assets, grouped by category.
+     *
+     * <p>Disposed assets are excluded. They were not, so an item written off months ago still sat
+     * under "assets assigned to you" — and the widget's whole claim is that you are accountable for
+     * what it lists. Nobody is accountable for a disposed asset.
+     *
+     * <p>Each group now carries its category id as well as its name, because the asset detail route
+     * is per-category ({@code /assets/general/{assetTypeId}/view/{id}}); without it the dashboard
+     * could not build a link and the rows were dead.
+     */
     public List<AssetGroupDTO> getAssetsGroupedByType() {
-        Long currentUserId = currentUserService.getCurrentUser().getId();
-        List<Asset> assets = assetRepository.findAllByAssignedToIdWithTypeAndStatus(currentUserId);
+        User currentUser = currentUserService.getCurrentUser();
+        if (currentUser == null) return List.of();
 
-        Map<String, List<Asset>> grouped = assets.stream()
-                .collect(Collectors.groupingBy(a -> a.getAssetType().getName()));
+        List<Asset> assets = assetRepository.findAllByAssignedToIdWithTypeAndStatus(currentUser.getId())
+                .stream()
+                .filter(a -> !Boolean.TRUE.equals(a.getDisposed()))
+                .toList();
+
+        // Keyed by the AssetType itself rather than its name, so the id travels with the group.
+        Map<AssetType, List<Asset>> grouped = assets.stream()
+                .collect(Collectors.groupingBy(Asset::getAssetType));
 
         return grouped.entrySet().stream()
                 .map(entry -> new AssetGroupDTO(
-                        entry.getKey(),
+                        entry.getKey().getName(),
+                        entry.getKey().getId(),
                         (long) entry.getValue().size(),
                         entry.getValue().stream()
                                 .map(a -> new AssetGroupDTO.AssetDTO(
@@ -735,10 +772,12 @@ public class AssetService {
                                         a.getAssetName(),
                                         a.getEngravedNumber(),
                                         a.getAssetStatus() != null ? a.getAssetStatus().getName() : null,
-                                        a.getSerialNumber()
+                                        a.getSerialNumber(),
+                                        a.getBranch() != null ? a.getBranch().getName() : null
                                 ))
                                 .collect(Collectors.toList())
                 ))
+                .sorted(Comparator.comparing(AssetGroupDTO::getType))
                 .collect(Collectors.toList());
     }
 

@@ -126,9 +126,18 @@ public class AssetController {
         return new ResponseEntity<>(assetService.listDashboardAssetReportByBranch(), HttpStatus.OK);
     }
 
+    /**
+     * Per-category asset counts for the dashboard.
+     *
+     * @param branchId the branch the dashboard's selector is focused on. Only meaningful for a
+     *                 viewer whose scope is ALL; anyone else naming a branch other than their own is
+     *                 refused rather than silently rewritten, because showing one branch's figures
+     *                 under another's name is worse than an error.
+     */
     @GetMapping("/assets/statistics")
-    public List<AssetTypeStatsProjection> getAssetStatistics() {
-        return assetService.getAssetTypeStatistics();
+    public List<AssetTypeStatsProjection> getAssetStatistics(
+            @RequestParam(required = false) Long branchId) {
+        return assetService.getAssetTypeStatistics(branchId);
     }
 
     @GetMapping("/assets/my-assets")

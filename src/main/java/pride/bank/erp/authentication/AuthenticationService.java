@@ -199,6 +199,10 @@ public class AuthenticationService {
                 .title(title)
                 .gender(user.getGender())
                 .unit(user.getUnit())
+                // Carried so the browser can scope anything to a branch and resolve every
+                // permission the user actually holds — see AuthenticationResponse.
+                .branch(user.getBranch())
+                .additionalRoles(user.getAdditionalRoles())
                 .build();
     }
 
@@ -256,6 +260,11 @@ public class AuthenticationService {
                         .email((user.getEmail()))
                         .gender(user.getGender())
                         .unit(user.getUnit())
+                        // Same fields as the login response: a refresh rewrites the stored session
+                        // user, so omitting them here would silently strip the branch and the
+                        // additional roles the moment a token renewed.
+                        .branch(user.getBranch())
+                        .additionalRoles(user.getAdditionalRoles())
                         .title(user.getTitle())
                         .build();
                 new ObjectMapper().writeValue(response.getOutputStream(), authenticationResponse);

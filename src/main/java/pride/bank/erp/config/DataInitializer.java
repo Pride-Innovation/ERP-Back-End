@@ -39,6 +39,13 @@ import java.util.Set;
 
 import static pride.bank.erp.helper.Constants.ADMIN;
 import static pride.bank.erp.helper.Constants.VIEW_ALL_BRANCHES;
+import static pride.bank.erp.helper.Constants.DASH_VIEW_ASSETS;
+import static pride.bank.erp.helper.Constants.DASH_VIEW_REQUESTS;
+import static pride.bank.erp.helper.Constants.DASH_VIEW_STOCK;
+import static pride.bank.erp.helper.Constants.DASH_VIEW_MOVEMENTS;
+import static pride.bank.erp.helper.Constants.DASH_SCOPE_SELF;
+import static pride.bank.erp.helper.Constants.DASH_SCOPE_BRANCH;
+import static pride.bank.erp.helper.Constants.DASH_SCOPE_ALL;
 import static pride.bank.erp.helper.Constants.READ_STOCK_TAKE;
 import static pride.bank.erp.helper.Constants.PERFORM_STOCK_TAKE;
 import static pride.bank.erp.helper.Constants.APPROVE_STOCK_TAKE;
@@ -236,7 +243,17 @@ public class DataInitializer {
                 ensurePermission(REJECT_REQUEST),
                 ensurePermission(ISSUE_ITEMS),
                 ensurePermission(ACKNOWLEDGE_REQUEST),
-                ensurePermission(APPROVE_ISSUANCE)
+                ensurePermission(APPROVE_ISSUANCE),
+                // Dashboard — subject and scope. Separate from the READ_* permissions above
+                // because "may you open this page" and "how much may you see summarised" are
+                // different questions; see Constants for the reasoning.
+                ensurePermission(DASH_VIEW_ASSETS),
+                ensurePermission(DASH_VIEW_REQUESTS),
+                ensurePermission(DASH_VIEW_STOCK),
+                ensurePermission(DASH_VIEW_MOVEMENTS),
+                ensurePermission(DASH_SCOPE_SELF),
+                ensurePermission(DASH_SCOPE_BRANCH),
+                ensurePermission(DASH_SCOPE_ALL)
         );
     }
 

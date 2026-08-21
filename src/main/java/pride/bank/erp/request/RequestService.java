@@ -69,6 +69,8 @@ public class RequestService {
 
     private final RequestRepository requestRepository;
     private final pride.bank.erp.auditing.trail.AuditService auditService;
+    /** Decides how far a dashboard query may reach — see DashboardScopeService. */
+    private final pride.bank.erp.dashboard.DashboardScopeService dashboardScopeService;
     private final FileUpload fileUpload;
     private final RequestSearchDao requestSearchDao;
     private final StatusService statusService;
@@ -555,16 +557,24 @@ public class RequestService {
      * @return List of summary DTOs
      */
     @Transactional(readOnly = true)
-    public List<AssetRequestSummaryDTO> getCurrentYearRequestSummary() {
+    public List<AssetRequestSummaryDTO> getCurrentYearRequestSummary(Long requestedBranchId) {
         Long receiptAcknowledged = 7L; // ID for Receipt Acknowledged Status
         Long requestRejected = 2L;     // ID for Request Rejected Status
-        Long branchId = currentUserService.getCurrentUser().getBranch().getId();
+        /*
+         * Scope, not the caller's own branch.
+         *
+         * This read currentUser.getBranch().getId() unconditionally, so a Head Office administrator
+         * saw Head Office's fulfilment under a widget titled for the organisation, and a user with
+         * no duty station on record hit a NullPointerException before the query ran.
+         */
+        Long branchId = dashboardScopeService.resolveBranch(requestedBranchId);
+        Long ownerId = dashboardScopeService.resolveOwner();
 
-        log.debug("Fetching asset request summaries for branch ID: {}", branchId);
+        log.debug("Fetching asset request summaries for branch {} / owner {}", branchId, ownerId);
 
         try {
             List<AssetRequestSummaryDTO> summaries = requestRepository
-                    .fetchAssetRequestSummaries(receiptAcknowledged, requestRejected, branchId)
+                    .fetchAssetRequestSummariesScoped(receiptAcknowledged, requestRejected, branchId, ownerId)
                     .stream()
                     .map(r -> new AssetRequestSummaryDTO(
                             (String) r[0],
@@ -596,6 +606,107 @@ public class RequestService {
      * @param status                    Filter by status name
      * @return Paginated request results
      */
+    /**
+     * Statuses at which a request is finished and stops being "open".
+     *
+     * <p>Resolved by code, never by hardcoded id. The dashboard queue previously defaulted to the
+     * literal id {@code 3} and relied on the status table having been seeded into an empty database
+     * in a particular order — any environment seeded differently queued the wrong status silently.
+     *
+     * <p>Only two states end a request: it was rejected, or the requester acknowledged receiving the
+     * item. Everything between — every approval tier, the issuance, and the movement carrying the
+     * goods — is still open, which is what makes a requester's own request stay on their dashboard
+     * from the moment they raise it until it physically reaches them.
+     */
+    private static final List<String> TERMINAL_REQUEST_CODES =
+            List.of("requestRejected", "receiptAcknowledged");
+
+    private List<Long> terminalStatusIds() {
+        return TERMINAL_REQUEST_CODES.stream()
+                .map(code -> {
+                    try {
+                        Status status = statusService.findByStatusCode(code);
+                        return status != null ? status.getId() : null;
+                    } catch (Exception e) {
+                        log.warn("Status code '{}' is not seeded — open-request filtering will not "
+                                + "exclude it", code);
+                        return null;
+                    }
+                })
+                .filter(Objects::nonNull)
+                .toList();
+    }
+
+    /**
+     * Requests waiting on this person's decision.
+     *
+     * <p>Exactly what the workflow engine has routed to them: assigned to them individually, or to a
+     * unit they belong to for a group step. It therefore disappears from their queue the moment they
+     * approve, because approving moves {@code currentApprover} to the next tier — which is the
+     * behaviour the queue is supposed to have and previously did not.
+     *
+     * <p>The old dashboard queue answered a different question entirely. It filtered by status id
+     * and by a hardcoded switch on the user's role name, so it showed Officers newly-created
+     * requests and everyone else approved ones, with no notion of who was actually being waited on.
+     * Two people looking at one widget labelled "Work Queue" were looking at different stages of the
+     * pipeline, and neither was looking at their own queue.
+     */
+    @Transactional(readOnly = true)
+    public Page<RequestDTO> findAwaitingMyDecision(int pageSize, int pageNumber) {
+        User me = currentUserService.getCurrentUser();
+        if (me == null) return Page.empty();
+
+        RequestPage requestPage = RequestPage.builder()
+                .pageSize(pageSize)
+                .pageNumber(pageNumber)
+                .sortBy("createDate")
+                .sortDirection(determineSortDirection(DESCENDING_SORT_DIRECTION))
+                .build();
+
+        RequestSearchCriteria criteria = RequestSearchCriteria.builder()
+                .currentApproverId(me.getId())
+                .currentUnitId(me.getUnit() != null ? me.getUnit().getId() : null)
+                .excludedStatusIds(terminalStatusIds())
+                .deleted(false)
+                .build();
+
+        Page<Request> page = requestSearchDao.findAllWithFilters(requestPage, criteria);
+        return new PageImpl<>(convertToRequestDTOList(page.getContent()),
+                page.getPageable(), page.getTotalElements());
+    }
+
+    /**
+     * Open requests, scoped to what the viewer is entitled to see.
+     *
+     * <p>"Open" means raised and not yet finished — see {@link #TERMINAL_REQUEST_CODES}. A request
+     * stays here through every approval tier, through issuance, and through the movement carrying
+     * the item, and leaves only when the requester acknowledges receipt.
+     *
+     * <p>Breadth follows the viewer's dashboard scope rather than their role name: SELF shows only
+     * what they raised, BRANCH everything raised at their duty station, ALL the whole bank (or one
+     * branch when the page's selector is focused).
+     */
+    @Transactional(readOnly = true)
+    public Page<RequestDTO> findOpenRequests(int pageSize, int pageNumber, Long requestedBranchId) {
+        RequestPage requestPage = RequestPage.builder()
+                .pageSize(pageSize)
+                .pageNumber(pageNumber)
+                .sortBy("createDate")
+                .sortDirection(determineSortDirection(DESCENDING_SORT_DIRECTION))
+                .build();
+
+        RequestSearchCriteria criteria = RequestSearchCriteria.builder()
+                .excludedStatusIds(terminalStatusIds())
+                .raisedByUserId(dashboardScopeService.resolveOwner())
+                .requesterBranchId(dashboardScopeService.resolveBranch(requestedBranchId))
+                .deleted(false)
+                .build();
+
+        Page<Request> page = requestSearchDao.findAllWithFilters(requestPage, criteria);
+        return new PageImpl<>(convertToRequestDTOList(page.getContent()),
+                page.getPageable(), page.getTotalElements());
+    }
+
     @Transactional(readOnly = true)
     public Page<RequestDTO> findLatestPendingRequestsWithDetails(
             int pageSize,
@@ -1035,6 +1146,18 @@ public class RequestService {
     /**
      * Determines the user's role in the system
      */
+    /**
+     * Maps {@code title.role.name} onto a handful of hardcoded labels.
+     *
+     * @deprecated The application's identity model is permissions, not role names. This reads only
+     *         {@code title.role} — additional roles are invisible to it — knows nothing about a
+     *         person's duty station, and forces "Officer" to mean one thing bank-wide when a branch
+     *         officer and an Admin Unit officer legitimately see different amounts. Every caller now
+     *         consults an explicitly granted dashboard scope first and reaches this only for roles
+     *         nobody has configured yet; once every role in an estate carries a scope, this can be
+     *         deleted along with {@link #legacyRequestersList(String)}.
+     */
+    @Deprecated
     private String determineUserRole() {
         User currentUser = currentUserService.getCurrentUser();
         if (currentUser == null || currentUser.getTitle() == null || currentUser.getTitle().getRole() == null) {
@@ -1084,7 +1207,72 @@ public class RequestService {
     /**
      * Determines the list of requester user IDs based on the current user's role and the provided request status.
      */
+    /**
+     * Which people's requests this user may see.
+     *
+     * <p>An empty list means <b>no restriction</b>, which is worth stating because it reads like the
+     * opposite.
+     *
+     * <h2>Two models, one authoritative</h2>
+     * Visibility used to be decided entirely by {@link #determineUserRole()} — a switch on
+     * {@code title.role.name}. That model cannot express what the bank actually needs: it ignores
+     * additional roles, it says nothing about a person's duty station, and "Officer" has to mean the
+     * same thing in a branch and in the Admin Unit even though those two people legitimately see
+     * different amounts.
+     *
+     * <p>An explicitly granted dashboard scope now decides, and the role switch is consulted only
+     * when a user holds none. That ordering is deliberate: it changes nothing for roles nobody has
+     * configured yet, and moves a role onto the new model the moment someone grants it a scope —
+     * rather than silently re-scoping four roles in a live system on the day this deploys.
+     *
+     * @see #legacyRequestersList(String) the fallback, which is on its way out
+     */
     private List<Long> requestersList(String status) {
+        Set<String> held = heldAuthorities();
+
+        // Explicit scope wins outright.
+        if (held.contains(Constants.DASH_SCOPE_ALL) || held.contains(Constants.VIEW_ALL_BRANCHES)) {
+            return Collections.emptyList(); // no restriction
+        }
+        if (held.contains(Constants.DASH_SCOPE_BRANCH)) {
+            Long branchId = currentUserBranchId();
+            // Someone scoped to a branch who has none on record sees their own line rather than
+            // everything — failing closed, since an unrestricted list is the widest possible answer.
+            return branchId == null ? getManagerAndSubordinateUserIds()
+                    : userRepository.findUserIdsByBranchId(branchId);
+        }
+        if (held.contains(Constants.DASH_SCOPE_SELF)) {
+            User me = currentUserService.getCurrentUser();
+            return me == null ? Collections.emptyList() : List.of(me.getId());
+        }
+
+        return legacyRequestersList(status);
+    }
+
+    private Set<String> heldAuthorities() {
+        User currentUser = currentUserService.getCurrentUser();
+        if (currentUser == null) return Set.of();
+        return currentUser.getAuthorities().stream()
+                .map(a -> a.getAuthority())
+                .collect(Collectors.toSet());
+    }
+
+    private Long currentUserBranchId() {
+        User currentUser = currentUserService.getCurrentUser();
+        return (currentUser != null && currentUser.getBranch() != null)
+                ? currentUser.getBranch().getId() : null;
+    }
+
+    /**
+     * The pre-scope visibility rules, kept only for roles that have not been given a dashboard scope.
+     *
+     * @deprecated Grant {@code DASH_SCOPE_SELF}, {@code DASH_SCOPE_BRANCH} or {@code DASH_SCOPE_ALL}
+     *         to the role in Settings and this stops being consulted for it. Once every role in an
+     *         estate carries a scope, this method and {@link #determineUserRole()} can be deleted
+     *         outright.
+     */
+    @Deprecated
+    private List<Long> legacyRequestersList(String status) {
         final boolean pendingIssuedOrDashboard = "PENDING".equalsIgnoreCase(status)
                 || "ISSUED".equalsIgnoreCase(status)
                 || "DASHBOARD".equalsIgnoreCase(status);
@@ -1157,7 +1345,24 @@ public class RequestService {
                     yield List.of(currentUserService.getCurrentUser().getId());
                 }
             }
-            default -> Collections.emptyList();
+            /*
+             * Unrecognised role names.
+             *
+             * This returned an empty list, and an empty requester list means "no restriction" — so
+             * every role the switch above does not name saw every request in the bank. That is
+             * correct for a Super Admin and wrong for DIRECTOR, SUPERVISOR and ROLE_ADMIN, none of
+             * which the switch matches, and it failed open: adding a role to the system granted it
+             * full visibility until somebody remembered to add a case here.
+             *
+             * Visibility now follows a permission rather than an unmatched name. Holding
+             * VIEW_ALL_BRANCHES (or the dashboard's explicit ALL scope) means the whole bank;
+             * anything else falls back to the person and the people who report to them — the same
+             * restriction a Manager gets, which is the safe default for a role nobody has configured
+             * yet.
+             */
+            default -> seesEveryBranch()
+                    ? Collections.emptyList()
+                    : getManagerAndSubordinateUserIds();
         };
 
         log.debug("Returning {} user IDs for requesters list", result.size());
@@ -1170,9 +1375,12 @@ public class RequestService {
      * @return true if they can see them, false if they cannot, or null if not applicable.
      */
     private Boolean canSeeBranchNonStationaryRequests() {
-        String userRole = determineUserRole();
+        // Stands down once a scope has been granted: these gates predate the workflow engine and
+        // were the only way admins got visibility into branch requests. Layering them on top of an
+        // explicit scope would narrow it back down for the very roles someone has just configured.
+        if (hasExplicitScope()) return null;
 
-        return switch (userRole) {
+        return switch (determineUserRole()) {
             case "ADMIN_OFFICER", "ADMIN_MANAGER" -> true;
             default -> null; // For all other roles, visibility doesn't apply
         };
@@ -1186,17 +1394,50 @@ public class RequestService {
      * - null if visibility does not apply for the role.
      */
     private Boolean canSeeBranchStationaryRequests() {
-        String userRole = determineUserRole();
+        if (hasExplicitScope()) return null; // see the sibling method above
 
-        if (userRole.equals("BOM")) {
+        if (determineUserRole().equals("BOM")) {
             return true;
         }
         return null; // Role is undefined or empty — cannot determine visibility
     }
 
+    /**
+     * Whether this user is entitled to look beyond their own reporting line.
+     *
+     * <p>Keyed off a granted permission, not a role name, so a new role is confined by default and
+     * widened deliberately — the opposite of the behaviour this replaced.
+     */
+    private boolean seesEveryBranch() {
+        User currentUser = currentUserService.getCurrentUser();
+        if (currentUser == null) return false;
+        return currentUser.getAuthorities().stream()
+                .map(a -> a.getAuthority())
+                .anyMatch(name -> Constants.VIEW_ALL_BRANCHES.equals(name)
+                        || Constants.DASH_SCOPE_ALL.equals(name));
+    }
+
+    /**
+     * Drives the legacy "admins see everyone else's non-draft requests" predicate.
+     *
+     * <p>Also stands down under an explicit scope, which already answers the same question and
+     * answers it by branch rather than by role name.
+     */
     private boolean determineIfUserIsAdmin() {
-        String userRole = determineUserRole();
-        return userRole.equals("ADMIN_OFFICER");
+        if (hasExplicitScope()) return false;
+        return determineUserRole().equals("ADMIN_OFFICER");
+    }
+
+    /**
+     * Whether this user has been given a dashboard scope, and is therefore governed by the new
+     * model rather than by their role's name.
+     */
+    private boolean hasExplicitScope() {
+        Set<String> held = heldAuthorities();
+        return held.contains(Constants.DASH_SCOPE_SELF)
+                || held.contains(Constants.DASH_SCOPE_BRANCH)
+                || held.contains(Constants.DASH_SCOPE_ALL)
+                || held.contains(Constants.VIEW_ALL_BRANCHES);
     }
 
     /**

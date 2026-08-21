@@ -144,6 +144,50 @@ public class Constants {
      */
     public static final String VIEW_ALL_BRANCHES = "VIEW_ALL_BRANCHES";
 
+    /*
+     * ── Dashboard permissions ───────────────────────────────────────────────
+     *
+     * Separate from the READ_* permissions above, and deliberately so.
+     *
+     * READ_ASSET answers "may you open the assets page". The dashboard was borrowing it to answer a
+     * different question — "how much of the estate may you see summarised" — and the two are not the
+     * same. An officer needs READ_ASSET to open his own asset's detail page, and that same grant was
+     * making his dashboard show the whole branch's totals.
+     *
+     * So the dashboard gets two axes of its own:
+     *
+     *   SUBJECT — which widgets appear at all (DASH_VIEW_*)
+     *   SCOPE   — how far each one reaches (DASH_SCOPE_*)
+     *
+     * A widget renders where the viewer holds its subject, and every query behind it is narrowed to
+     * the viewer's scope. That replaces five different ad-hoc scoping rules — one per widget — with
+     * one, and lets "Officer" mean different things in a branch and in the Admin Unit without a code
+     * change.
+     */
+
+    /** Asset widgets: the KPI band, Assets by Category, Asset Condition, the branch heatmap. */
+    public static final String DASH_VIEW_ASSETS = "DASH_VIEW_ASSETS";
+    /** Request widgets: the work queue, my requests, request fulfilment. */
+    public static final String DASH_VIEW_REQUESTS = "DASH_VIEW_REQUESTS";
+    /** Stock widgets: the stocking trend. */
+    public static final String DASH_VIEW_STOCK = "DASH_VIEW_STOCK";
+    /** Movement widgets: consignments and transfers in flight. */
+    public static final String DASH_VIEW_MOVEMENTS = "DASH_VIEW_MOVEMENTS";
+
+    /*
+     * Scope is a ladder, not a set: the highest one held wins, so granting BRANCH to someone who
+     * already has SELF simply widens them. Holding none is not an error — see DashboardScopeService,
+     * which falls back to the pre-existing signals so that an estate with no dashboard permissions
+     * configured yet behaves exactly as it did before.
+     */
+
+    /** Only your own records — what you hold and what you asked for. The floor. */
+    public static final String DASH_SCOPE_SELF = "DASH_SCOPE_SELF";
+    /** Everything at your duty station. */
+    public static final String DASH_SCOPE_BRANCH = "DASH_SCOPE_BRANCH";
+    /** Every branch and Head Office, with a branch selector to focus one at a time. */
+    public static final String DASH_SCOPE_ALL = "DASH_SCOPE_ALL";
+
     // Stock take — counting is a designated duty, and the person who counts must not be the
     // person who approves their own variances.
     public static final String READ_STOCK_TAKE = "READ_STOCK_TAKE";

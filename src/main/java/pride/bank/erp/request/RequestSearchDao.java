@@ -107,6 +107,29 @@ public class RequestSearchDao {
             predicates.add(requestRoot.get("requester").get("id").in(requestSearchCriteria.getRequesterIds()));
         }
 
+        if (Objects.nonNull(requestSearchCriteria.getExcludedStatusIds())
+                && !requestSearchCriteria.getExcludedStatusIds().isEmpty()) {
+            // "Still open" — see RequestSearchCriteria on why this is expressed as an exclusion.
+            predicates.add(criteriaBuilder.not(
+                    requestRoot.get("status").get("id").in(requestSearchCriteria.getExcludedStatusIds())));
+        }
+
+        if (Objects.nonNull(requestSearchCriteria.getRaisedByUserId())) {
+            predicates.add(criteriaBuilder.equal(
+                    reuseJoin(requestRoot, "requester").get("id"),
+                    requestSearchCriteria.getRaisedByUserId()));
+        }
+
+        if (Objects.nonNull(requestSearchCriteria.getRequesterBranchId())) {
+            // Through the requester's branch: a request has no branch of its own, it belongs to
+            // wherever the person who raised it works. LEFT joined so a requester with no duty
+            // station does not silently disappear from a national count.
+            Join<Object, Object> requesterBranch =
+                    reuseJoin(reuseJoin(requestRoot, "requester"), "branch");
+            predicates.add(criteriaBuilder.equal(
+                    requesterBranch.get("id"), requestSearchCriteria.getRequesterBranchId()));
+        }
+
         if (Objects.nonNull(requestSearchCriteria.getDeleted())) {
             predicates.add(criteriaBuilder.equal(requestRoot.get("deleted"), requestSearchCriteria.getDeleted()));
         }
@@ -202,17 +225,25 @@ public class RequestSearchDao {
         }
 
         if (Objects.nonNull(requestSearchCriteria.getCurrentApproverId())) {
-            // The approval inbox shows what's assigned to me as an individual approver OR routed
-            // to a unit I belong to (group-email steps set currentUnit instead of an individual).
+            /*
+             * The approval inbox: what is assigned to me personally, OR routed to a unit I belong to
+             * (group-email steps set currentUnit instead of an individual).
+             *
+             * Both sides go through explicit LEFT joins. They were dotted paths, which JPA turns
+             * into INNER joins that sit in the FROM clause and filter before the OR is ever
+             * evaluated — so asking for "assigned to me or to my unit" silently required a request
+             * to have BOTH a current approver and a current unit. A request routed to one named
+             * approver, which is the ordinary case, has no currentUnit and was therefore excluded
+             * from the very inbox built to show it.
+             */
+            Join<Object, Object> approver = reuseJoin(requestRoot, "currentApprover");
             Predicate byApprover = criteriaBuilder.equal(
-                    requestRoot.get("currentApprover").get("id"),
-                    requestSearchCriteria.getCurrentApproverId()
-            );
+                    approver.get("id"), requestSearchCriteria.getCurrentApproverId());
+
             if (Objects.nonNull(requestSearchCriteria.getCurrentUnitId())) {
+                Join<Object, Object> unit = reuseJoin(requestRoot, "currentUnit");
                 Predicate byUnit = criteriaBuilder.equal(
-                        requestRoot.get("currentUnit").get("id"),
-                        requestSearchCriteria.getCurrentUnitId()
-                );
+                        unit.get("id"), requestSearchCriteria.getCurrentUnitId());
                 predicates.add(criteriaBuilder.or(byApprover, byUnit));
             } else {
                 predicates.add(byApprover);
