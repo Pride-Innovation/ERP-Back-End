@@ -7,6 +7,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import pride.bank.erp.exception.NotFoundException;
@@ -26,12 +27,14 @@ public class MovementController {
     private final MovementRepository movementRepository;
     private final MovementMapper movementMapper;
 
+    @PreAuthorize("hasAuthority('" + Constants.CREATE_MOVEMENT + "')")
     @PostMapping("/movements")
     public ResponseEntity<MovementResponseDTO> createMovement(@RequestBody MovementDTO dto) throws NotFoundException {
         return new ResponseEntity<>(movementMapper.toDto(movementService.createMovement(dto)), HttpStatus.CREATED);
     }
 
     /** Approve the current tier of a standalone movement's approval ladder. */
+    @PreAuthorize("hasAuthority('" + Constants.APPROVE_MOVEMENT + "')")
     @PostMapping("/movements/{movementId}/approve")
     public ResponseEntity<MovementResponseDTO> approveMovement(
             @PathVariable Long movementId,
@@ -43,6 +46,7 @@ public class MovementController {
     }
 
     /** Reject a standalone movement pending approval — cancels it and notifies the initiator. */
+    @PreAuthorize("hasAuthority('" + Constants.APPROVE_MOVEMENT + "')")
     @PostMapping("/movements/{movementId}/reject")
     public ResponseEntity<MovementResponseDTO> rejectMovement(
             @PathVariable Long movementId,
@@ -53,7 +57,15 @@ public class MovementController {
                 movementMapper.toDto(movementApprovalService.reject(movementId, comment)), HttpStatus.OK);
     }
 
-    /** The current user's (or a given user's) movement-approval inbox: movements in DRAFT assigned to them. */
+    /**
+     * The current user's (or a given user's) movement-approval inbox: movements in DRAFT assigned to
+     * them.
+     *
+     * <p>An inbox of decisions you are expected to make, so it answers to APPROVE_MOVEMENT rather
+     * than READ_MOVEMENT. Note this still takes the approver as a path variable, so a holder can
+     * read any approver's inbox — narrowing that to the caller is separate work.
+     */
+    @PreAuthorize("hasAuthority('" + Constants.APPROVE_MOVEMENT + "')")
     @GetMapping("/movements/pending-approval/{approverId}")
     public ResponseEntity<Page<MovementResponseDTO>> pendingApprovals(
             @PathVariable Long approverId,
@@ -68,6 +80,7 @@ public class MovementController {
     }
 
     /** Attach a delivery/release document (e.g. signed HO release note) to a movement. */
+    @PreAuthorize("hasAuthority('" + Constants.CREATE_MOVEMENT + "')")
     @PostMapping(value = "/movements/{movementId}/documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<MovementResponseDTO> attachDocument(
             @PathVariable Long movementId,
@@ -81,6 +94,7 @@ public class MovementController {
      * Upload a document ahead of movement creation and get back its stored path, for flows that must
      * carry documents in the create payload (e.g. an EXTERNAL repair transfer's dispatch documents).
      */
+    @PreAuthorize("hasAuthority('" + Constants.CREATE_MOVEMENT + "')")
     @PostMapping(value = "/movements/documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Map<String, String>> uploadStandaloneDocument(
             @RequestParam("file") MultipartFile file
@@ -96,6 +110,7 @@ public class MovementController {
      * <p>Mapped to a DTO rather than returned as entities: each record holds a LAZY movement, and
      * initialising that proxy while writing the response exceeded the database's 61-table join limit.
      */
+    @PreAuthorize("hasAuthority('" + Constants.READ_MOVEMENT + "')")
     @GetMapping("/movements/{movementId}/approvals")
     public ResponseEntity<List<MovementApprovalRecordDTO>> approvalTrail(@PathVariable Long movementId) {
         return new ResponseEntity<>(
@@ -104,11 +119,13 @@ public class MovementController {
                 HttpStatus.OK);
     }
 
+    @PreAuthorize("hasAuthority('" + Constants.READ_MOVEMENT + "')")
     @GetMapping("/movements/{movementId}")
     public ResponseEntity<MovementResponseDTO> getMovement(@PathVariable Long movementId) throws NotFoundException {
         return new ResponseEntity<>(movementMapper.toDto(movementService.findMovement(movementId)), HttpStatus.OK);
     }
 
+    @PreAuthorize("hasAuthority('" + Constants.READ_MOVEMENT + "')")
     @GetMapping("/movements")
     public ResponseEntity<Page<MovementResponseDTO>> listMovements(
             @RequestParam(required = false, defaultValue = "10") int pageSize,
@@ -118,12 +135,14 @@ public class MovementController {
         return new ResponseEntity<>(movementService.listMovements(pageable).map(movementMapper::toDto), HttpStatus.OK);
     }
 
+    @PreAuthorize("hasAuthority('" + Constants.READ_MOVEMENT + "')")
     @GetMapping("/movements/by-request/{requestId}")
     public ResponseEntity<List<MovementResponseDTO>> listByRequest(@PathVariable Long requestId) {
         return new ResponseEntity<>(movementMapper.toDtoList(movementService.findByRequest(requestId)), HttpStatus.OK);
     }
 
     /** Dispatches an inter-location movement with courier/tracking details (§9, §10). */
+    @PreAuthorize("hasAuthority('" + Constants.DISPATCH_MOVEMENT + "')")
     @PostMapping("/movements/{movementId}/dispatch")
     public ResponseEntity<MovementResponseDTO> dispatchMovement(
             @PathVariable Long movementId,
@@ -134,12 +153,14 @@ public class MovementController {
     }
 
     /** Optional in-transit marker for a dispatched inter-location movement. */
+    @PreAuthorize("hasAuthority('" + Constants.DISPATCH_MOVEMENT + "')")
     @PostMapping("/movements/{movementId}/in-transit")
     public ResponseEntity<MovementResponseDTO> markInTransit(@PathVariable Long movementId) throws NotFoundException {
         return new ResponseEntity<>(movementMapper.toDto(movementService.markInTransit(movementId)), HttpStatus.OK);
     }
 
     /** Receives a movement at its destination and applies its inventory effects (§10, §22). */
+    @PreAuthorize("hasAuthority('" + Constants.RECEIVE_MOVEMENT + "')")
     @PostMapping("/movements/{movementId}/receive")
     public ResponseEntity<MovementResponseDTO> receiveMovement(
             @PathVariable Long movementId,
@@ -150,6 +171,7 @@ public class MovementController {
     }
 
     /** Cancels a movement without applying any inventory effect. */
+    @PreAuthorize("hasAuthority('" + Constants.CANCEL_MOVEMENT + "')")
     @PostMapping("/movements/{movementId}/cancel")
     public ResponseEntity<MovementResponseDTO> cancelMovement(
             @PathVariable Long movementId,
@@ -163,7 +185,12 @@ public class MovementController {
     /**
      * Completes a movement and applies its inventory effects. Convenience for intra-location
      * movements; inter-location movements should use {@code /dispatch} then {@code /receive}.
+     *
+     * <p>Guarded by RECEIVE_MOVEMENT rather than a permission of its own: this is the intra-location
+     * equivalent of receiving, and it lands the goods. Giving it a weaker permission would leave a
+     * way to apply a movement's inventory effects without the authority to receive one.
      */
+    @PreAuthorize("hasAuthority('" + Constants.RECEIVE_MOVEMENT + "')")
     @PostMapping("/movements/{movementId}/complete")
     public ResponseEntity<MovementResponseDTO> completeMovement(
             @PathVariable Long movementId,

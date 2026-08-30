@@ -88,6 +88,18 @@ import static pride.bank.erp.helper.Constants.READ_USER;
 import static pride.bank.erp.helper.Constants.REJECT_REQUEST;
 import static pride.bank.erp.helper.Constants.SUPER_ADMIN;
 import static pride.bank.erp.helper.Constants.UPDATE_ASSET;
+import static pride.bank.erp.helper.Constants.REASSIGN_ASSET;
+import static pride.bank.erp.helper.Constants.REPAIR_ASSET;
+import static pride.bank.erp.helper.Constants.RECEIVE_ASSET_IN_STORE;
+import static pride.bank.erp.helper.Constants.DISPOSE_ASSET;
+import static pride.bank.erp.helper.Constants.IMPORT_ASSET;
+import static pride.bank.erp.helper.Constants.EXPORT_ASSET;
+import static pride.bank.erp.helper.Constants.READ_MOVEMENT;
+import static pride.bank.erp.helper.Constants.CREATE_MOVEMENT;
+import static pride.bank.erp.helper.Constants.DISPATCH_MOVEMENT;
+import static pride.bank.erp.helper.Constants.RECEIVE_MOVEMENT;
+import static pride.bank.erp.helper.Constants.CANCEL_MOVEMENT;
+import static pride.bank.erp.helper.Constants.APPROVE_MOVEMENT;
 import static pride.bank.erp.helper.Constants.UPDATE_AUDIT;
 import static pride.bank.erp.helper.Constants.UPDATE_INVENTORY;
 import static pride.bank.erp.helper.Constants.UPDATE_PERMISSION;
@@ -238,6 +250,22 @@ public class DataInitializer {
                 ensurePermission(CREATE_ASSET),
                 ensurePermission(DELETE_ASSET),
                 ensurePermission(UPDATE_ASSET),
+                // Asset lifecycle actions — see Constants for why these are not folded into
+                // CREATE_ASSET / UPDATE_ASSET.
+                ensurePermission(REASSIGN_ASSET),
+                ensurePermission(REPAIR_ASSET),
+                ensurePermission(RECEIVE_ASSET_IN_STORE),
+                ensurePermission(DISPOSE_ASSET),
+                ensurePermission(IMPORT_ASSET),
+                ensurePermission(EXPORT_ASSET),
+                // Movements and consignments — see Constants for why dispatch and receive are not
+                // folded into create.
+                ensurePermission(READ_MOVEMENT),
+                ensurePermission(CREATE_MOVEMENT),
+                ensurePermission(DISPATCH_MOVEMENT),
+                ensurePermission(RECEIVE_MOVEMENT),
+                ensurePermission(CANCEL_MOVEMENT),
+                ensurePermission(APPROVE_MOVEMENT),
                 // Request Approvals and Acknowledgement
                 ensurePermission(APPROVE_REQUEST),
                 ensurePermission(REJECT_REQUEST),

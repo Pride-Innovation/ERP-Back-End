@@ -131,10 +131,63 @@ public class SecurityConfiguration {
                                 // The handler takes no id and reads the holder off the JWT, so
                                 // authentication alone is the correct and sufficient guard here.
                                 .requestMatchers(HttpMethod.GET, MY_ASSETS_ROUTE).authenticated()
+                                /*
+                                 * Asset lifecycle actions, ahead of the verb rules below.
+                                 *
+                                 * The verb rules alone gave every POST under /assets/** the same
+                                 * permission, so registering an asset, reassigning one to another
+                                 * officer and importing a spreadsheet of several thousand were all
+                                 * CREATE_ASSET; handing an asset into a store was UPDATE_ASSET,
+                                 * indistinguishable from correcting a typo in its model number.
+                                 * Matchers are evaluated in order, so these must precede them.
+                                 */
+                                .requestMatchers(HttpMethod.POST, ASSET_REASSIGN_ROUTE).hasAuthority(REASSIGN_ASSET)
+                                // Booking an asset in for repair and closing that repair off are the
+                                // same duty; reading the repair history is not.
+                                .requestMatchers(HttpMethod.POST, ASSET_REPAIR_ROUTE).hasAuthority(REPAIR_ASSET)
+                                .requestMatchers(HttpMethod.PUT, ASSET_REPAIR_ROUTE).hasAuthority(REPAIR_ASSET)
+                                .requestMatchers(HttpMethod.GET, ASSET_REPAIR_ROUTE).hasAuthority(READ_ASSET)
+                                .requestMatchers(HttpMethod.PUT, ASSET_TO_STORE_ROUTE).hasAuthority(RECEIVE_ASSET_IN_STORE)
+                                // The template describes what an import may contain, so it answers
+                                // to the same permission as the import itself.
+                                .requestMatchers(HttpMethod.POST, ASSET_BULK_INSERT_ROUTE).hasAuthority(IMPORT_ASSET)
+                                .requestMatchers(HttpMethod.GET, ASSET_IMPORT_TEMPLATE_ROUTE).hasAuthority(IMPORT_ASSET)
+                                /*
+                                 * Per-category counts feeding the "Assets by Category" and "Asset
+                                 * Condition" widgets. Accepts the dashboard authority as well as
+                                 * READ_ASSET, matching the two request widgets above: someone
+                                 * granted DASH_VIEW_ASSETS to see the estate summarised should not
+                                 * also need the permission that opens the full register. Without
+                                 * this the GET rule below demanded READ_ASSET and the dashboard
+                                 * rendered a widget its own endpoint then refused.
+                                 */
+                                .requestMatchers(HttpMethod.GET, ASSET_STATISTICS_ROUTE)
+                                .hasAnyAuthority(READ_ASSET, DASH_VIEW_ASSETS)
                                 .requestMatchers(HttpMethod.POST, ASSET_ROUTE).hasAuthority(CREATE_ASSET)
                                 .requestMatchers(HttpMethod.DELETE, ASSET_ROUTE).hasAuthority(DELETE_ASSET)
                                 .requestMatchers(HttpMethod.PUT, ASSET_ROUTE).hasAuthority(UPDATE_ASSET)
                                 .requestMatchers(HttpMethod.GET, ASSET_ROUTE).hasAuthority(READ_ASSET)
+                                /*
+                                 * Disposal. Registered here rather than with the asset routes
+                                 * because it is a movement — POST /movements/disposal raises a
+                                 * DISPOSAL_TRANSFER and enforces the store and useful-life rules.
+                                 * Nothing under /movements/** matched any rule, so it reached
+                                 * `.anyRequest().authenticated()` and any signed-in user could
+                                 * write an asset off. The preview is read-only but names the same
+                                 * asset and destination, so it answers to the same permission.
+                                 */
+                                .requestMatchers(HttpMethod.GET, MOVEMENT_DISPOSAL_PREVIEW_ROUTE).hasAuthority(DISPOSE_ASSET)
+                                .requestMatchers(HttpMethod.POST, MOVEMENT_DISPOSAL_ROUTE).hasAuthority(DISPOSE_ASSET)
+                                /*
+                                 * The register in bulk. This returns every asset of a category in
+                                 * one unpaginated list and matched no rule, so it was reachable
+                                 * with any valid token — a way around READ_ASSET rather than an
+                                 * extension of it. EXPORT_ASSET is deliberately its own permission:
+                                 * reading the register a page at a time on screen and walking out
+                                 * with the whole of it are different acts, which is why one is
+                                 * audited and the other is not.
+                                 */
+                                .requestMatchers(HttpMethod.GET, EXPORT_ASSETS_ROUTE).hasAuthority(EXPORT_ASSET)
                                 // Dashboard reporting routes.
                                 // Each mirrors the authority the dashboard uses to decide whether to
                                 // render the widget fed by it, so the API and the UI agree on who may

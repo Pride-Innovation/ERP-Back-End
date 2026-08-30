@@ -71,6 +71,31 @@ public class Constants {
     public static final String MY_ASSETS_ROUTE = GENERAL_ROUTE + "/assets/my-assets";
 
     /*
+     * Asset sub-routes that need a permission of their own.
+     *
+     * Each must be registered BEFORE the ASSET_ROUTE verb rules in SecurityConfiguration — matchers
+     * are evaluated in order and the first match wins, so a generic POST /assets/** rule placed
+     * first would swallow every one of these.
+     */
+    public static final String ASSET_REASSIGN_ROUTE = GENERAL_ROUTE + "/assets/reassign/**";
+    public static final String ASSET_REPAIR_ROUTE = GENERAL_ROUTE + "/assets/repairs/**";
+    public static final String ASSET_TO_STORE_ROUTE = GENERAL_ROUTE + "/assets/store/**";
+    public static final String ASSET_BULK_INSERT_ROUTE = GENERAL_ROUTE + "/assets/bulk-insert";
+    public static final String ASSET_IMPORT_TEMPLATE_ROUTE = GENERAL_ROUTE + "/assets/import-template/**";
+    public static final String ASSET_STATISTICS_ROUTE = GENERAL_ROUTE + "/assets/statistics";
+
+    /*
+     * Disposal lives under /movements, not /assets — it raises a DISPOSAL_TRANSFER rather than
+     * flipping a flag. Nothing under /movements/** matched any rule, so it fell through to
+     * `.anyRequest().authenticated()`: any signed-in user could dispose of any asset.
+     */
+    public static final String MOVEMENT_DISPOSAL_ROUTE = GENERAL_ROUTE + "/movements/disposal";
+    public static final String MOVEMENT_DISPOSAL_PREVIEW_ROUTE = GENERAL_ROUTE + "/movements/disposal/preview";
+
+    /** Whole-register extract. Bypassed READ_ASSET entirely until it was matched here. */
+    public static final String EXPORT_ASSETS_ROUTE = GENERAL_ROUTE + "/export/assets";
+
+    /*
      * Dashboard reporting routes.
      *
      * These sit outside every resource prefix above (they are not under /assets, /requests or
@@ -198,6 +223,52 @@ public class Constants {
     public static final String CREATE_ASSET = "CREATE_ASSET";
     public static final String DELETE_ASSET = "DELETE_ASSET";
     public static final String UPDATE_ASSET = "UPDATE_ASSET";
+
+    /*
+     * Asset lifecycle actions.
+     *
+     * Split out of CREATE_ASSET / UPDATE_ASSET because the route rules match on the HTTP verb, so
+     * every POST under /assets/** collapsed into one permission: whoever could register an asset
+     * could also reassign it to another officer, book it for repair and import a spreadsheet of
+     * several thousand, and whoever could edit a field could hand the asset into a store. Those are
+     * different duties held by different people, and disposal in particular is the one action that
+     * takes an asset off the register for good.
+     */
+    public static final String REASSIGN_ASSET = "REASSIGN_ASSET";
+    public static final String REPAIR_ASSET = "REPAIR_ASSET";
+    public static final String RECEIVE_ASSET_IN_STORE = "RECEIVE_ASSET_IN_STORE";
+    public static final String DISPOSE_ASSET = "DISPOSE_ASSET";
+    public static final String IMPORT_ASSET = "IMPORT_ASSET";
+    /** Bulk extraction of the register. Audited, because it is data leaving the building. */
+    public static final String EXPORT_ASSET = "EXPORT_ASSET";
+
+    /*
+     * Movements and consignments — the module that physically moves stock between buildings.
+     *
+     * Every endpoint here fell through to `.anyRequest().authenticated()` until 2026-08-27, so any
+     * signed-in user could raise a transfer, send stock out of a building, receive it, or cancel a
+     * journey in flight.
+     *
+     * Dispatch and receive are deliberately not folded into CREATE_MOVEMENT: raising a transfer and
+     * physically handing custody over are different acts by different people, and the audit trail
+     * has always recorded them separately.
+     */
+    public static final String READ_MOVEMENT = "READ_MOVEMENT";
+    public static final String CREATE_MOVEMENT = "CREATE_MOVEMENT";
+    public static final String DISPATCH_MOVEMENT = "DISPATCH_MOVEMENT";
+    public static final String RECEIVE_MOVEMENT = "RECEIVE_MOVEMENT";
+    public static final String CANCEL_MOVEMENT = "CANCEL_MOVEMENT";
+    /**
+     * Approving or rejecting a movement — and authorising the approval <b>bypass</b>.
+     *
+     * <p>The bypass is not an endpoint. It is the {@code proceedWithoutApproval} flag on the create
+     * payload, which lets a movement proceed when no approver resolves on the initiator's reporting
+     * line. It is the one action that moves stock with no approval at all, it is audited CRITICAL,
+     * and it was previously available to anyone who could create a movement — which, before this,
+     * was everyone. Enforced in {@code MovementApprovalService#startApproval}, the single funnel
+     * every create path passes through.
+     */
+    public static final String APPROVE_MOVEMENT = "APPROVE_MOVEMENT";
 
     public static final String APPROVE_REQUEST = "APPROVE_REQUEST";
     public static final String REJECT_REQUEST = "REJECT_REQUEST";

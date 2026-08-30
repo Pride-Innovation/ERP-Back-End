@@ -10,6 +10,8 @@ package pride.bank.erp.movement;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pride.bank.erp.appnotification.AppNotificationService;
@@ -18,6 +20,7 @@ import pride.bank.erp.auditing.trail.AuditModule;
 import pride.bank.erp.auditing.trail.AuditSeverity;
 import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.exception.BadRequestException;
+import pride.bank.erp.helper.Constants;
 import pride.bank.erp.exception.NoApproverException;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.user.User;
@@ -52,6 +55,27 @@ public class MovementApprovalService {
 
     @Value("${front-end.environment}")
     private String frontEndUrl;
+
+    /**
+     * Refuses the approval bypass to anyone without APPROVE_MOVEMENT.
+     *
+     * <p>Reads the authorities off the security context rather than the User entity so it sees
+     * exactly what the request was authenticated with, and so it behaves identically under test.
+     * SUPER_ADMIN needs no special case: {@code DataInitializer} reconciles that role against every
+     * seeded permission on each startup, so it holds APPROVE_MOVEMENT like any other.
+     */
+    private void requireBypassAuthority() {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        boolean permitted = authentication != null
+                && authentication.getAuthorities().stream()
+                .anyMatch(granted -> Constants.APPROVE_MOVEMENT.equals(granted.getAuthority()));
+        if (!permitted) {
+            throw new AccessDeniedException(
+                    "Proceeding without approval requires the " + Constants.APPROVE_MOVEMENT
+                            + " permission. Ask an administrator to correct the approval ladder, "
+                            + "or to grant you this permission.");
+        }
+    }
 
     /**
      * Parks a freshly-created standalone movement in DRAFT and notifies the first ladder tier.
@@ -93,6 +117,22 @@ public class MovementApprovalService {
                                 + " Ask an administrator to correct this, or confirm that you want to "
                                 + "proceed without approval.");
             }
+            /*
+             * Skipping the ladder is an approval decision, so it needs the approval authority.
+             *
+             * Checked here rather than on a controller method because the bypass is not an endpoint
+             * — it is the `proceedWithoutApproval` flag on the create payload, and five different
+             * create paths set it (standalone movements, repair transfers, temp replacements,
+             * returns after repair and disposals). This method is the one funnel all of them pass
+             * through, so it is the only place the rule can be stated once. Annotating the create
+             * endpoints instead would mean anyone who could raise a movement could also authorise
+             * its bypass, which is the thing being prevented.
+             *
+             * Refused rather than downgraded to "needs approval": the caller has been told no
+             * approver could be found and has explicitly asked to proceed, so quietly parking the
+             * movement in DRAFT would leave it waiting on an approver who does not exist.
+             */
+            requireBypassAuthority();
             // Proceeding, but on the record. The BYPASSED tier names who authorised it and why, so
             // the movement can never be mistaken later for one that cleared a ladder.
             movement.setStatus(MovementStatus.INITIATED);
