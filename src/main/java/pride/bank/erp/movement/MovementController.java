@@ -122,7 +122,7 @@ public class MovementController {
     @PreAuthorize("hasAuthority('" + Constants.READ_MOVEMENT + "')")
     @GetMapping("/movements/{movementId}")
     public ResponseEntity<MovementResponseDTO> getMovement(@PathVariable Long movementId) throws NotFoundException {
-        return new ResponseEntity<>(movementMapper.toDto(movementService.findMovement(movementId)), HttpStatus.OK);
+        return new ResponseEntity<>(movementMapper.toDto(movementService.getMovementForViewing(movementId)), HttpStatus.OK);
     }
 
     @PreAuthorize("hasAuthority('" + Constants.READ_MOVEMENT + "')")

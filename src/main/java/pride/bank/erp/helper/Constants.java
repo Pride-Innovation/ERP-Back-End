@@ -111,8 +111,6 @@ public class Constants {
     public static final String REPORT_ASSETS_BY_BRANCH = GENERAL_ROUTE + "/dashboard-asset-report/by-branch";
     /** Monthly stocking volumes. */
     public static final String REPORT_MONTHLY_STOCK = GENERAL_ROUTE + "/monthly-asset-stock";
-    /** The open request queue. */
-    public static final String REPORT_PENDING_REQUESTS = GENERAL_ROUTE + "/latest-pending-request";
     /** Requested vs delivered per category for the current year. */
     public static final String REPORT_REQUEST_SUMMARY = GENERAL_ROUTE + "/current-year-summary";
 
@@ -167,6 +165,26 @@ public class Constants {
      * view get it, everyone else is scoped to the branch they belong to. Absence of this permission
      * is the default, so a new user is confined to their own branch until someone decides otherwise.
      */
+    /**
+     * Reading an asset's chain of custody: every holder, every date, every status change.
+     *
+     * <p>Split from {@code READ_ASSET} because they answer different questions. Seeing what an asset
+     * is, and seeing everyone who has ever had it, are separate disclosures — the second is the one
+     * that says where a named member of staff was working and what they were issued.
+     *
+     * <p>Both trail permissions are <b>narrowing</b>: the asset's own branch scope still applies on
+     * top, so holding this grants the trail of assets already within reach, never more.
+     */
+    public static final String READ_ASSIGNMENT_HISTORY = "READ_ASSIGNMENT_HISTORY";
+
+    /**
+     * Reading an asset's repair and maintenance history — what failed, when, and at what cost.
+     *
+     * <p>Separate from {@link #REPAIR_ASSET}, which is performing the repair. Reading the record and
+     * doing the work are different duties and are routinely held by different people.
+     */
+    public static final String READ_REPAIR_HISTORY = "READ_REPAIR_HISTORY";
+
     public static final String VIEW_ALL_BRANCHES = "VIEW_ALL_BRANCHES";
 
     /*
@@ -205,6 +223,50 @@ public class Constants {
      * which falls back to the pre-existing signals so that an estate with no dashboard permissions
      * configured yet behaves exactly as it did before.
      */
+
+    /*
+     * ── Cross-branch multipliers ────────────────────────────────────────────
+     *
+     * Each widens the reach of permissions the holder ALREADY has; none grants anything on its own.
+     * VIEW_ALL_BRANCH_ASSETS without READ_ASSET permits nothing, and MANAGE_ALL_BRANCH_ASSETS
+     * without UPDATE_ASSET edits nothing. That is what keeps them from ever contradicting the base
+     * permissions — they extend where those apply, never what they allow.
+     *
+     * Two per subject rather than one per verb: eight names instead of the twenty a verb-by-verb
+     * scheme would need, while still expressing "may see every branch's assets, may edit only its
+     * own".
+     *
+     * These are what a unit role carries. A branch user should never hold one — a branch is confined
+     * to its own data by default, and Head Office's Admin and Infra units are the exception.
+     */
+
+    /** Read assets across every branch. Widens READ_ASSET and the asset read endpoints. */
+    public static final String VIEW_ALL_BRANCH_ASSETS = "VIEW_ALL_BRANCH_ASSETS";
+    /** Act on assets across every branch. Widens UPDATE_/DELETE_/REASSIGN_/DISPOSE_ASSET and friends. */
+    public static final String MANAGE_ALL_BRANCH_ASSETS = "MANAGE_ALL_BRANCH_ASSETS";
+
+    /**
+     * Read requests across every branch.
+     *
+     * <p>Deliberately not granted to the units by default. A branch request reaches Admin through
+     * the workflow — when a step routes to the unit, {@code Request.currentUnit} is set and every
+     * member sees it. That is "visible when it reaches you". This permission makes every branch
+     * request visible from the moment it is raised, which is easy to add from Settings later and
+     * much harder to walk back once people rely on it.
+     */
+    public static final String VIEW_ALL_BRANCH_REQUESTS = "VIEW_ALL_BRANCH_REQUESTS";
+    public static final String MANAGE_ALL_BRANCH_REQUESTS = "MANAGE_ALL_BRANCH_REQUESTS";
+
+    public static final String VIEW_ALL_BRANCH_MOVEMENTS = "VIEW_ALL_BRANCH_MOVEMENTS";
+    public static final String MANAGE_ALL_BRANCH_MOVEMENTS = "MANAGE_ALL_BRANCH_MOVEMENTS";
+
+    public static final String VIEW_ALL_BRANCH_INVENTORY = "VIEW_ALL_BRANCH_INVENTORY";
+    public static final String MANAGE_ALL_BRANCH_INVENTORY = "MANAGE_ALL_BRANCH_INVENTORY";
+
+    /** Role attached to the Admin Unit. Not a title role — see UnitRoleSeeder. */
+    public static final String ADMIN_UNIT_ROLE = "ADMIN_UNIT";
+    /** Role attached to the Infra Unit. */
+    public static final String INFRA_UNIT_ROLE = "INFRA_UNIT";
 
     /** Only your own records — what you hold and what you asked for. The floor. */
     public static final String DASH_SCOPE_SELF = "DASH_SCOPE_SELF";

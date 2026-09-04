@@ -51,6 +51,9 @@ public class RepairMovementService {
     private final InventoryService inventoryService;
     private final pride.bank.erp.user.UserRepository userRepository;
 
+    /** Decides whether a <em>particular</em> asset is within the caller's reach. */
+    private final pride.bank.erp.access.AccessScopeService accessScopeService;
+
     /**
      * §14: send a faulty asset for repair, routed by its category configuration.
      *
@@ -63,6 +66,7 @@ public class RepairMovementService {
     @Transactional
     public Movement transferForRepair(RepairTransferDTO dto) throws NotFoundException {
         Asset asset = findAsset(dto.getAssetId());
+        requireAssetInScope(asset);
         AssetType category = asset.getAssetType();
 
         // Non-repairable category → skip the workshop, send straight to disposal.
@@ -165,6 +169,7 @@ public class RepairMovementService {
     @Transactional
     public Movement issueTemporaryReplacement(TempReplacementDTO dto) throws NotFoundException {
         Asset temp = findAsset(dto.getTempAssetId());
+        requireAssetInScope(temp);
         Store source = currentStoreOf(temp);
 
         return movementService.createMovement(MovementDTO.builder()
@@ -198,6 +203,7 @@ public class RepairMovementService {
     @Transactional
     public Movement returnAfterRepair(ReturnAfterRepairDTO dto) throws NotFoundException {
         Asset repaired = findAsset(dto.getAssetId());
+        requireAssetInScope(repaired);
         // Source is wherever the asset is currently held (IT store, Admin store, or the Admin custody
         // store that coordinated an external repair) — resolved uniformly rather than hardcoding IT.
         Store source = currentStoreOf(repaired);
@@ -590,6 +596,7 @@ public class RepairMovementService {
     @Transactional
     public Movement disposeAsset(DisposalDTO dto) throws NotFoundException {
         Asset asset = findAsset(dto.getAssetId());
+        requireAssetInScope(asset);
         Store source = currentStoreOf(asset);
         Store disposalStore = headOfficeStore(StoreType.DISPOSAL);
 
@@ -636,9 +643,40 @@ public class RepairMovementService {
         return MovementItemDTO.builder().assetId(assetId).quantity(1).build();
     }
 
+    /**
+     * Loads an asset for a repair, disposal or replacement action.
+     *
+     * <p>A soft-deleted asset reads as absent here, exactly as it does on the detail page. The record
+     * survives so its history stays intact, but it has left the register — disposing of or repairing
+     * something no longer in the register would put movements and status changes against a row
+     * nobody can see.
+     */
     private Asset findAsset(Long assetId) throws NotFoundException {
-        return assetRepository.findById(assetId)
+        Asset asset = assetRepository.findById(assetId)
                 .orElseThrow(() -> new NotFoundException("Asset " + assetId + " not found"));
+        if (Boolean.TRUE.equals(asset.getDeleted())) {
+            throw new NotFoundException("Asset " + assetId + " not found");
+        }
+        return asset;
+    }
+
+    /**
+     * Refuses unless this asset is within the caller's reach.
+     *
+     * <p>These four actions live under {@code /movements} but each acts on an <em>asset</em> named by
+     * id, so they answer to the asset's branch rather than a movement's. Disposal is the sharp one:
+     * it writes the asset off permanently, and until now the route guard checked that the caller held
+     * {@code DISPOSE_ASSET} while nothing afterwards asked whose asset it was. A branch officer could
+     * write off another branch's asset by id.
+     *
+     * <p>MANAGE for all four. Booking a repair moves an asset into someone else's custody and returns
+     * it somewhere; that is a change to the record, not a look at it.
+     */
+    private void requireAssetInScope(Asset asset) {
+        Long branchId = asset.getBranch() != null ? asset.getBranch().getId() : null;
+        Long holderId = asset.getAssignedTo() != null ? asset.getAssignedTo().getId() : null;
+        accessScopeService.requireCanManage(
+                pride.bank.erp.access.ScopeSubject.ASSETS, branchId, holderId);
     }
 
     /** Who currently holds the asset, if anyone — captured before custody moves to the admin. */

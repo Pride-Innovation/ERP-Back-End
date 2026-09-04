@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.issuance.UserBuilder;
 import pride.bank.erp.notification.Email;
+import org.springframework.security.access.AccessDeniedException;
 import pride.bank.erp.request.Request;
 import pride.bank.erp.request.RequestDTO;
 import pride.bank.erp.request.RequestRepository;
@@ -45,6 +46,7 @@ public class RequestReportService {
     private final UserBuilder userBuilder;
     private final RequestCommodityRepository requestCommodityRepository;
     private final WorkflowEngineService workflowEngineService;
+    private final pride.bank.erp.config.CurrentUserService currentUserService;
 
     @Value("${application.admin.email}")
     private String adminEmailAddress;
@@ -53,6 +55,21 @@ public class RequestReportService {
     public RequestDTO approveRequest(RequestReportDTO body)
             throws NotFoundException, BusinessRuleException {
         Request request = requestService.findRequest(body.getRequestId());
+
+        /*
+         * The decision is attributed to whoever the body names, and the body comes from the client.
+         * Naming someone else would file the approval under their name in the step log and the audit
+         * trail — a signature nobody checked. The frontend already sends the signed-in user's own id,
+         * so pinning it here costs nothing and closes the gap.
+         *
+         * Null is left alone: the workflow engine treats a null actor as a system-driven step and
+         * has its own handling for it.
+         */
+        User signedIn = currentUserService.getCurrentUser();
+        if (body.getApproverId() != null && signedIn != null
+                && !body.getApproverId().equals(signedIn.getId())) {
+            throw new AccessDeniedException("You can only approve or reject as yourself.");
+        }
 
         // Guard: an officer must not approve or reject their own request.
         if (body.getApproverId() != null

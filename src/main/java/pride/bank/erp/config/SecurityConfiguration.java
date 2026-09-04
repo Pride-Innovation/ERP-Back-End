@@ -146,7 +146,10 @@ public class SecurityConfiguration {
                                 // same duty; reading the repair history is not.
                                 .requestMatchers(HttpMethod.POST, ASSET_REPAIR_ROUTE).hasAuthority(REPAIR_ASSET)
                                 .requestMatchers(HttpMethod.PUT, ASSET_REPAIR_ROUTE).hasAuthority(REPAIR_ASSET)
-                                .requestMatchers(HttpMethod.GET, ASSET_REPAIR_ROUTE).hasAuthority(READ_ASSET)
+                                // Reading the maintenance record is a different duty from doing
+                                // the repair, and routinely a different person. The branch scope
+                                // applies on top, inside RepairService.
+                                .requestMatchers(HttpMethod.GET, ASSET_REPAIR_ROUTE).hasAuthority(READ_REPAIR_HISTORY)
                                 .requestMatchers(HttpMethod.PUT, ASSET_TO_STORE_ROUTE).hasAuthority(RECEIVE_ASSET_IN_STORE)
                                 // The template describes what an import may contain, so it answers
                                 // to the same permission as the import itself.
@@ -193,11 +196,42 @@ public class SecurityConfiguration {
                                 // render the widget fed by it, so the API and the UI agree on who may
                                 // see what. Without these the reports matched no rule and fell through
                                 // to `.anyRequest().authenticated()`.
-                                .requestMatchers(HttpMethod.GET, REPORT_ASSETS_BY_BRANCH).hasAuthority(VIEW_ALL_BRANCHES)
-                                .requestMatchers(HttpMethod.GET, REPORT_ALL_BRANCH_ASSETS).hasAuthority(VIEW_ALL_BRANCHES)
-                                .requestMatchers(HttpMethod.GET, REPORT_MONTHLY_STOCK).hasAnyAuthority(READ_STORE, READ_INVENTORY)
-                                .requestMatchers(HttpMethod.GET, REPORT_PENDING_REQUESTS).hasAuthority(READ_REQUEST)
-                                .requestMatchers(HttpMethod.GET, REPORT_REQUEST_SUMMARY).hasAuthority(READ_REQUEST)
+                                /*
+                                 * The national asset roll-up: any of the three ways of being at ALL
+                                 * scope for assets.
+                                 *
+                                 * This named only VIEW_ALL_BRANCHES, which predates the multiplier
+                                 * model. The dashboard renders the "Assets Across All Branches"
+                                 * widget whenever the viewer's scope resolves to ALL — and a unit
+                                 * confers that through DASH_SCOPE_ALL and VIEW_ALL_BRANCH_ASSETS,
+                                 * never through the legacy permission. So an Admin Unit officer got
+                                 * the widget on screen and a 403 from the endpoint behind it: the
+                                 * exact drift between the two halves that CLAUDE.md warns about.
+                                 *
+                                 * All three are listed rather than one replacing another. The legacy
+                                 * permission stays so nobody who could see the bank yesterday is
+                                 * narrowed today; DASH_SCOPE_ALL is the dashboard axis and this is a
+                                 * dashboard endpoint; VIEW_ALL_BRANCH_ASSETS is the asset-view
+                                 * multiplier and this is asset data.
+                                 */
+                                .requestMatchers(HttpMethod.GET, REPORT_ASSETS_BY_BRANCH)
+                                .hasAnyAuthority(VIEW_ALL_BRANCHES, DASH_SCOPE_ALL, VIEW_ALL_BRANCH_ASSETS)
+                                .requestMatchers(HttpMethod.GET, REPORT_ALL_BRANCH_ASSETS)
+                                .hasAnyAuthority(VIEW_ALL_BRANCHES, DASH_SCOPE_ALL, VIEW_ALL_BRANCH_ASSETS)
+                                /*
+                                 * The dashboard subject permissions belong here too.
+                                 *
+                                 * Granting DASH_VIEW_STOCK is meant to be enough to see stock
+                                 * summarised without also opening the store pages — that separation
+                                 * is the whole reason the axis exists. While these named only the
+                                 * READ_* permissions, the widget rendered on the subject grant and
+                                 * its endpoint refused. ASSET_STATISTICS_ROUTE above already lists
+                                 * both; these two were missed.
+                                 */
+                                .requestMatchers(HttpMethod.GET, REPORT_MONTHLY_STOCK)
+                                .hasAnyAuthority(READ_STORE, READ_INVENTORY, DASH_VIEW_STOCK)
+                                .requestMatchers(HttpMethod.GET, REPORT_REQUEST_SUMMARY)
+                                .hasAnyAuthority(READ_REQUEST, DASH_VIEW_REQUESTS)
                                 // Requests approval and Acknowledgements
                                 .requestMatchers(HttpMethod.POST, REQUEST_APPROVAL).hasAuthority(APPROVE_REQUEST)
                                 .requestMatchers(HttpMethod.POST, REQUEST_APPROVAL).hasAuthority(REJECT_REQUEST)

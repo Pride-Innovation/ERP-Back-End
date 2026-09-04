@@ -26,6 +26,7 @@ public interface AssetRepository extends JpaRepository<Asset, Long> {
                 LEFT JOIN commodity c ON a.commodity_id = c.id
                 LEFT JOIN asset_type at ON c.asset_type_id = at.id
                 WHERE at.name IS NOT NULL
+                  AND a.deleted = false
                 GROUP BY at.name
             """, nativeQuery = true)
     List<AssetTypeSummaryView> getAssetTypeSummary();
@@ -53,6 +54,7 @@ public interface AssetRepository extends JpaRepository<Asset, Long> {
             LEFT JOIN a.branch b
             JOIN a.assetType at
             WHERE at.name IS NOT NULL
+              AND a.deleted = false
             GROUP BY b.name, at.name
             ORDER BY b.name, at.name
             """)
@@ -67,6 +69,7 @@ public interface AssetRepository extends JpaRepository<Asset, Long> {
                 SUM(CASE WHEN a.assetStatus.status NOT IN ('inMaintenance', 'requireUpdate') THEN 1 ELSE 0 END) AS assigned
             FROM Asset a
             WHERE a.branch.id = :branchId
+              AND a.deleted = false
             GROUP BY a.assetType.name
             ORDER BY a.assetType.name
             """)
@@ -109,6 +112,7 @@ public interface AssetRepository extends JpaRepository<Asset, Long> {
             LEFT JOIN a.branch b
             LEFT JOIN a.assignedTo holder
             WHERE (:branchId IS NULL OR b.id = :branchId)
+              AND a.deleted = false
               AND (:ownerId IS NULL OR holder.id = :ownerId)
             GROUP BY at.name
             ORDER BY at.name
@@ -124,6 +128,7 @@ public interface AssetRepository extends JpaRepository<Asset, Long> {
                 JOIN FETCH a.assetType at
                 LEFT JOIN FETCH a.assetStatus s
                 WHERE a.assignedTo.id = :userId
+                AND a.deleted = false
             """)
     List<Asset> findAllByAssignedToIdWithTypeAndStatus(@Param("userId") Long userId);
 
@@ -167,6 +172,7 @@ public interface AssetRepository extends JpaRepository<Asset, Long> {
             SELECT a.stock.id, a.commodity.id, COUNT(a)
             FROM Asset a
             WHERE a.stock IS NOT NULL AND a.commodity IS NOT NULL
+              AND a.deleted = false
             GROUP BY a.stock.id, a.commodity.id
             """)
     List<Object[]> countAssetsByStockAndCommodity();
@@ -187,6 +193,7 @@ public interface AssetRepository extends JpaRepository<Asset, Long> {
             LEFT JOIN holder.department dept
             LEFT JOIN holder.unit unit
             WHERE a.disposed = false
+              AND a.deleted = false
               AND (:branchId IS NULL OR a.branch.id = :branchId)
               AND (:departmentId IS NULL OR dept.id = :departmentId)
               AND (:unitId IS NULL OR unit.id = :unitId)
@@ -196,6 +203,38 @@ public interface AssetRepository extends JpaRepository<Asset, Long> {
                                         @Param("unitId") Long unitId);
 
     /** Everything a given person currently holds. */
+    /**
+     * How many soft-deleted assets of one category are within the caller's reach.
+     *
+     * <p>Answers one question for the UI: whether to offer the "Deleted records" view at all. A chip
+     * that opens an empty page is worse than no chip.
+     *
+     * <p>Scoped the same way the listing is — the asset's own branch <b>or</b> its holder's, and the
+     * holder alone at SELF — so the number always matches what the view would actually show. A count
+     * that ignored scope would promise a Kampala manager records belonging to Gulu.
+     *
+     * <p>Explicit LEFT JOINs: as dotted paths these would inner-join and drop every deleted asset
+     * with no branch or no holder, which is most of them once a record has been taken out of the
+     * register. That is trap #1 in CLAUDE.md.
+     */
+    @org.springframework.data.jpa.repository.Query("""
+            SELECT COUNT(a) FROM Asset a
+            LEFT JOIN a.assetType at
+            LEFT JOIN a.branch ab
+            LEFT JOIN a.assignedTo holder
+            LEFT JOIN holder.branch hb
+            WHERE a.deleted = true
+              AND (:assetTypeId IS NULL OR at.id = :assetTypeId)
+              AND (:scopedBranchId IS NULL
+                   OR ab.id = :scopedBranchId
+                   OR hb.id = :scopedBranchId)
+              AND (:scopedOwnerId IS NULL OR holder.id = :scopedOwnerId)
+            """)
+    long countDeletedInScope(
+            @Param("assetTypeId") Long assetTypeId,
+            @Param("scopedBranchId") Long scopedBranchId,
+            @Param("scopedOwnerId") Long scopedOwnerId);
+
     List<Asset> findByAssignedTo_IdAndDisposedFalse(Long userId);
 
     /** Assets held in a store, per branch: {@code [branchId, count]}. Excludes courier custody. */
@@ -203,6 +242,7 @@ public interface AssetRepository extends JpaRepository<Asset, Long> {
             SELECT a.currentStore.location.id, COUNT(a)
             FROM Asset a
             WHERE a.currentStore IS NOT NULL
+              AND a.deleted = false
               AND a.disposed = false
               AND a.currentStore.storeType <> pride.bank.erp.store.StoreType.COURIER
             GROUP BY a.currentStore.location.id

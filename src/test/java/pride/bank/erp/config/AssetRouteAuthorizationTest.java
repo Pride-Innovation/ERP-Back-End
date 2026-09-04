@@ -45,6 +45,20 @@ class AssetRouteAuthorizationTest {
 
     private static final String API = "/api/v1";
 
+    /**
+     * An asset id that cannot exist.
+     *
+     * <p>These cases are about the filter chain — which authority opens which route — and nothing
+     * else. Since the record-level scope check landed, a handler reached with a real id can refuse
+     * with its own 403 because the asset belongs to another branch, and by status alone that is
+     * indistinguishable from the route rule refusing. Naming an absent asset makes the handler fail
+     * on the lookup instead, so a 403 here can only have come from the rule under test.
+     *
+     * <p>Whether the caller may touch a <em>particular</em> asset is
+     * {@code AccessScopeServiceTest}'s subject.
+     */
+    private static final String MISSING_ASSET = "999999999";
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -81,13 +95,13 @@ class AssetRouteAuthorizationTest {
     @Test
     @WithMockUser(authorities = "CREATE_ASSET")
     void reassignIsRefusedToSomeoneWhoCanOnlyRegisterAssets() throws Exception {
-        assertForbidden(post(API + "/assets/reassign/1").contentType("application/json").content("{}"));
+        assertForbidden(post(API + "/assets/reassign/" + MISSING_ASSET).contentType("application/json").content("{}"));
     }
 
     @Test
     @WithMockUser(authorities = "REASSIGN_ASSET")
     void reassignIsAllowedByItsOwnPermission() throws Exception {
-        assertNotForbidden(post(API + "/assets/reassign/1").contentType("application/json").content("{}"));
+        assertNotForbidden(post(API + "/assets/reassign/" + MISSING_ASSET).contentType("application/json").content("{}"));
     }
 
     // ── Repair ───────────────────────────────────────────────────────────────
@@ -95,20 +109,46 @@ class AssetRouteAuthorizationTest {
     @Test
     @WithMockUser(authorities = "CREATE_ASSET")
     void bookingARepairIsRefusedToSomeoneWhoCanOnlyRegisterAssets() throws Exception {
-        assertForbidden(post(API + "/assets/repairs/1"));
+        assertForbidden(post(API + "/assets/repairs/" + MISSING_ASSET));
     }
 
     @Test
     @WithMockUser(authorities = "UPDATE_ASSET")
     void closingARepairIsRefusedToSomeoneWhoCanOnlyEditAssets() throws Exception {
-        assertForbidden(put(API + "/assets/repairs/1"));
+        assertForbidden(put(API + "/assets/repairs/" + MISSING_ASSET));
     }
 
-    /** Reading the repair history is a different duty from performing the repair. */
+    /**
+     * Reading the repair history is a different duty from performing the repair — and now from
+     * reading the asset.
+     *
+     * <p>It answered to {@code READ_ASSET} until the trail was split out. Seeing what an asset is
+     * and seeing its maintenance record are separate disclosures, so they are separate permissions;
+     * existing asset readers were backfilled once, at the split, so nobody lost the tab.
+     */
+    @Test
+    @WithMockUser(authorities = "READ_REPAIR_HISTORY")
+    void repairHistoryIsReadableWithItsOwnPermission() throws Exception {
+        assertNotForbidden(get(API + "/assets/repairs/" + MISSING_ASSET));
+    }
+
     @Test
     @WithMockUser(authorities = "READ_ASSET")
-    void repairHistoryIsReadableWithReadAsset() throws Exception {
-        assertNotForbidden(get(API + "/assets/repairs/1"));
+    void repairHistoryIsNoLongerReadableOnReadAssetAlone() throws Exception {
+        assertForbidden(get(API + "/assets/repairs/" + MISSING_ASSET));
+    }
+
+    /** And the custody trail answers to its own permission too. */
+    @Test
+    @WithMockUser(authorities = "READ_ASSIGNMENT_HISTORY")
+    void assignmentHistoryIsReadableWithItsOwnPermission() throws Exception {
+        assertNotForbidden(get(API + "/assignment-history"));
+    }
+
+    @Test
+    @WithMockUser(authorities = "READ_ASSET")
+    void assignmentHistoryIsNoLongerReadableOnReadAssetAlone() throws Exception {
+        assertForbidden(get(API + "/assignment-history"));
     }
 
     // ── Receive into store — must not answer to UPDATE_ASSET ─────────────────
@@ -116,13 +156,13 @@ class AssetRouteAuthorizationTest {
     @Test
     @WithMockUser(authorities = "UPDATE_ASSET")
     void receivingIntoStoreIsRefusedToSomeoneWhoCanOnlyEditAssets() throws Exception {
-        assertForbidden(put(API + "/assets/store/1"));
+        assertForbidden(put(API + "/assets/store/" + MISSING_ASSET));
     }
 
     @Test
     @WithMockUser(authorities = "RECEIVE_ASSET_IN_STORE")
     void receivingIntoStoreIsAllowedByItsOwnPermission() throws Exception {
-        assertNotForbidden(put(API + "/assets/store/1"));
+        assertNotForbidden(put(API + "/assets/store/" + MISSING_ASSET));
     }
 
     // ── Bulk import ──────────────────────────────────────────────────────────

@@ -149,14 +149,7 @@ class EndpointGuardCoverageTest {
             "PUT /api/v1/units/{id}",
 
             // Approval workflows — plan Phase 3. Editing one changes who approves what, bank-wide.
-            "DELETE /api/v1/approval-workflows/{id}",
-            "GET /api/v1/approval-workflows",
-            "GET /api/v1/approval-workflows/resolve",
-            "GET /api/v1/approval-workflows/{id}",
             "GET /api/v1/workflow/step-logs/{requestId}",
-            "POST /api/v1/approval-workflows",
-            "PUT /api/v1/approval-workflows/{id}",
-            "PUT /api/v1/approval-workflows/{id}/toggle-active",
 
             // Issuance, GRN and reconciliation — plan Phase 3. The writes are matched; the reads are not.
             "GET /api/v1/acknowledge-issuance/{requestId}",
@@ -168,13 +161,9 @@ class EndpointGuardCoverageTest {
             "GET /api/v1/last-issued/{commodityId}",
             "GET /api/v1/stock-reconciliation",
             "POST /api/v1/acknowledge-issuance",
-            "POST /api/v1/delete-stock/{stockID}",
-            "POST /api/v1/upload-grn/{grnReportId}",
-            "PUT /api/v1/download-grn/{grnReportId}",
 
             // Inventory and store. INVENTORY_ROUTE matches /stocks/**, so nothing under /inventory/** is
             // covered by it — a gap the route name hides rather than advertises.
-            "GET /api/v1/assignment-history",
             "GET /api/v1/inventory/assets",
             "GET /api/v1/inventory/assets/disposable",
             "GET /api/v1/inventory/assets/temporary-pool",
@@ -182,7 +171,6 @@ class EndpointGuardCoverageTest {
             "GET /api/v1/inventory/in-transit",
             "GET /api/v1/inventory/low-stock",
             "GET /api/v1/inventory/my-items",
-            "GET /api/v1/inventory/stores/{storeId}/assets",
             "GET /api/v1/statuses",
             "GET /api/v1/store",
 

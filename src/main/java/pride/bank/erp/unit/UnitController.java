@@ -17,10 +17,12 @@ import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.access.prepost.PreAuthorize;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.DeleteResponse;
 
 import static pride.bank.erp.helper.Constants.GENERAL_ROUTE;
+import static pride.bank.erp.helper.Constants.UPDATE_ROLE;
 
 @RestController
 @RequestMapping(GENERAL_ROUTE)
@@ -65,6 +67,33 @@ public class UnitController {
             @PathVariable Long id)
             throws NotFoundException {
         return new ResponseEntity<>(unitService.findOneUnitResponse(id), HttpStatus.OK);
+    }
+
+    /**
+     * Sets which roles this unit confers.
+     *
+     * <p>Guarded by {@code UPDATE_ROLE} rather than an update-settings permission: what this changes
+     * is who holds which permissions, and it can hand every member of a unit cross-branch write
+     * access in one call. It belongs to whoever is trusted to edit roles, not to whoever may rename
+     * a unit or correct its group email.
+     *
+     * <p>{@code @PreAuthorize} rather than a matcher in {@code SecurityConfiguration} because the
+     * generic {@code PUT /units/**} rule would otherwise have to be split around this one path, and
+     * a rule that only works while it sits above another is exactly the fragility
+     * {@code AssetRouteAuthorizationTest} exists to catch.
+     */
+    @Operation(summary = "Set the roles a unit confers",
+            description = "Replaces the unit's roles with the list supplied. Send an empty list to "
+                    + "revoke all of them. Everyone in the unit inherits these roles' permissions "
+                    + "immediately.")
+    @PreAuthorize("hasAuthority('" + UPDATE_ROLE + "')")
+    @PutMapping("/units/{id}/roles")
+    public ResponseEntity<UnitResponse> setUnitRoles(
+            @Parameter(description = "ID of the unit", required = true)
+            @PathVariable Long id,
+            @Valid @RequestBody UnitRolesDTO request)
+            throws NotFoundException {
+        return new ResponseEntity<>(unitService.replaceUnitRoles(id, request.getRoleIds()), HttpStatus.OK);
     }
 
     @Operation(summary = "Delete a unit")

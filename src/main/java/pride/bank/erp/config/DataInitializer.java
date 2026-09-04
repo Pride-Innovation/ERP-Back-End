@@ -39,6 +39,16 @@ import java.util.Set;
 
 import static pride.bank.erp.helper.Constants.ADMIN;
 import static pride.bank.erp.helper.Constants.VIEW_ALL_BRANCHES;
+import static pride.bank.erp.helper.Constants.READ_ASSIGNMENT_HISTORY;
+import static pride.bank.erp.helper.Constants.READ_REPAIR_HISTORY;
+import static pride.bank.erp.helper.Constants.VIEW_ALL_BRANCH_ASSETS;
+import static pride.bank.erp.helper.Constants.MANAGE_ALL_BRANCH_ASSETS;
+import static pride.bank.erp.helper.Constants.VIEW_ALL_BRANCH_REQUESTS;
+import static pride.bank.erp.helper.Constants.MANAGE_ALL_BRANCH_REQUESTS;
+import static pride.bank.erp.helper.Constants.VIEW_ALL_BRANCH_MOVEMENTS;
+import static pride.bank.erp.helper.Constants.MANAGE_ALL_BRANCH_MOVEMENTS;
+import static pride.bank.erp.helper.Constants.VIEW_ALL_BRANCH_INVENTORY;
+import static pride.bank.erp.helper.Constants.MANAGE_ALL_BRANCH_INVENTORY;
 import static pride.bank.erp.helper.Constants.DASH_VIEW_ASSETS;
 import static pride.bank.erp.helper.Constants.DASH_VIEW_REQUESTS;
 import static pride.bank.erp.helper.Constants.DASH_VIEW_STOCK;
@@ -130,6 +140,8 @@ public class DataInitializer {
     private final SupplierCommoditySeeder supplierCommoditySeeder;
     private final RoleSeeder roleSeeder;
     private final RolePermissionSeeder rolePermissionSeeder;
+    private final UnitRoleSeeder unitRoleSeeder;
+    private final AssetTrailPermissionSeeder assetTrailPermissionSeeder;
     private final TitleSeeder titleSeeder;
     private final BranchHeadOfficeSeeder branchHeadOfficeSeeder;
     private final AssetCategoryFeatureSeeder assetCategoryFeatureSeeder;
@@ -163,6 +175,16 @@ public class DataInitializer {
     @Bean
     CommandLineRunner initDatabase() {
         return args -> {
+            /*
+             * Before initializePermissions(), deliberately.
+             *
+             * The backfill uses "the permission row does not exist yet" as its marker for "this is
+             * the startup that splits the trail out of READ_ASSET". initializePermissions() would
+             * create both rows itself, so running it first would erase that marker and nobody would
+             * ever be backfilled — every role would silently lose both tabs.
+             */
+            assetTrailPermissionSeeder.seedAssetTrailPermissions();
+
             List<Permission> permissions = initializePermissions();
             Role superAdminRole = initializeSuperAdminRole(permissions);
             Role adminRole = initializeAdminRole(permissions);
@@ -181,6 +203,9 @@ public class DataInitializer {
             supplierCommoditySeeder.seedSuppliersAndCommodityLinks();
             roleSeeder.seedRoles();
             rolePermissionSeeder.seedRolePermissions();
+            // After the roles exist and before titles are wired: gives Admin and Infra their
+            // standing, and pins every seeded role to an explicit dashboard scope.
+            unitRoleSeeder.seedUnitRoles();
             titleSeeder.seedTitles();
 
             // Phase F backfills (idempotent — only fill fields that are unset).
@@ -281,7 +306,24 @@ public class DataInitializer {
                 ensurePermission(DASH_VIEW_MOVEMENTS),
                 ensurePermission(DASH_SCOPE_SELF),
                 ensurePermission(DASH_SCOPE_BRANCH),
-                ensurePermission(DASH_SCOPE_ALL)
+                ensurePermission(DASH_SCOPE_ALL),
+                // Cross-branch multipliers. Listed here rather than left to UnitRoleSeeder because
+                // this list is also what initializeSuperAdminRole() reconciles against: a permission
+                // created anywhere else exists in the table but never reaches the super
+                // administrator, who then silently lacks it forever.
+                ensurePermission(VIEW_ALL_BRANCH_ASSETS),
+                ensurePermission(MANAGE_ALL_BRANCH_ASSETS),
+                ensurePermission(VIEW_ALL_BRANCH_REQUESTS),
+                ensurePermission(MANAGE_ALL_BRANCH_REQUESTS),
+                ensurePermission(VIEW_ALL_BRANCH_MOVEMENTS),
+                ensurePermission(MANAGE_ALL_BRANCH_MOVEMENTS),
+                ensurePermission(VIEW_ALL_BRANCH_INVENTORY),
+                ensurePermission(MANAGE_ALL_BRANCH_INVENTORY),
+                // An asset's trail, split out of READ_ASSET. Declared here so the super
+                // administrator reconciles them like everything else; AssetTrailPermissionSeeder
+                // handles the one-time backfill onto existing asset readers.
+                ensurePermission(READ_ASSIGNMENT_HISTORY),
+                ensurePermission(READ_REPAIR_HISTORY)
         );
     }
 

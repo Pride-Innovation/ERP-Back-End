@@ -42,28 +42,60 @@ public interface StoreBalanceRepository extends JpaRepository<StoreBalance, Long
             "AND (s.store IS NULL OR s.store.storeType <> pride.bank.erp.store.StoreType.COURIER)")
     List<StoreBalance> findAllByBranchIdWithCommodityAndBranch(@Param("branchId") Long branchId);
 
-    @Query("SELECT s FROM StoreBalance s " +
-            "WHERE s.branch.id = :branchId " +
-            "AND s.commodity.assetType.id = :assetTypeId " +
-            "AND (s.store IS NULL OR s.store.storeType <> pride.bank.erp.store.StoreType.COURIER)")
-    Page<StoreBalance> findByBranchIdAndCommodity_AssetTypeId(
-            @Param("branchId") Long branchId, @Param("assetTypeId") Long assetTypeId, Pageable pageable);
-
-    /** All (non-courier) balance lines of a branch, paged — used when no asset-category filter is given. */
-    @Query("SELECT s FROM StoreBalance s " +
-            "WHERE s.branch.id = :branchId " +
-            "AND (s.store IS NULL OR s.store.storeType <> pride.bank.erp.store.StoreType.COURIER)")
-    Page<StoreBalance> findByBranchId(@Param("branchId") Long branchId, Pageable pageable);
+    /**
+     * The one balance listing, with every filter optional.
+     *
+     * <p>Replaces four near-identical methods that differed only in which filters they applied. Each
+     * combination needed its own method, so adding a fifth filter meant writing eight — which is why
+     * the store page's "Stock Name" box had no server behind it and silently did nothing.
+     *
+     * <p><b>Explicit LEFT JOINs, deliberately.</b> Written as {@code s.commodity.assetType.id} the
+     * optional filter would still put an INNER JOIN in the FROM clause, and it would filter before
+     * the {@code :assetTypeId IS NULL} test was ever evaluated — so asking for "all categories" would
+     * silently drop every balance line whose commodity has no category. That is this codebase's most
+     * repeated bug and it is exactly the shape a nullable optional filter invites.
+     *
+     * <p>Courier custody is excluded only when no store type is named. Asking for COURIER explicitly
+     * is a deliberate act and should return what it asked for.
+     *
+     * <p>{@code stockLevel} applies each line's <b>own</b> reorder threshold — the same rule as
+     * {@code findLowStockOnHand} and {@code BranchStoreOverview}, so the store page and the low-stock
+     * monitor cannot disagree about the same commodity. {@code unmonitored} is a real answer, not an
+     * absence: a line with no threshold set is never flagged however little of it is on hand, and
+     * being able to list those is how somebody finds the gaps.
+     */
+    @Query("""
+            SELECT s FROM StoreBalance s
+            LEFT JOIN s.commodity c
+            LEFT JOIN c.assetType at
+            LEFT JOIN s.store st
+            WHERE s.branch.id = :branchId
+              AND (:storeType IS NOT NULL
+                   OR st IS NULL
+                   OR st.storeType <> pride.bank.erp.store.StoreType.COURIER)
+              AND (:storeType IS NULL OR st.storeType = :storeType)
+              AND (:assetTypeId IS NULL OR at.id = :assetTypeId)
+              AND (:stockName IS NULL
+                   OR LOWER(c.name) LIKE LOWER(CONCAT('%', CAST(:stockName AS string), '%')))
+              AND (:stockLevel IS NULL
+                   OR (:stockLevel = 'low'         AND s.minLevel > 0 AND s.quantity <= s.minLevel)
+                   OR (:stockLevel = 'adequate'    AND s.minLevel > 0 AND s.quantity >  s.minLevel)
+                   OR (:stockLevel = 'unmonitored' AND s.minLevel = 0))
+            """)
+    Page<StoreBalance> search(
+            @Param("branchId") Long branchId,
+            @Param("assetTypeId") Long assetTypeId,
+            @Param("storeType") StoreType storeType,
+            @Param("stockName") String stockName,
+            @Param("stockLevel") String stockLevel,
+            Pageable pageable);
 
     // ── Store-scoped listings: each store page (Admin / IT / Disposal) sees only its own lines.
     // Null-store legacy rows are backfilled to the branch ADMIN store by StoreSeeder on startup,
-    // so the implicit inner join on the store container cannot hide live balances. These already
-    // filter to a concrete store type, so courier custody is inherently excluded.
-    Page<StoreBalance> findByBranchIdAndStore_StoreTypeAndCommodity_AssetTypeId(
-            Long branchId, StoreType storeType, Long assetTypeId, Pageable pageable);
-
-    Page<StoreBalance> findByBranchIdAndStore_StoreType(Long branchId, StoreType storeType, Pageable pageable);
-
+    // so the store container cannot hide live balances. The four single-purpose listings that used
+    // to sit here are superseded by search() above, which does the same work with every filter
+    // optional — they are gone rather than deprecated so nothing reaches for one and reintroduces
+    // the missing name filter or the missing sort tie-break.
     @Query("SELECT s FROM StoreBalance s " +
             "WHERE s.branch.id = :branchId " +
             "AND s.commodity.assetType.id = :assetTypeId " +

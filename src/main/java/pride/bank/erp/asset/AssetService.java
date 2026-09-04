@@ -112,6 +112,9 @@ public class AssetService {
     /** Decides how far a dashboard query may reach — see DashboardScopeService. */
     private final pride.bank.erp.dashboard.DashboardScopeService dashboardScopeService;
 
+    /** Decides whether a <em>particular</em> asset is within the caller's reach. */
+    private final pride.bank.erp.access.AccessScopeService accessScopeService;
+
     /** Upper bound on assets scanned in-memory when computing the derived "due for disposal" list. */
     private static final int DISPOSAL_SCAN_LIMIT = 10_000;
 
@@ -132,7 +135,8 @@ public class AssetService {
             String location,
             LocalDateTime startDate,
             LocalDateTime endDate,
-            Boolean dueForDisposal
+            Boolean dueForDisposal,
+            Boolean includeDeleted
     ) {
 
         try {
@@ -156,11 +160,16 @@ public class AssetService {
                     .endDate(endDate)
                     .assignedTo(assignedTo)
                     .location(location)
-                    // Applied from the caller's permissions, never from the request: a user without
-                    // VIEW_ALL_BRANCHES sees only their own branch's assets, and cannot widen that
-                    // by passing a different filter.
-                    .scopedBranchId(branchScopeService.canViewAllBranches()
-                            ? null : branchScopeService.currentUserBranchId())
+                    // Applied from the caller's permissions, never from the request, so no filter
+                    // the client sends can widen it. AccessScopeService returns null for the branch
+                    // at ALL scope (the multiplier a unit confers), the caller's own branch below
+                    // that, and an owner id only at SELF — which is how an officer's listing became
+                    // "what is in my hands" rather than "everything at my branch".
+                    .scopedBranchId(accessScopeService.resolveBranch(
+                            pride.bank.erp.access.ScopeSubject.ASSETS, null))
+                    .scopedOwnerId(accessScopeService.resolveOwner(
+                            pride.bank.erp.access.ScopeSubject.ASSETS))
+                    .includeDeleted(includeDeleted)
                     .build();
 
             // "Due for disposal" is a derived state (depends on the receipt date and the category's
@@ -200,6 +209,14 @@ public class AssetService {
         AssetType assetType = (request.getAssetType() != null) ? assetTypeService.findOneAssetType(request.getAssetType()) : null;
         Supplier supplier = (request.getSupplier() != null) ? supplierService.findSupplier(request.getSupplier()) : null;
         Commodity commodity = commodityService.findCommodity(request.getCategory());
+
+        // A create names its own branch rather than inheriting one from a record, so the check is
+        // against what was asked for. Null is allowed through: an asset registered without a branch
+        // is unassigned stock, not another branch's property.
+        accessScopeService.requireCanManage(
+                pride.bank.erp.access.ScopeSubject.ASSETS,
+                branch != null ? branch.getId() : null,
+                null);
 
         Stock stock = findStockByLPONumber(request.getLpoNumber());
         assert commodity != null;
@@ -314,9 +331,58 @@ public class AssetService {
         );
     }
 
+    /**
+     * Refuses unless this asset is within the caller's reach.
+     *
+     * <p>Deliberately <b>not</b> folded into {@link #findOne}. That method is also how the movement,
+     * issuance and inventory services reach an asset while acting for the system rather than for the
+     * person who happened to trigger them — gating it there would refuse a storekeeper receiving an
+     * item on behalf of a branch they are not attached to, which is the workflow working correctly.
+     * The check belongs on the acts a person performs on an asset directly, so it is written out at
+     * each of them.
+     *
+     * <p>This closes the hole the permission model alone could not: {@code UPDATE_ASSET} admitted a
+     * branch officer to the endpoint, and nothing afterwards asked whose asset it was. They could not
+     * find another branch's asset through the listing, but they could edit it by id.
+     */
+    /**
+     * Refuses unless the caller may read this asset — by id, for the things hanging off it.
+     *
+     * <p>An asset's assignment history and its repair history are records <em>about</em> an asset,
+     * and they leak the same information the asset does: who has held it, where it has been, what
+     * went wrong with it. Guarding the asset itself while leaving its trail open means a branch
+     * officer refused the detail page can still read the whole chain of custody by calling the
+     * history endpoint with the same id.
+     *
+     * <p>Public because those services live in their own packages and should not each re-implement
+     * the check — there is one answer to "may I see this asset", and it is here.
+     */
+    public void requireAssetReadable(Long assetId) throws NotFoundException {
+        requireAssetInScope(findOne(assetId), pride.bank.erp.access.ScopeAction.VIEW);
+    }
+
+    private void requireAssetInScope(Asset asset, pride.bank.erp.access.ScopeAction action) {
+        Long branchId = asset.getBranch() != null ? asset.getBranch().getId() : null;
+        Long holderId = asset.getAssignedTo() != null ? asset.getAssignedTo().getId() : null;
+
+        if (action == pride.bank.erp.access.ScopeAction.MANAGE) {
+            accessScopeService.requireCanManage(
+                    pride.bank.erp.access.ScopeSubject.ASSETS, branchId, holderId);
+        } else {
+            accessScopeService.requireCanView(
+                    pride.bank.erp.access.ScopeSubject.ASSETS, branchId, holderId);
+        }
+    }
+
     @Transactional
     public AssetDAO fetchSingleAsset(Long assetId) throws NotFoundException {
         Asset asset = findOne(assetId);
+        // Deleted reads as absent, not as forbidden: the record is gone as far as the register is
+        // concerned, and "not found" is the honest answer to someone holding a stale link.
+        if (Boolean.TRUE.equals(asset.getDeleted())) {
+            throw new NotFoundException(String.format("Asset with id %s is not found", assetId));
+        }
+        requireAssetInScope(asset, pride.bank.erp.access.ScopeAction.VIEW);
         return buildAssetDao(asset);
     }
 
@@ -329,6 +395,7 @@ public class AssetService {
         Supplier supplier = (request.getSupplier() != null) ? supplierService.findSupplier(request.getSupplier()) : null;
 
         Asset asset = findOne(id);
+        requireAssetInScope(asset, pride.bank.erp.access.ScopeAction.MANAGE);
 
         User oldAssignedTo = asset.getAssignedTo();
         Status oldStatus = asset.getAssetStatus();
@@ -816,6 +883,7 @@ public class AssetService {
     public AssetDAO reassignAsset(Long assetID, ReassignAsset reassignAsset)
             throws NotFoundException {
         Asset asset = findOne(assetID);
+        requireAssetInScope(asset, pride.bank.erp.access.ScopeAction.MANAGE);
 
         Long previousUserId = null;
         if (asset.getAssignedTo() != null) {
@@ -842,6 +910,7 @@ public class AssetService {
     public AssetDAO uploadAssetImage(MultipartFile file, Long assetID)
             throws IOException, NotFoundException {
         Asset asset = findOne(assetID);
+        requireAssetInScope(asset, pride.bank.erp.access.ScopeAction.MANAGE);
         String filePath = null;
 
         if (file != null && !file.isEmpty()) {
@@ -858,8 +927,77 @@ public class AssetService {
     public AssetDAO removeAssetImage(Long assetID)
             throws NotFoundException {
         Asset asset = findOne(assetID);
+        requireAssetInScope(asset, pride.bank.erp.access.ScopeAction.MANAGE);
         asset.setImage(null);
         return buildAssetDao(assetRepository.save(asset));
+    }
+
+    /**
+     * How many soft-deleted assets of one category the caller could restore.
+     *
+     * <p>Exists so the UI can hide the "Deleted records" view when there is nothing in it. Scoped
+     * exactly like the listing, so the count never promises records the view would not show.
+     */
+    @Transactional(readOnly = true)
+    public long countDeletedAssets(Long assetTypeId) {
+        return assetRepository.countDeletedInScope(
+                assetTypeId,
+                accessScopeService.resolveBranch(pride.bank.erp.access.ScopeSubject.ASSETS, null),
+                accessScopeService.resolveOwner(pride.bank.erp.access.ScopeSubject.ASSETS));
+    }
+
+    /**
+     * Soft-deletes an asset: hidden from every listing, kept in the database.
+     *
+     * <p>Not the same act as disposal. Disposal is a business event — an asset reaching the end of
+     * its life, written off through a movement, still counted in the register as disposed. This is
+     * administrative: the record should not have existed. A duplicate, a mis-keyed import row.
+     *
+     * <p>The row survives so its assignment history and repair history still point at something
+     * real, and so the audit trail reads back. Recorded at WARNING because a record leaving the
+     * register is worth noticing even when it is reversible.
+     */
+    @Transactional
+    public AssetDAO deleteAsset(Long assetID, String reason) throws NotFoundException {
+        Asset asset = findOne(assetID);
+        requireAssetInScope(asset, pride.bank.erp.access.ScopeAction.MANAGE);
+
+        if (Boolean.TRUE.equals(asset.getDeleted())) {
+            return buildAssetDao(asset);   // idempotent; deleting twice is not an error
+        }
+
+        asset.setDeleted(true);
+        Asset saved = assetRepository.save(asset);
+
+        auditAsset(AuditEventType.DELETED, "ASSET_DELETED", saved,
+                "Deleted asset " + describe(saved)
+                        + (reason == null || reason.isBlank() ? "" : " — " + reason)
+                        + ". The record is hidden from the register but kept, and can be restored.",
+                AuditSeverity.WARNING);
+        return buildAssetDao(saved);
+    }
+
+    /**
+     * Puts a soft-deleted asset back into the register.
+     *
+     * <p>The reason the flag is a flag. A delete that could not be undone would be a worse hard
+     * delete — it would keep the row without keeping the option.
+     */
+    @Transactional
+    public AssetDAO restoreAsset(Long assetID) throws NotFoundException {
+        Asset asset = findOne(assetID);
+        requireAssetInScope(asset, pride.bank.erp.access.ScopeAction.MANAGE);
+
+        if (!Boolean.TRUE.equals(asset.getDeleted())) {
+            return buildAssetDao(asset);   // already in the register
+        }
+
+        asset.setDeleted(false);
+        Asset saved = assetRepository.save(asset);
+
+        auditAsset(AuditEventType.UPDATED, "ASSET_RESTORED", saved,
+                "Restored asset " + describe(saved) + " to the register", AuditSeverity.INFO);
+        return buildAssetDao(saved);
     }
 
     /**
@@ -883,6 +1021,7 @@ public class AssetService {
     public AssetDAO sendAssetToStore(Long assetID, Long storeId, Boolean temporaryPool)
             throws NotFoundException {
         Asset asset = findOne(assetID);
+        requireAssetInScope(asset, pride.bank.erp.access.ScopeAction.MANAGE);
 
         Store destination = (storeId != null)
                 ? storeRepository.findById(storeId)
@@ -1135,6 +1274,28 @@ public class AssetService {
         // exported from an older system routinely disagrees with itself on this.
         if (holder != null && holder.getBranch() != null) {
             branch = holder.getBranch();
+        }
+
+        /*
+         * The same branch check createAsset applies, on the path that creates far more.
+         *
+         * Checked here rather than once for the batch because the branch is a property of each row —
+         * a spreadsheet can name a different location on every line — and because it lands as a row
+         * error like any other. A single out-of-reach row is reported beside the duplicates and the
+         * unknown suppliers, and the rest of the import still lands; failing the whole batch for one
+         * bad line would be a worse answer to the same question.
+         */
+        if (!accessScopeService.canManage(pride.bank.erp.access.ScopeSubject.ASSETS,
+                branch != null ? branch.getId() : null, null)) {
+            // Named, like every other import error, rather than left as a generic refusal. A
+            // spreadsheet of two hundred rows is exactly where "you can only change records at your
+            // own branch" is least useful — the importer has to say which row and which branch, or
+            // the person is left comparing the file against their own permissions line by line.
+            throw new BadRequestException(
+                    "You cannot import assets for '"
+                            + (branch != null ? branch.getName() : "no branch")
+                            + "'. You may only import into your own branch unless your unit grants "
+                            + "cross-branch asset management.");
         }
 
         Status status = resolveImportStatus(dto.getStatus());

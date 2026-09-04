@@ -17,6 +17,8 @@ import pride.bank.erp.requestCommodity.RequestCommodity;
 import pride.bank.erp.requestCommodity.RequestCommodityRepository;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
+import org.springframework.security.access.AccessDeniedException;
+import pride.bank.erp.helper.Constants;
 import pride.bank.erp.unit.Unit;
 import pride.bank.erp.unit.UnitRepository;
 import pride.bank.erp.user.User;
@@ -177,6 +179,8 @@ public class WorkflowEngineService {
 
         StepLogAction logAction = parseAction(action);
         User actor = actorId != null ? userRepository.findById(actorId).orElse(null) : null;
+
+        requireActorIsRouted(request, actor, currentStep);
 
         // Update the PENDING log for this step
         stepLogRepository.findPendingByInstanceAndStep(instance.getId(), currentOrder)
@@ -683,6 +687,78 @@ public class WorkflowEngineService {
     // ─────────────────────────────────────────────────────────────────────────
     // Approver resolution
     // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Refuses an action from someone the step was not routed to.
+     *
+     * <p>Until now the engine asked only <em>what</em> was being done, never <em>by whom</em>. The
+     * route guard checks that the caller holds {@code APPROVE_REQUEST}; nothing then checked that
+     * this particular request was waiting on this particular person. Anyone who could approve
+     * anything could approve everything, at any tier, including a step routed to a unit they do not
+     * belong to — which made the unit inbox a suggestion rather than an assignment.
+     *
+     * <p>Deliberately permissive where the routing is genuinely ambiguous, because a false refusal
+     * here strands a request and the bank's work stops:
+     *
+     * <ul>
+     *   <li><b>No actor</b> — a system-driven or group-email step. Nobody claimed to act, so there
+     *       is nothing to verify.</li>
+     *   <li><b>Nothing routed</b> — neither an approver nor a unit on the request. Requests created
+     *       before the workflow engine are in this state, as are steps whose approver did not
+     *       resolve. Refusing would strand them permanently with no way for anyone to clear it.</li>
+     *   <li><b>{@code MANAGE_ALL_BRANCH_REQUESTS}</b> — the explicit "may act on any branch's
+     *       requests" grant, which is what an override is. The super administrator arrives here
+     *       holding it like anyone else, so it needs no special case.</li>
+     * </ul>
+     *
+     * <p>Where routing <em>is</em> explicit it is enforced: the named approver, or a member of the
+     * named unit. {@code currentApprover} already accounts for leave substitution, so an acting user
+     * standing in for someone away passes on their own account.
+     */
+    private void requireActorIsRouted(Request request, User actor, ApprovalStep step) {
+        if (actor == null) return;
+
+        User routedApprover = request.getCurrentApprover();
+        Unit routedUnit = request.getCurrentUnit();
+        if (routedApprover == null && routedUnit == null) return;
+
+        if (routedApprover != null && routedApprover.getId() != null
+                && routedApprover.getId().equals(actor.getId())) {
+            return;
+        }
+
+        if (routedUnit != null && routedUnit.getId() != null
+                && actor.getUnit() != null
+                && routedUnit.getId().equals(actor.getUnit().getId())) {
+            return;
+        }
+
+        boolean mayActAnywhere = actor.getAuthorities().stream()
+                .anyMatch(granted -> Constants.MANAGE_ALL_BRANCH_REQUESTS.equals(granted.getAuthority()));
+        if (mayActAnywhere) {
+            // Legitimate, but worth a row: someone acted on a step that was not routed to them.
+            log.info("User {} acted on request {} at step {} via {} rather than as the routed approver",
+                    actor.getId(), request.getId(),
+                    step == null ? null : step.getStepOrder(), Constants.MANAGE_ALL_BRANCH_REQUESTS);
+            return;
+        }
+
+        throw new AccessDeniedException(describeRouting(routedApprover, routedUnit));
+    }
+
+    /** Says who the request is actually waiting on, so the refusal is actionable. */
+    private static String describeRouting(User routedApprover, Unit routedUnit) {
+        if (routedUnit != null) {
+            return "This request is with the " + routedUnit.getName()
+                    + ", and you are not a member of it.";
+        }
+        String name = routedApprover == null ? null
+                : ((routedApprover.getFirstName() == null ? "" : routedApprover.getFirstName()) + " "
+                + (routedApprover.getLastName() == null ? "" : routedApprover.getLastName())).trim();
+        return "This request is waiting on "
+                + (name == null || name.isEmpty() ? "someone else" : name)
+                + ", not on you.";
+    }
 
     public User resolveApprover(ApprovalStep step, Request request) {
         // Role-based types climb the SUBJECT's reporting line — the requester by default, or the

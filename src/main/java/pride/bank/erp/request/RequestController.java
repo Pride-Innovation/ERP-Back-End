@@ -280,36 +280,4 @@ public class RequestController {
         return ResponseEntity.ok(requestService.findOpenRequests(pageSize, pageNumber, branchId));
     }
 
-    @GetMapping("/latest-pending-request")
-    public ResponseEntity<Page<RequestDTO>> findLatestPendingRequestsWithDetails(
-            @RequestParam(required = false, defaultValue = "3") int pageSize,
-            @RequestParam(required = false, defaultValue = DESCENDING_SORT_DIRECTION) String sortDirection,
-            @RequestParam(required = false, defaultValue = "0") int pageNumber,
-            @RequestParam(required = false, defaultValue = "id") String sortBy,
-            @RequestParam(required = false) String name,
-            @RequestParam(required = false) String priority,
-            @RequestParam(required = false) String description,
-            @RequestParam(required = false) LocalDateTime timeOfSubmissionOfRequest,
-            @RequestParam(required = false, defaultValue = "3") List<Long> statusIds, // Status Ids for an Approved Request.
-            @RequestParam(required = false, defaultValue = "DASHBOARD") String status
-    ) {
-        try {
-
-            Page<RequestDTO> response = requestService.findLatestPendingRequestsWithDetails(
-                    pageSize,
-                    sortDirection,
-                    pageNumber,
-                    sortBy,
-                    name,
-                    priority,
-                    description,
-                    timeOfSubmissionOfRequest,
-                    statusIds,
-                    status
-            );
-            return new ResponseEntity<>(response, HttpStatus.OK);
-        } catch (Exception ex) {
-            return null;
-        }
-    }
 }

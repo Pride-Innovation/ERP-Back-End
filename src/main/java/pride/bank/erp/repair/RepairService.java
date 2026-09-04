@@ -31,6 +31,9 @@ public class RepairService {
     private final AssetRepository assetRepository;
     private final pride.bank.erp.auditing.trail.AuditService auditService;
 
+    /** The one resolver for how far a person may see — see AccessScopeService. */
+    private final pride.bank.erp.access.AccessScopeService accessScopeService;
+
     /** Records a maintenance event, tagged to the asset rather than the repair record. */
     private void audit(pride.bank.erp.auditing.trail.AuditEventType eventType, String action,
                        Asset asset, String description) {
@@ -96,17 +99,35 @@ public class RepairService {
     }
 
     @Transactional
-    public Page<RepairDTO> listRepairDetails(Long assetId, Pageable pageable) {
+    /**
+     * One asset's repair history.
+     *
+     * <p>Scoped to the asset, not just to {@code READ_ASSET}. A repair record says what failed, who
+     * held it and where it went — the same exposure as the asset itself — so guarding the asset's
+     * detail page while leaving this open would let a branch officer read another branch's
+     * maintenance trail by calling this with the id they were refused a moment earlier.
+     */
+    public Page<RepairDTO> listRepairDetails(Long assetId, Pageable pageable)
+            throws pride.bank.erp.exception.NotFoundException {
+        assetService.requireAssetReadable(assetId);
         return repairRepository.findByAssetId(assetId, pageable)
                 .map(this::convertToDTO);
     }
 
-    /** Repairs across every asset, for the maintenance report. Each filter is optional. */
+    /**
+     * Repairs across every asset, for the maintenance report. Each filter is optional.
+     *
+     * <p>Branch-scoped from the caller's permissions rather than from the request, so the report
+     * answers "what has been repaired that I may see" rather than "what has been repaired". Null
+     * from the resolver means ALL scope and no restriction.
+     */
     public Page<RepairDTO> listAllRepairs(
             String status, Long assetTypeId,
             java.time.LocalDateTime from, java.time.LocalDateTime to,
             Pageable pageable) {
-        return repairRepository.findForReport(status, assetTypeId, from, to, pageable)
+        Long scopedBranchId = accessScopeService.resolveBranch(
+                pride.bank.erp.access.ScopeSubject.ASSETS, null);
+        return repairRepository.findForReport(status, assetTypeId, from, to, scopedBranchId, pageable)
                 .map(this::convertToDTO);
     }
 

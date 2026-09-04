@@ -13,6 +13,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
@@ -43,6 +44,21 @@ public class StockController {
             @RequestParam(required = false, defaultValue = "id") String sortBy,
             @RequestParam(required = false) String lpoNumber,
             @RequestParam(required = false) Long stockStatusId,
+            /*
+             * Declared, because Spring drops a parameter no endpoint names without complaining.
+             * The page has been sending `supplier` as a partial name for as long as the filter has
+             * existed; it never reached this method, so the box looked like it worked and returned
+             * the unfiltered list.
+             */
+            @RequestParam(required = false) Long supplierId,
+            /*
+             * Which branch's deliveries to show.
+             *
+             * Only meaningful at ALL scope — the resolver refuses a branch that is not the caller's
+             * below that, so this cannot be used to widen. It exists so Head Office and the units,
+             * who see every branch by default, can look at one at a time.
+             */
+            @RequestParam(required = false) Long branchId,
             @RequestParam(required = false, defaultValue = "false") Boolean disposed,
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
@@ -59,6 +75,8 @@ public class StockController {
                 sortBy,
                 lpoNumber,
                 stockStatusId,
+                supplierId,
+                branchId,
                 disposed,
                 startDate,
                 endDate
@@ -162,6 +180,15 @@ public class StockController {
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
 
+    /*
+     * Guarded here, not by a matcher.
+     *
+     * INVENTORY_ROUTE is `/stocks/**`, and this path is not under it — the name says "inventory" and
+     * the value covers one module's URLs, which is the trap recorded in CLAUDE.md. So deleting a
+     * stock receipt fell through to `.anyRequest().authenticated()` and was open to any signed-in
+     * user. The branch check in the service applies on top.
+     */
+    @PreAuthorize("hasAuthority('" + Constants.DELETE_INVENTORY + "')")
     @PostMapping("/delete-stock/{stockID}")
     public ResponseEntity<DeleteResponse> deleteDelivery(
             @PathVariable Long stockID

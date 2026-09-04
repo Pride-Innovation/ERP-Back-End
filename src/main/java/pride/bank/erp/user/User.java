@@ -199,23 +199,41 @@ public class User implements UserDetails {
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         Set<String> permissionNames = new LinkedHashSet<>();
-        if (title != null && title.getRole() != null && title.getRole().getPermissions() != null) {
-            title.getRole().getPermissions().forEach(p -> {
-                if (p != null && p.getName() != null) permissionNames.add(p.getName());
-            });
-        }
+
+        // 1. The role the user's title implies.
+        collectPermissions(title != null ? title.getRole() : null, permissionNames);
+
+        // 2. Roles granted to the person directly, on top of their title.
         if (additionalRoles != null) {
-            for (Role role : additionalRoles) {
-                if (role != null && role.getPermissions() != null) {
-                    role.getPermissions().forEach(p -> {
-                        if (p != null && p.getName() != null) permissionNames.add(p.getName());
-                    });
-                }
-            }
+            additionalRoles.forEach(role -> collectPermissions(role, permissionNames));
         }
+
+        /*
+         * 3. Roles conferred by the unit they belong to.
+         *
+         * This is what makes an Admin Unit or Infra Unit officer senior to an officer elsewhere.
+         * Membership grants, and leaving revokes — the seniority lives on the unit rather than being
+         * hand-granted per person, and it is blind to the user's own role: an officer in Admin Unit
+         * receives the unit's reach exactly as a manager there would.
+         *
+         * A user in no unit is unaffected; the union simply has one fewer source, which is the
+         * position every branch user is in.
+         */
+        if (unit != null && unit.getRoles() != null) {
+            unit.getRoles().forEach(role -> collectPermissions(role, permissionNames));
+        }
+
         return permissionNames.stream()
                 .map(SimpleGrantedAuthority::new)
                 .collect(Collectors.toList());
+    }
+
+    /** Adds a role's permission names to the set, tolerating nulls at every level. */
+    private static void collectPermissions(Role role, Set<String> into) {
+        if (role == null || role.getPermissions() == null) return;
+        role.getPermissions().forEach(p -> {
+            if (p != null && p.getName() != null) into.add(p.getName());
+        });
     }
 
     @Override

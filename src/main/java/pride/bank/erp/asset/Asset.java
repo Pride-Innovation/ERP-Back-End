@@ -74,6 +74,21 @@ public class Asset {
     @Builder.Default
     private Boolean disposed = false;
     private LocalDateTime disposalDate;
+
+    /**
+     * Soft delete: the record is hidden from every listing but kept in the database.
+     *
+     * <p>Deliberately separate from {@link #disposed}, which is a business event — an asset reaching
+     * the end of its life, written off through a movement, still part of the register and counted as
+     * disposed. This says something narrower and more administrative: the record should not have
+     * existed. A duplicate, a mis-keyed import row. An asset can legitimately be both.
+     *
+     * <p>Kept rather than deleted so its assignment history and repair history still point at
+     * something real, and so the audit trail can be read back. That is the whole reason for the
+     * flag; a hard delete would leave both trails referring to a row that is gone.
+     */
+    @Builder.Default
+    private Boolean deleted = false;
     private String lastRepairedBy;
 
     /**

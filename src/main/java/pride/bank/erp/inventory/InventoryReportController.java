@@ -140,6 +140,23 @@ public class InventoryReportController {
     }
 
     /** The stores directory, optionally filtered by location, store type or department. */
+    /*
+     * The store directory is needed by five unrelated jobs, so it is guarded by a disjunction rather
+     * than one permission.
+     *
+     * It was open to any signed-in user — it fell through every matcher to
+     * `.anyRequest().authenticated()`, and INVENTORY_ROUTE (/api/v1/stocks/**) covers nothing under
+     * /api/v1/inventory/**, a name that implies a coverage its value does not provide.
+     *
+     * Naming a single permission would break a real page: the assets page's "Receive into store"
+     * picker is used by someone holding RECEIVE_ASSET_IN_STORE who may well have no store
+     * permissions, and the movement builder by someone holding CREATE_MOVEMENT. Each authority below
+     * is a legitimate reason to need to know what stores exist; together they still exclude a
+     * signed-in user with none of them, which is the gap that was actually open.
+     */
+    @PreAuthorize("hasAnyAuthority('" + Constants.READ_STORE + "', '" + Constants.READ_INVENTORY
+            + "', '" + Constants.RECEIVE_ASSET_IN_STORE + "', '" + Constants.CREATE_MOVEMENT
+            + "', '" + Constants.PERFORM_STOCK_TAKE + "')")
     @GetMapping("/inventory/stores")
     public ResponseEntity<List<StoreView>> stores(
             @RequestParam(required = false) Long locationId,
@@ -166,6 +183,23 @@ public class InventoryReportController {
     }
 
     /** Serialized assets currently held by a store (e.g. items in the IT or Disposal store). */
+    /*
+     * The store directory is needed by five unrelated jobs, so it is guarded by a disjunction rather
+     * than one permission.
+     *
+     * It was open to any signed-in user — it fell through every matcher to
+     * `.anyRequest().authenticated()`, and INVENTORY_ROUTE (/api/v1/stocks/**) covers nothing under
+     * /api/v1/inventory/**, a name that implies a coverage its value does not provide.
+     *
+     * Naming a single permission would break a real page: the assets page's "Receive into store"
+     * picker is used by someone holding RECEIVE_ASSET_IN_STORE who may well have no store
+     * permissions, and the movement builder by someone holding CREATE_MOVEMENT. Each authority below
+     * is a legitimate reason to need to know what stores exist; together they still exclude a
+     * signed-in user with none of them, which is the gap that was actually open.
+     */
+    @PreAuthorize("hasAnyAuthority('" + Constants.READ_STORE + "', '" + Constants.READ_INVENTORY
+            + "', '" + Constants.RECEIVE_ASSET_IN_STORE + "', '" + Constants.CREATE_MOVEMENT
+            + "', '" + Constants.PERFORM_STOCK_TAKE + "')")
     @GetMapping("/inventory/stores/{storeId}/assets")
     public ResponseEntity<List<Asset>> assetsInStore(@PathVariable Long storeId) {
         return new ResponseEntity<>(scopeAssets(reportService.assetsInStore(storeId)), HttpStatus.OK);

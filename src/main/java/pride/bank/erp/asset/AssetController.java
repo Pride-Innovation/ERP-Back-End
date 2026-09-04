@@ -15,6 +15,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import pride.bank.erp.exception.NotFoundException;
@@ -65,7 +66,16 @@ public class AssetController {
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
             LocalDateTime endDate,
 
-            @RequestParam(required = false, defaultValue = "false") Boolean dueForDisposal
+            @RequestParam(required = false, defaultValue = "false") Boolean dueForDisposal,
+
+            /*
+             * The soft-deleted register, for restoring something removed by mistake.
+             *
+             * A separate view rather than a widening of this one: `true` returns deleted assets and
+             * nothing else. Mixing them into the ordinary listing would put records back in front of
+             * everyone that the delete existed to take away.
+             */
+            @RequestParam(required = false, defaultValue = "false") Boolean includeDeleted
     ) {
         Page<AssetDAO> response = assetService.fetchAllAssets(
                 pageSize,
@@ -84,7 +94,8 @@ public class AssetController {
                 location,
                 startDate,
                 endDate,
-                dueForDisposal
+                dueForDisposal,
+                includeDeleted
         );
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
@@ -101,6 +112,47 @@ public class AssetController {
             throws NotFoundException {
         AssetDAO asset = assetService.fetchSingleAsset(id);
         return new ResponseEntity<>(asset, HttpStatus.OK);
+    }
+
+    /**
+     * Soft-deletes an asset — hidden from the register, kept in the database.
+     *
+     * <p>{@code DELETE_ASSET} admits you to the endpoint; the branch guard in the service decides
+     * whether this particular asset is yours to remove.
+     *
+     * <p>Distinct from disposal, which lives under {@code /movements} and is a business event — an
+     * asset reaching the end of its life, written off through a movement and still counted in the
+     * register. This one says the record should not have existed.
+     */
+    /**
+     * How many deleted assets of this category the caller could restore.
+     *
+     * <p>The UI asks before deciding whether to offer the deleted view at all — a control that opens
+     * an empty page is worse than no control. Guarded by {@code DELETE_ASSET} because that is the
+     * same audience: whoever can take a record out is who needs to put it back.
+     */
+    @PreAuthorize("hasAuthority('" + Constants.DELETE_ASSET + "')")
+    @GetMapping("/assets/deleted-count")
+    public ResponseEntity<Long> countDeletedAssets(
+            @RequestParam(required = false) Long assetTypeId
+    ) {
+        return new ResponseEntity<>(assetService.countDeletedAssets(assetTypeId), HttpStatus.OK);
+    }
+
+    @PreAuthorize("hasAuthority('" + Constants.DELETE_ASSET + "')")
+    @DeleteMapping("/assets/{assetID}")
+    public ResponseEntity<AssetDAO> deleteAsset(
+            @PathVariable Long assetID,
+            @RequestParam(required = false) String reason
+    ) throws NotFoundException {
+        return new ResponseEntity<>(assetService.deleteAsset(assetID, reason), HttpStatus.OK);
+    }
+
+    /** Puts a soft-deleted asset back into the register. */
+    @PreAuthorize("hasAuthority('" + Constants.DELETE_ASSET + "')")
+    @PutMapping("/assets/{assetID}/restore")
+    public ResponseEntity<AssetDAO> restoreAsset(@PathVariable Long assetID) throws NotFoundException {
+        return new ResponseEntity<>(assetService.restoreAsset(assetID), HttpStatus.OK);
     }
 
     @PutMapping("/assets/{id}")

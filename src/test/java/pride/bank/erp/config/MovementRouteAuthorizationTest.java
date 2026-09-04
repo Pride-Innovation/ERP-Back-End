@@ -64,6 +64,20 @@ class MovementRouteAuthorizationTest {
      */
     private static final String BRANCH_REFUSAL = "not attached to a branch";
 
+    /**
+     * A movement id that cannot exist.
+     *
+     * <p>These cases are about the filter chain — which authority opens which route — and nothing
+     * else. Since the record-level scope check landed, a handler reached with a real id can refuse
+     * with its own 403 because the movement touches no branch of the caller's, and by status alone
+     * that is indistinguishable from the route rule refusing. Naming an absent movement makes the
+     * handler fail on the lookup instead, so a 403 here can only have come from the rule under test.
+     *
+     * <p>Whether a caller may act on a <em>particular</em> movement is
+     * {@code MultiBranchReachTest}'s subject.
+     */
+    private static final String MISSING_MOVEMENT = "999999999";
+
     private String bodyOf(RequestBuilder request) throws Exception {
         return mockMvc.perform(request).andReturn().getResponse().getContentAsString();
     }
@@ -149,19 +163,19 @@ class MovementRouteAuthorizationTest {
     @Test
     @WithMockUser(authorities = "CREATE_MOVEMENT")
     void dispatchIsRefusedToSomeoneWhoMayOnlyRaiseMovements() throws Exception {
-        assertForbidden(json("/movements/1/dispatch"));
+        assertForbidden(json("/movements/" + MISSING_MOVEMENT + "/dispatch"));
     }
 
     @Test
     @WithMockUser(authorities = "DISPATCH_MOVEMENT")
     void dispatchIsAllowedByItsOwnPermission() throws Exception {
-        assertNotForbidden(json("/movements/1/dispatch"));
+        assertNotForbidden(json("/movements/" + MISSING_MOVEMENT + "/dispatch"));
     }
 
     @Test
     @WithMockUser(authorities = "CREATE_MOVEMENT")
     void markingInTransitIsRefusedToSomeoneWhoMayOnlyRaiseMovements() throws Exception {
-        assertForbidden(json("/movements/1/in-transit"));
+        assertForbidden(json("/movements/" + MISSING_MOVEMENT + "/in-transit"));
     }
 
     // ── Receive is not dispatch ──────────────────────────────────────────────
@@ -169,20 +183,20 @@ class MovementRouteAuthorizationTest {
     @Test
     @WithMockUser(authorities = "DISPATCH_MOVEMENT")
     void receivingIsRefusedToTheDispatcher() throws Exception {
-        assertForbidden(json("/movements/1/receive"));
+        assertForbidden(json("/movements/" + MISSING_MOVEMENT + "/receive"));
     }
 
     @Test
     @WithMockUser(authorities = "RECEIVE_MOVEMENT")
     void receivingIsAllowedByItsOwnPermission() throws Exception {
-        assertNotForbidden(json("/movements/1/receive"));
+        assertNotForbidden(json("/movements/" + MISSING_MOVEMENT + "/receive"));
     }
 
     /** Complete lands the goods, so it must not be reachable below the authority to receive. */
     @Test
     @WithMockUser(authorities = {"CREATE_MOVEMENT", "DISPATCH_MOVEMENT"})
     void completingAMovementIsRefusedWithoutTheReceivePermission() throws Exception {
-        assertForbidden(json("/movements/1/complete"));
+        assertForbidden(json("/movements/" + MISSING_MOVEMENT + "/complete"));
     }
 
     // ── Cancel ───────────────────────────────────────────────────────────────
@@ -190,13 +204,13 @@ class MovementRouteAuthorizationTest {
     @Test
     @WithMockUser(authorities = {"CREATE_MOVEMENT", "DISPATCH_MOVEMENT", "RECEIVE_MOVEMENT"})
     void cancellingIsRefusedToSomeoneWithEveryOtherMovementPermission() throws Exception {
-        assertForbidden(json("/movements/1/cancel"));
+        assertForbidden(json("/movements/" + MISSING_MOVEMENT + "/cancel"));
     }
 
     @Test
     @WithMockUser(authorities = "CANCEL_MOVEMENT")
     void cancellingIsAllowedByItsOwnPermission() throws Exception {
-        assertNotForbidden(json("/movements/1/cancel"));
+        assertNotForbidden(json("/movements/" + MISSING_MOVEMENT + "/cancel"));
     }
 
     // ── Approve is not read ──────────────────────────────────────────────────

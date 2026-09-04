@@ -58,6 +58,9 @@ import static pride.bank.erp.helper.Constants.DESCENDING_SORT_DIRECTION;
 @Slf4j
 public class StockService {
     private final StockRepository stockRepository;
+
+    /** The one resolver for how far a person may see — see AccessScopeService. */
+    private final pride.bank.erp.access.AccessScopeService accessScopeService;
     private final StatusService statusService;
     private final SupplierService supplierService;
     private final CommodityService commodityService;
@@ -89,6 +92,8 @@ public class StockService {
             String sortBy,
             String lpoNumber,
             Long stockStatusId,
+            Long supplierId,
+            Long branchId,
             Boolean disposed,
             LocalDateTime startDate,
             LocalDateTime endDate
@@ -101,8 +106,10 @@ public class StockService {
                     .build();
 
             StockSearchCriteria criteria = StockSearchCriteria.builder()
+                    .scopedBranchId(visibleBranchId(branchId))
                     .lpoNumber(lpoNumber)
                     .stockStatusId(stockStatusId)
+                    .supplierId(supplierId)
                     .disposed(disposed)
                     .startDate(startDate)
                     .endDate(endDate)
@@ -166,8 +173,23 @@ public class StockService {
                                         .telephone(stock.getBranch().getTelephone())
                                         .name(stock.getBranch().getName())
                                         .build() : null)
+                        /*
+                         * Which branch this receipt belongs to.
+                         *
+                         * `Stock.branch` is @JsonIgnore on the entity, so the client never saw it.
+                         * That was tolerable while every user saw one branch's stock; once a unit
+                         * confers cross-branch reach, an Admin officer looking at a mixed list has
+                         * no way to tell Gulu's deliveries from Kampala's — and the row menu cannot
+                         * scope its actions per record without it.
+                         */
+                        .branch(stock.getBranch())
                         .supplier(stock.getSupplier() != null ?
                                 Supplier.builder()
+                                        // Carried so a client can act on the supplier rather than
+                                        // only print it — the inventory filter matches on the id,
+                                        // and without this the row cannot say which supplier it is
+                                        // in any way a query could use.
+                                        .id(stock.getSupplier().getId())
                                         .name(stock.getSupplier().getName())
                                         .address(stock.getSupplier().getAddress())
                                         .telephone(stock.getSupplier().getTelephone())
@@ -216,6 +238,16 @@ public class StockService {
 
         // Stock against the stocker's own branch (Admin store) rather than always Head Office.
         Branch branch = resolveStockBranch();
+
+        /*
+         * Belt and braces: the branch already comes from the stocker, so this cannot refuse anyone
+         * today. It is here so the rule survives a refactor — the moment someone lets the branch be
+         * supplied by the caller, this is what stops a receipt being filed against another branch.
+         */
+        accessScopeService.requireCanManage(
+                pride.bank.erp.access.ScopeSubject.INVENTORY,
+                branch != null ? branch.getId() : null,
+                null);
 
         Summation summation = calculateSums(stockCommoditiesRequest);
         Status status = summation.getDeliveredCommoditiesSummation() == summation.getOrderedCommoditiesSummation()
@@ -371,6 +403,7 @@ public class StockService {
         }
 
         Stock stock = findOneStock(stockId);
+        requireStockInScope(stock, pride.bank.erp.access.ScopeAction.MANAGE);
         recordReceipt(stock, request, true);
 
         stock.setCommodities(commodityWithDetailsDao(stockCommodityRepository.findByStockId(stockId)));
@@ -574,6 +607,7 @@ public class StockService {
             List<StockCommodityDTO> stockCommoditiesRequest
     ) throws NotFoundException {
         Stock stock = findOneStock(stockID);
+        requireStockInScope(stock, pride.bank.erp.access.ScopeAction.MANAGE);
 
         if (stockCommoditiesRequest == null || stockCommoditiesRequest.isEmpty()) {
             throw new IllegalArgumentException("Commodities list must not be null or empty.");
@@ -690,6 +724,48 @@ public class StockService {
         }
     }
 
+    /**
+     * The branch whose stock this caller may see, or null for every branch.
+     *
+     * <p>A requested branch is honoured only at ALL scope. Below it, naming another branch is
+     * refused rather than quietly rewritten to the caller's own — showing one branch's deliveries
+     * under another's name would be worse than saying no.
+     *
+     * <p><b>Floored at BRANCH, never SELF.</b> A stock receipt belongs to a branch and to no
+     * individual — nobody is "assigned" a delivery — so resolving to SELF would show a storekeeper
+     * an empty page rather than their own branch's deliveries. The resolver returns the caller's own
+     * branch below ALL scope, which is already the answer we want; the floor matters only in that
+     * this module must never narrow further.
+     */
+    private Long visibleBranchId(Long requestedBranchId) {
+        return accessScopeService.resolveBranch(
+                pride.bank.erp.access.ScopeSubject.INVENTORY, requestedBranchId);
+    }
+
+    /**
+     * Refuses unless this stock record is within the caller's reach.
+     *
+     * <p>The listing alone is not a boundary. Before this, a branch storekeeper could not <em>find</em>
+     * another branch's delivery through the page, but could open it, correct it, receive against it,
+     * close it short or delete it by id — the same hole the assets module had, in a module that
+     * moves money and goods.
+     *
+     * <p>Written out at each entry point rather than folded into {@link #findOneStock}, because that
+     * loader is also how the issuance and asset-creation flows reach a stock while acting for the
+     * system rather than for the person who triggered them.
+     */
+    private void requireStockInScope(Stock stock, pride.bank.erp.access.ScopeAction action) {
+        Long branchId = stock.getBranch() != null ? stock.getBranch().getId() : null;
+
+        if (action == pride.bank.erp.access.ScopeAction.MANAGE) {
+            accessScopeService.requireCanManage(
+                    pride.bank.erp.access.ScopeSubject.INVENTORY, branchId, null);
+        } else {
+            accessScopeService.requireCanView(
+                    pride.bank.erp.access.ScopeSubject.INVENTORY, branchId, null);
+        }
+    }
+
     public Stock findOneStock(Long id) throws NotFoundException {
         return stockRepository.findById(id).orElseThrow(
                 () -> new NotFoundException(String.format("No stock with id %s is found", id))
@@ -705,6 +781,7 @@ public class StockService {
     @Transactional
     public Stock closeShort(Long stockId, String reason) throws NotFoundException {
         Stock stock = findOneStock(stockId);
+        requireStockInScope(stock, pride.bank.erp.access.ScopeAction.MANAGE);
 
         Summation summation = calculateSumsFromStock(stockId);
         if (summation.getDeliveredCommoditiesSummation() == summation.getOrderedCommoditiesSummation()) {
@@ -723,6 +800,7 @@ public class StockService {
     @Transactional
     public StockResponseDTO fetchSingleStock(Long stockId) throws NotFoundException {
         Stock stock = findOneStock(stockId);
+        requireStockInScope(stock, pride.bank.erp.access.ScopeAction.VIEW);
         List<StockCommodity> stockCommodities = stockCommodityRepository.findByStockId(stockId);
         List<CommodityWithDetailsDao> commodities = commodityWithDetailsDao(stockCommodities);
         stock.setCommodities(commodities);
@@ -939,6 +1017,7 @@ public class StockService {
     @Transactional
     public DeleteResponse deleteStock(Long stockID) throws NotFoundException {
         Stock stock = findOneStock(stockID); // throws NotFoundException if not found
+        requireStockInScope(stock, pride.bank.erp.access.ScopeAction.MANAGE);
 
         // 🔒 Prevent deletion if at least one asset from this stock has been updated
         if (Boolean.TRUE.equals(stock.isCanNotBeDeleted())) {

@@ -59,6 +59,9 @@ public class MovementService {
     private final UserRepository userRepository;
     private final BranchRepository branchRepository;
     private final pride.bank.erp.config.BranchScopeService branchScopeService;
+
+    /** Decides whether a <em>particular</em> movement is within the caller's reach. */
+    private final pride.bank.erp.access.AccessScopeService accessScopeService;
     private final AssetRepository assetRepository;
     private final CommodityRepository commodityRepository;
     private final RequestRepository requestRepository;
@@ -247,6 +250,7 @@ public class MovementService {
     @Transactional
     public Movement attachDocument(Long movementId, MultipartFile file) throws NotFoundException {
         Movement movement = findMovement(movementId);
+        requireMovementInScope(movement, pride.bank.erp.access.ScopeAction.MANAGE);
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("No document file was provided");
         }
@@ -295,6 +299,7 @@ public class MovementService {
     @Transactional
     public Movement dispatchMovement(Long movementId, MovementDispatchDTO dto) throws NotFoundException {
         Movement movement = findMovement(movementId);
+        requireMovementInScope(movement, pride.bank.erp.access.ScopeAction.MANAGE);
         if (movement.getMovementCategory() != MovementCategory.INTER_LOCATION) {
             throw new IllegalStateException("Only inter-location movements are dispatched");
         }
@@ -362,6 +367,7 @@ public class MovementService {
     @Transactional
     public Movement markInTransit(Long movementId) throws NotFoundException {
         Movement movement = findMovement(movementId);
+        requireMovementInScope(movement, pride.bank.erp.access.ScopeAction.MANAGE);
         requireNotOnConsignment(movement, "marked in transit");
         if (movement.getStatus() != MovementStatus.DISPATCHED) {
             throw new IllegalStateException("Only a dispatched movement can be marked in transit");
@@ -396,6 +402,7 @@ public class MovementService {
     @Transactional
     public Movement receiveMovement(Long movementId, MovementReceiveDTO dto) throws NotFoundException {
         Movement movement = findMovement(movementId);
+        requireMovementInScope(movement, pride.bank.erp.access.ScopeAction.MANAGE);
         if (movement.getStatus() == MovementStatus.COMPLETED) {
             return movement; // idempotent
         }
@@ -421,6 +428,7 @@ public class MovementService {
     @Transactional
     public Movement completeMovement(Long movementId, String remarks) throws NotFoundException {
         Movement movement = findMovement(movementId);
+        requireMovementInScope(movement, pride.bank.erp.access.ScopeAction.MANAGE);
         if (movement.getStatus() == MovementStatus.COMPLETED) {
             return movement; // idempotent
         }
@@ -445,6 +453,7 @@ public class MovementService {
     @Transactional
     public Movement cancelMovement(Long movementId, String reason) throws NotFoundException {
         Movement movement = findMovement(movementId);
+        requireMovementInScope(movement, pride.bank.erp.access.ScopeAction.MANAGE);
         if (movement.getStatus() == MovementStatus.COMPLETED) {
             throw new IllegalStateException("Cannot cancel a completed movement");
         }
@@ -593,11 +602,36 @@ public class MovementService {
         return s == null || s.isBlank();
     }
 
+    /**
+     * Loads a movement for internal use, without a scope check.
+     *
+     * <p>Unguarded on purpose, and for the same reason as {@code AssetService#findOne}: the approval,
+     * consignment and issuance flows reach a movement while acting for the system rather than for
+     * the person who happened to trigger them. Gating here would refuse a Head Office issuer
+     * fulfilling a branch's request, which is the workflow working correctly.
+     *
+     * <p>Use {@link #getMovementForViewing} for anything a person asked to see.
+     */
     @Transactional(readOnly = true)
     public Movement findMovement(Long movementId) throws NotFoundException {
         // findDetailById, never findById — see MovementRepository#findDetailById for why.
         return movementRepository.findDetailById(movementId)
                 .orElseThrow(() -> new NotFoundException("Movement " + movementId + " not found"));
+    }
+
+    /**
+     * The detail read behind {@code GET /movements/{id}}.
+     *
+     * <p>Separate from {@link #findMovement} rather than a flag on it, because the lifecycle actions
+     * must not run this: a caller holding {@code MANAGE_ALL_BRANCH_MOVEMENTS} but not the matching
+     * view multiplier would be refused by a VIEW check before their MANAGE right was ever consulted.
+     * The two questions are asked in the right order by not mixing them.
+     */
+    @Transactional(readOnly = true)
+    public Movement getMovementForViewing(Long movementId) throws NotFoundException {
+        Movement movement = findMovement(movementId);
+        requireMovementInScope(movement, pride.bank.erp.access.ScopeAction.VIEW);
+        return movement;
     }
 
     /**
@@ -611,16 +645,65 @@ public class MovementService {
      */
     @Transactional(readOnly = true)
     public Page<Movement> listMovements(Pageable pageable) {
-        if (branchScopeService.canViewAllBranches()) {
+        Long scoped = accessScopeService.resolveBranch(
+                pride.bank.erp.access.ScopeSubject.MOVEMENTS, null);
+        if (scoped == null) {
             return movementRepository.findAll(pageable);
         }
-        Long own = branchScopeService.currentUserBranchId();
-        if (own == null) {
-            throw new org.springframework.security.access.AccessDeniedException(
-                    "Your account is not attached to a branch, so movements cannot be shown. "
-                            + "Ask an administrator to set your branch.");
+        return movementRepository.findForBranch(scoped, pageable);
+    }
+
+    /**
+     * Every branch a movement touches.
+     *
+     * <p>Four possible ends, and no movement has all of them: a store's location at either end, and
+     * a person's duty station at either end (a return has no source store, an issuance no source
+     * user). Mirrors {@code MovementRepository#findForBranch} deliberately — a guard that computed
+     * the branch differently from the listing would show someone a row they could not then open,
+     * which is worse than either rule on its own.
+     */
+    private static java.util.Set<Long> branchesTouchedBy(Movement movement) {
+        java.util.Set<Long> branches = new java.util.LinkedHashSet<>();
+        if (movement.getSourceStore() != null && movement.getSourceStore().getLocation() != null) {
+            branches.add(movement.getSourceStore().getLocation().getId());
         }
-        return movementRepository.findForBranch(own, pageable);
+        if (movement.getDestStore() != null && movement.getDestStore().getLocation() != null) {
+            branches.add(movement.getDestStore().getLocation().getId());
+        }
+        if (movement.getSourceUser() != null && movement.getSourceUser().getBranch() != null) {
+            branches.add(movement.getSourceUser().getBranch().getId());
+        }
+        if (movement.getRecipientUser() != null && movement.getRecipientUser().getBranch() != null) {
+            branches.add(movement.getRecipientUser().getBranch().getId());
+        }
+        branches.remove(null);
+        return branches;
+    }
+
+    /**
+     * Refuses unless this movement touches a branch the caller may act on.
+     *
+     * <p>Applied to the lifecycle actions — dispatch, in-transit, receive, complete, cancel — and to
+     * the detail read, because each of those acts on a movement someone names by id. Before this,
+     * the route guard checked that the caller held {@code DISPATCH_MOVEMENT} and nothing afterwards
+     * asked whose stock was moving: a branch storekeeper could dispatch another branch's consignment
+     * by id, having merely been unable to find it in the listing.
+     *
+     * <p><b>Not</b> applied to {@code createMovement}. Issuance, asset return and consignment
+     * fulfilment all create movements on the system's behalf and legitimately span two branches — a
+     * Head Office issuer sending stock to a branch is the ordinary case, not an intrusion. The
+     * actions that follow are where a person acts on a movement, and that is where the check
+     * belongs.
+     */
+    private void requireMovementInScope(Movement movement, pride.bank.erp.access.ScopeAction action) {
+        java.util.Set<Long> branches = branchesTouchedBy(movement);
+        if (action == pride.bank.erp.access.ScopeAction.MANAGE) {
+            accessScopeService.requireCanManageAny(
+                    pride.bank.erp.access.ScopeSubject.MOVEMENTS, branches);
+        } else {
+            accessScopeService.requireCanViewAny(
+                    pride.bank.erp.access.ScopeSubject.MOVEMENTS, branches);
+        }
     }
 
     @Transactional(readOnly = true)

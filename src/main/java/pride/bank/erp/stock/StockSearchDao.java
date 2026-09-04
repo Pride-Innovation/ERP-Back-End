@@ -55,6 +55,20 @@ public class StockSearchDao {
     private Predicate getPredicate(StockSearchCriteria criteria, Root<Stock> root) {
         List<Predicate> predicates = new ArrayList<>();
 
+        if (Objects.nonNull(criteria.getScopedBranchId())) {
+            /*
+             * Branch scope, via an explicit LEFT JOIN.
+             *
+             * `branch` is NOT NULL on the entity, so an inner join would be harmless today — but the
+             * next optional filter through a nullable association would inherit the pattern, and
+             * that is how this codebase has been bitten four times. The join is written the safe way
+             * so the shape being copied is the safe one.
+             */
+            predicates.add(criteriaBuilder.equal(
+                    root.join("branch", jakarta.persistence.criteria.JoinType.LEFT).get("id"),
+                    criteria.getScopedBranchId()));
+        }
+
         if (Objects.nonNull(criteria.getLpoNumber())) {
             predicates.add(criteriaBuilder.like(root.get("lpoNumber"), "%" + criteria.getLpoNumber() + "%"));
         }
@@ -63,6 +77,20 @@ public class StockSearchDao {
             predicates.add(
                     criteriaBuilder.equal(root.get("status").get("id"), criteria.getStockStatusId())
             );
+        }
+
+        if (Objects.nonNull(criteria.getSupplierId())) {
+            /*
+             * An explicit LEFT JOIN, not `root.get("supplier").get("id")`.
+             *
+             * The dotted path would put an INNER JOIN in the FROM clause on every call, filtering
+             * before this `nonNull` check is reached — so a stock row with no supplier would vanish
+             * from the listing even when nobody is filtering by supplier. That is trap #1, and an
+             * optional filter through a nullable association is exactly its shape.
+             */
+            predicates.add(criteriaBuilder.equal(
+                    root.join("supplier", jakarta.persistence.criteria.JoinType.LEFT).get("id"),
+                    criteria.getSupplierId()));
         }
 
         if (Objects.nonNull(criteria.getDisposed())) {

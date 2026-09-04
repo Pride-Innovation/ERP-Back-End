@@ -142,49 +142,6 @@ public class RequestSearchDao {
             predicates.add(criteriaBuilder.lessThanOrEqualTo(requestRoot.get("createDate"), requestSearchCriteria.getEndDate()));
         }
 
-        // Legacy stationery / non-stationery scope rules. These predate the workflow engine
-        // and were the only way admins/BOMs got visibility into branch requests. Now that the
-        // engine can route any branch request to a specific approver via currentApprover, those
-        // rules wrongly hide assigned requests from the approver (e.g. a BOM listed as the
-        // currentApprover for a branch Computers request — non-stationery — would never see it
-        // because neither side of `requester.branch=HO OR isBranchStationery=true` is true).
-        // Skip both gates when the inbox is explicitly targeting an approver — the engine's
-        // assignment is the authority in that case.
-
-        // Ensure that Admin can review non stationery requests of branches
-        if (Objects.isNull(requestSearchCriteria.getCurrentApproverId())
-                && Objects.nonNull(requestSearchCriteria.getIsBranchNonStationery())) {
-            Expression<Long> branchIdPath = requestRoot.get("requester").get("branch").get("id");
-
-            Predicate isHeadOffice = criteriaBuilder.equal(branchIdPath, 1L);
-
-            Predicate isBranchNonStationery = criteriaBuilder.equal(
-                    requestRoot.get("isBranchNonStationery"),
-                    requestSearchCriteria.getIsBranchNonStationery()
-            );
-
-            predicates.add(criteriaBuilder.or(isHeadOffice, isBranchNonStationery));
-        }
-
-        // Ensure that BOM can review stationery requests of their branches
-        if (Objects.isNull(requestSearchCriteria.getCurrentApproverId())
-                && Objects.nonNull(requestSearchCriteria.getIsBranchStationery())) {
-            Expression<Long> branchIdPath = requestRoot.get("requester").get("branch").get("id");
-
-            Predicate isHeadOffice = criteriaBuilder.equal(branchIdPath, 1L);
-
-            Predicate isBranchStationery = criteriaBuilder.equal(
-                    requestRoot.get("isBranchStationery"),
-                    requestSearchCriteria.getIsBranchStationery()
-            );
-
-
-            // If it's Head Office, ignore the filter by always returning true (i.e., include it)
-            // If it's not Head Office, apply the filter
-            predicates.add(criteriaBuilder.or(isHeadOffice, isBranchStationery)
-            );
-        }
-
         if (Objects.nonNull(requestSearchCriteria.getRequestedBy())) {
             String searchName = "%" + requestSearchCriteria.getRequestedBy().toLowerCase() + "%";
 
@@ -249,32 +206,6 @@ public class RequestSearchDao {
                 predicates.add(byApprover);
             }
         }
-
-        // Filter Admin data for the requests listing
-
-        if (Boolean.TRUE.equals(requestSearchCriteria.getIsAdmin()) &&
-                Objects.nonNull(requestSearchCriteria.getCurrentUserId())) {
-
-            Path<Long> requesterIdPath = requestRoot.get("requester").get("id");
-            Path<String> statusNamePath = requestRoot.get("status").get("status"); // Adjust if field is different
-
-            Predicate ownRequests = criteriaBuilder.equal(requesterIdPath, requestSearchCriteria.getCurrentUserId());
-
-            // Exclude specific statuses for other users
-            Predicate notOwnRequests = criteriaBuilder.notEqual(requesterIdPath, requestSearchCriteria.getCurrentUserId());
-            Predicate statusNotRequestCreated = criteriaBuilder.notEqual(statusNamePath, "requestCreated");
-            Predicate statusNotRequestRejected = criteriaBuilder.notEqual(statusNamePath, "requestRejected");
-
-            Predicate otherUsersValidStatuses = criteriaBuilder.and(
-                    notOwnRequests,
-                    statusNotRequestCreated,
-                    statusNotRequestRejected
-            );
-
-            // Combine own requests and filtered other users' requests
-            predicates.add(criteriaBuilder.or(ownRequests, otherUsersValidStatuses));
-        }
-
 
         return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
     }

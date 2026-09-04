@@ -6,6 +6,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import pride.bank.erp.exception.NotFoundException;
@@ -21,6 +22,12 @@ public class GrnReportController {
 
     private final GrnReportService grnReportService;
 
+    /*
+     * Both GRN routes sit outside INVENTORY_ROUTE (`/stocks/**`) and so matched no rule at all —
+     * any signed-in user could attach a signed goods-received note to a delivery, or regenerate one.
+     * A GRN is the document evidencing that stock arrived, so writing one is an inventory update.
+     */
+    @PreAuthorize("hasAuthority('" + Constants.UPDATE_INVENTORY + "')")
     @PostMapping("/upload-grn/{grnReportId}")
     public ResponseEntity<GrnReport> uploadGoodReceivedNote(
             @RequestParam(value = "file", required = false) MultipartFile file,
@@ -32,6 +39,7 @@ public class GrnReportController {
         );
     }
 
+    @PreAuthorize("hasAuthority('" + Constants.UPDATE_INVENTORY + "')")
     @PutMapping("/download-grn/{grnReportId}")
     public ResponseEntity<GrnReport> downloadGRN(
             @PathVariable Long grnReportId

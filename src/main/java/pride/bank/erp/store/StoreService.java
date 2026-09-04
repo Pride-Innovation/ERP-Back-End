@@ -3,6 +3,8 @@ package pride.bank.erp.store;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pride.bank.erp.asset.AssetTypeSummaryView;
@@ -82,23 +84,58 @@ public class StoreService {
     }
 
     @Transactional
+    /**
+     * The store balance listing. Every filter is optional; the store pages fix store type and
+     * category from their own chrome and leave the rest to the user.
+     *
+     * @param stockName partial, case-insensitive match on the commodity's name. Blank is treated as
+     *                  absent, so clearing the search box widens the listing rather than asking the
+     *                  database for rows whose name contains the empty string.
+     */
     public Page<StoreBalance> fetchStoreDetailsPerBranchPerAssetType(
-            Long branchId, Long assetTypeId, StoreType storeType, Pageable pageable) {
-        // Store-scoped: the Admin / IT / Disposal pages each see only the lines their own store
-        // container holds — an item cannot appear on all three pages at once.
-        if (storeType != null) {
-            return assetTypeId == null
-                    ? storeBalanceRepository.findByBranchIdAndStore_StoreType(branchId, storeType, pageable)
-                    : storeBalanceRepository.findByBranchIdAndStore_StoreTypeAndCommodity_AssetTypeId(
-                            branchId, storeType, assetTypeId, pageable);
-        }
-        // No category filter → every balance line the branch holds (the store landing page
-        // probes per-branch line counts this way).
-        if (assetTypeId == null) {
-            return storeBalanceRepository.findByBranchId(branchId, pageable);
-        }
-        return storeBalanceRepository
-                .findByBranchIdAndCommodity_AssetTypeId(branchId, assetTypeId, pageable);
+            Long branchId, Long assetTypeId, StoreType storeType, String stockName,
+            String stockLevel, Pageable pageable) {
+        String name = (stockName == null || stockName.isBlank()) ? null : stockName.trim();
+        String level = normaliseStockLevel(stockLevel);
+        return storeBalanceRepository.search(branchId, assetTypeId, storeType, name, level,
+                withStableOrder(pageable));
+    }
+
+    /**
+     * Accepts only the three levels the query understands; anything else is treated as no filter.
+     *
+     * <p>Rejecting silently rather than throwing because an unrecognised value can only come from a
+     * stale client, and returning the unfiltered list is the same thing that happened before the
+     * filter existed. A hard failure would take the page down over a query string.
+     */
+    private static String normaliseStockLevel(String stockLevel) {
+        if (stockLevel == null || stockLevel.isBlank()) return null;
+        String level = stockLevel.trim().toLowerCase();
+        return switch (level) {
+            case "low", "adequate", "unmonitored" -> level;
+            default -> null;
+        };
+    }
+
+    /**
+     * Appends {@code id} as a tie-break to whatever ordering the caller asked for.
+     *
+     * <p>This listing had no ordering at all, so MySQL was free to return ties in a different order
+     * per query — and with OFFSET/LIMIT that means the same row appears on two pages while another
+     * appears on none. The same fault was fixed in {@code AssetSearchDao} and {@code RequestSearchDao};
+     * this was the third listing carrying it.
+     */
+    private static Pageable withStableOrder(Pageable pageable) {
+        if (pageable == null) return null;
+        Sort sort = pageable.getSort();
+        boolean alreadyTieBroken = sort.stream()
+                .anyMatch(order -> "id".equals(order.getProperty()));
+        if (alreadyTieBroken) return pageable;
+
+        Sort stable = sort.isSorted()
+                ? sort.and(Sort.by(Sort.Direction.DESC, "id"))
+                : Sort.by(Sort.Direction.DESC, "id");
+        return PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), stable);
     }
 
 

@@ -55,6 +55,9 @@ public class UserService {
     private final JwtService jwtService;
     private final Email emailService;
     private final UserSearchDao userSearchDao;
+
+    /** The one resolver for how far a person may see — see AccessScopeService. */
+    private final pride.bank.erp.access.AccessScopeService accessScopeService;
     private final TitleService titleService;
     private final BranchRepository branchRepository;
     private final DepartmentRepository departmentRepository;
@@ -327,6 +330,43 @@ public class UserService {
         }
     }
 
+    /**
+     * Which branch's users this caller may see.
+     *
+     * <p>The staff directory was entirely unscoped: {@code branchId} came from the request and
+     * nothing checked it, so any holder of {@code READ_USER} could list every user in the bank and
+     * name any branch they liked. That is a wider disclosure than it looks — a user record carries a
+     * person's duty station, department, title and reporting line.
+     *
+     * <p>Two answers, matching how reach works everywhere else:
+     * <ul>
+     *   <li><b>ALL scope</b> — Head Office and the units — sees everyone, and may focus one branch by
+     *       naming it. This is what makes a Head Office officer able to assign an asset to a branch
+     *       member of staff.</li>
+     *   <li><b>Anyone else</b> sees their own duty station, whatever they asked for.</li>
+     * </ul>
+     *
+     * <p><b>Floored at BRANCH, never SELF.</b> A directory narrowed to one person is not a directory
+     * — the Users page would show an officer a single row, and every picker built on this endpoint
+     * would offer them only themselves. Where that narrower answer is the right one, the caller hides
+     * the control rather than asking this to return nothing useful; the assets page's "Assigned To"
+     * filter does exactly that.
+     *
+     * <p>Silently narrows rather than refusing, because this backs pickers and directories where an
+     * unasked-for branch parameter is routine. Naming another branch outright is not treated as an
+     * attack, just as a request that gets the caller's own branch back.
+     */
+    private Long resolveVisibleBranch(Long requestedBranchId) {
+        boolean seesEveryBranch = accessScopeService.scopeFor(
+                pride.bank.erp.access.ScopeSubject.ASSETS,
+                pride.bank.erp.access.ScopeAction.VIEW) == pride.bank.erp.dashboard.DashboardScope.ALL;
+
+        if (seesEveryBranch) {
+            return requestedBranchId;   // null legitimately means every branch
+        }
+        return accessScopeService.currentUserBranchId();
+    }
+
     public Page<User> fetchUsers(
             UserQueryParams params
     ) {
@@ -351,7 +391,7 @@ public class UserService {
                     .title(params.getTitle())
                     .gender(params.getGender())
                     .titleId(params.getTitleId())
-                    .branchId(params.getBranchId())
+                    .branchId(resolveVisibleBranch(params.getBranchId()))
                     .departmentId(params.getDepartmentId())
                     .roleId(params.getRoleId())
                     .createdAtFrom(params.getCreatedAtFrom())

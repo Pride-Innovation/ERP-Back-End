@@ -27,12 +27,9 @@ public class RequestSearchCriteria {
     private String requestedBy;
     private String approver;
     private Boolean deleted;
-    private Boolean isBranchStationery;
-    private Boolean isBranchNonStationery;
     private LocalDateTime startDate;
     private LocalDateTime endDate;
     private Long currentUserId;
-    private Boolean isAdmin;
     private Long currentApproverId;
     /** The logged-in user's unit id — so the approval inbox also shows requests routed to their unit. */
     private Long currentUnitId;

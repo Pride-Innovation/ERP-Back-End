@@ -156,6 +156,30 @@ public class AssetSearchDao {
             ));
         }
 
+        /*
+         * Soft-deleted assets, excluded from every listing and every export.
+         *
+         * Applied unconditionally rather than as an optional filter: a deleted record is not a
+         * narrower view of the register, it is out of it. `includeDeleted` on the criteria is the
+         * one way back in, and only the restore listing sets it.
+         *
+         * `isFalse` rather than `equal(..., false)` so the predicate reads the same way as the
+         * column's NOT NULL DEFAULT FALSE, and a row written before the column existed still matches.
+         */
+        if (!Boolean.TRUE.equals(assetSearchCriteria.getIncludeDeleted())) {
+            predicates.add(criteriaBuilder.isFalse(assetRoot.get("deleted")));
+        } else {
+            // The restore view: deleted assets only, not everything.
+            predicates.add(criteriaBuilder.isTrue(assetRoot.get("deleted")));
+        }
+
+        if (Objects.nonNull(assetSearchCriteria.getScopedOwnerId())) {
+            // SELF scope. Strict equality on the holder — an officer's listing is what is in their
+            // hands, so an unassigned asset at their branch is not theirs to see here.
+            predicates.add(criteriaBuilder.equal(
+                    holderJoin(assetRoot).get("id"), assetSearchCriteria.getScopedOwnerId()));
+        }
+
         return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
     }
 

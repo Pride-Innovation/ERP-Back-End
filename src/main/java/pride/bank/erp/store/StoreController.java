@@ -32,7 +32,9 @@ public class StoreController {
     @PostMapping("/stores")
     public ResponseEntity<Store> createDepartmentStore(@RequestBody StoreAdminDTO request)
             throws NotFoundException {
-        branchScope.requireAccessTo(request.getLocationId());
+        // A write, so it asks the manage question: reporting on another branch's stock is not a
+        // licence to reorganise its stores.
+        branchScope.requireCanChange(request.getLocationId());
         return new ResponseEntity<>(storeAdminService.createDepartmentStore(request), HttpStatus.CREATED);
     }
 
@@ -69,6 +71,20 @@ public class StoreController {
             @RequestParam Long branchId,
             @RequestParam(required = false) Long assetTypeId,
             @RequestParam(required = false) StoreType storeType,
+            // Declared, because Spring silently drops a parameter no endpoint names — a filter the
+            // client sends to a signature that does not list it looks like it worked and returns the
+            // unfiltered list. This box existed on the page for exactly that reason.
+            @RequestParam(required = false) String stockName,
+            /*
+             * low / adequate / unmonitored, applied against each line's own reorder threshold.
+             *
+             * This is a real server-side filter now because the threshold is real: `minLevel` is set
+             * per balance through PUT /inventory/balances/{id}/min-level and is what the low-stock
+             * monitor already reads. The store page's Status column used to invent its own bands
+             * (under 5 / 5-10 / over 10) in the browser, so the two screens could disagree about the
+             * same commodity.
+             */
+            @RequestParam(required = false) String stockLevel,
             @RequestParam(required = false, defaultValue = "10") int pageSize,
             @RequestParam(required = false, defaultValue = "0") int pageNumber
     ) {
@@ -78,6 +94,8 @@ public class StoreController {
                 branchId,
                 assetTypeId,
                 storeType,
+                stockName,
+                stockLevel,
                 pageable
         );
         return new ResponseEntity<>(response, HttpStatus.OK);
