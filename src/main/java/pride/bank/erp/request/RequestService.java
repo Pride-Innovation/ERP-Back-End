@@ -86,6 +86,7 @@ public class RequestService {
     private final WorkflowEngineService workflowEngineService;
     private final AssetTypeService assetTypeService;
     private final RequestReportRepository requestReportRepository;
+    private final pride.bank.erp.workflowinstance.RequestWorkflowInstanceRepository instanceRepository;
 
     /**
      * Creates a new request with commodities while enforcing business rules:
@@ -278,6 +279,7 @@ public class RequestService {
 
         // Find the existing request
         Request existingRequest = findRequest(requestId);
+        requireRequestChangeable(existingRequest);
         Status status = statusService.findByStatusCode("requestCreated");
 
         // Track whether the request is being resubmitted after a rejection
@@ -374,6 +376,7 @@ public class RequestService {
 
         if (requestRepository.existsById(id)) {
             Request request = findRequest(id);
+            requireRequestChangeable(request);
             request.setDeleted(true);
             request.setDeletionDate(LocalDateTime.now());
             requestRepository.save(request);
@@ -422,6 +425,8 @@ public class RequestService {
             String status,
             String requestedBy,
             String approver,
+            Long requesterId,
+            Long approverId,
             Boolean deleted,
             LocalDateTime startDate,
             LocalDateTime endDate,
@@ -446,12 +451,16 @@ public class RequestService {
                     .requesterIds(requestersList())
                     .requestedBy(requestedBy)
                     .approver(approver)
+                    // Picked from the directory. Narrows within the caller's scope; `approverId` is
+                    // deliberately not `currentApproverId`, which would switch that scope off.
+                    .raisedByUserId(requesterId)
+                    .approverId(approverId)
                     .deleted(deleted)
                     .timeOfSubmissionOfRequest(timeOfSubmissionOfRequest)
                     .startDate(startDate)
                     .endDate(endDate)
                     .currentUserId(currentUserService.getCurrentUser().getId())
-                    .currentApproverId(currentApproverId)
+                    .currentApproverId(resolveApproverInbox(currentApproverId))
                     .currentUnitId(currentUserService.getCurrentUser().getUnit() != null
                             ? currentUserService.getCurrentUser().getUnit().getId() : null)
                     .build();
@@ -464,8 +473,19 @@ public class RequestService {
 
             return new PageImpl<>(dtoList, requestPageResult.getPageable(), requestPageResult.getTotalElements());
 
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            /*
+             * A refusal is not an empty register.
+             *
+             * Everything used to fall into the blanket catch below and come back as `Page.empty()`,
+             * so a fault and "there are no requests" were the same screen. That is bad enough on its
+             * own; with the scope checks now in place it would have been worse, because a boundary
+             * would have rendered as an ordinary empty list and hidden the fact that the caller was
+             * refused. Rethrown so the client gets a 403.
+             */
+            throw e;
         } catch (Exception e) {
-            log.error("Error fetching requests: {}", e.getMessage());
+            log.error("Error fetching requests", e);
             return Page.empty();
         }
     }
@@ -546,6 +566,7 @@ public class RequestService {
         log.debug("Fetching detailed request with ID: {}", requestId);
 
         Request request = findRequest(requestId);
+        requireRequestReadable(request);
         RequestCommodityReports data = generateRequestReportsAndCommodities(request);
         return buildDetailedRequestDTO(request, data.getCommodities(), data.getReports());
     }
@@ -1100,22 +1121,55 @@ public class RequestService {
      * Returns a list of user IDs that includes the current user (manager)
      * and all users whose titles report (directly or indirectly) to the manager's title.
      */
+    /**
+     * Me and my subordinates — <b>at my own branch</b>.
+     *
+     * <h2>Two ways this used to fail open</h2>
+     * <b>Subordinates were resolved by title alone.</b> A title is organisation-wide — "Teller" is the
+     * same title at every branch — so {@code findUserIdsByTitleIds} answered with everyone in the bank
+     * holding a subordinate title. Measured on live data, the Gulu Head Cashier (a SUPERVISOR, and so
+     * SELF-scoped) had subordinates spanning Gulu <em>and Mbarara</em>, and therefore saw Mbarara's
+     * requests on the All Requests tab. The reporting line is a property of the title; the branch has
+     * to be applied separately, and was not.
+     *
+     * <p><b>An empty list is the widest possible answer, not the narrowest.</b> {@code RequestSearchDao}
+     * only applies the requester predicate when the list is non-empty, so returning nothing means "no
+     * restriction". This returned {@code Collections.emptyList()} for a user with no title — handing
+     * them every request in the bank, which is the opposite of what a missing title should mean.
+     *
+     * <p>So every path below ends in at least the caller's own id. A configuration gap narrows
+     * somebody to themselves; it never widens them to everybody.
+     */
     private List<Long> getManagerAndSubordinateUserIds() {
         User currentUser = currentUserService.getCurrentUser();
-        if (currentUser == null || currentUser.getTitle() == null) {
-            log.warn("Cannot get subordinates - current user or title is null");
-            return Collections.emptyList();
+        if (currentUser == null || currentUser.getId() == null) {
+            // Nothing to narrow to, and an empty list would mean "everything".
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Your account could not be identified, so requests cannot be shown.");
         }
 
-        Long managerTitleId = currentUser.getTitle().getId();
-        List<Long> subordinateTitleIds = titleRepository.findSubordinateTitleIds(managerTitleId);
-        List<Long> userIds = userRepository.findUserIdsByTitleIds(subordinateTitleIds);
+        List<Long> userIds = new ArrayList<>();
+        userIds.add(currentUser.getId());
 
-        if (!userIds.contains(currentUser.getId())) {
-            userIds.add(currentUser.getId());
+        Long branchId = currentUser.getBranch() != null ? currentUser.getBranch().getId() : null;
+        if (currentUser.getTitle() == null || branchId == null) {
+            // No reporting line, or no duty station to confine it to: just their own records. Both are
+            // configuration gaps, and neither is a reason to show somebody the bank.
+            log.warn("User {} has no title or no branch — narrowing requests to their own records",
+                    currentUser.getId());
+            return userIds;
         }
 
-        log.debug("Found {} subordinate users for manager title ID: {}", userIds.size() - 1, managerTitleId);
+        List<Long> subordinateTitleIds = titleRepository.findSubordinateTitleIds(
+                currentUser.getTitle().getId());
+        if (!subordinateTitleIds.isEmpty()) {
+            userRepository.findUserIdsByTitleIdsAndBranchId(subordinateTitleIds, branchId).stream()
+                    .filter(id -> !userIds.contains(id))
+                    .forEach(userIds::add);
+        }
+
+        log.debug("Found {} subordinate user(s) at branch {} for title {}",
+                userIds.size() - 1, branchId, currentUser.getTitle().getId());
         return userIds;
     }
 
@@ -1135,6 +1189,225 @@ public class RequestService {
      * alone. A manager's own request list would otherwise be one row, and approving is a different
      * act from raising — the reporting line is what makes the list useful to them.
      */
+    /**
+     * Refuses unless the caller may read this request — for satellites that hang off one.
+     *
+     * <p>The approval trail, the request report and the issuance record are all <em>about</em> a
+     * request, so they answer to the same rule rather than inventing their own.
+     */
+    @Transactional(readOnly = true)
+    public void requireReadableById(Long requestId) throws NotFoundException {
+        requireRequestReadable(findRequest(requestId));
+    }
+
+    /**
+     * The branch a request belongs to — its requester's duty station.
+     *
+     * <p>A request has no branch of its own; it belongs to wherever the person who raised it works.
+     * {@code RequestSearchDao} says the same thing when it filters through {@code requester.branch}.
+     */
+    private static Long branchOf(Request request) {
+        return (request.getRequester() != null && request.getRequester().getBranch() != null)
+                ? request.getRequester().getBranch().getId() : null;
+    }
+
+    private static Long requesterOf(Request request) {
+        return request.getRequester() != null ? request.getRequester().getId() : null;
+    }
+
+    /**
+     * Whether the caller was ever part of this request's approval.
+     *
+     * <h2>Why the current routing is not enough</h2>
+     * {@code currentApprover} names whoever must act <b>now</b>, and approving moves it to the next
+     * tier — so an approver lost the right to read the record at the very instant they approved it.
+     * A supervisor is SELF-scoped by default ({@code UnitRoleSeeder.SELF_SCOPED_ROLES}), and at SELF
+     * the scope check keys on the <em>requester</em>, who is somebody else — so every other limb
+     * failed too and the page answered "You do not have access to this record" immediately after a
+     * successful approval.
+     *
+     * <p>Worse than a stray message: the request can remain in their listing, because
+     * {@code getManagerAndSubordinateUserIds} includes a subordinate requester. A row that is in your
+     * list and will not open is the failure this scoping exists to avoid.
+     *
+     * <p>Having been routed a request is a <b>durable</b> relationship with it. Someone who approved
+     * something should be able to look at what they approved — that is the ordinary expectation and
+     * the basis of any later question about the decision.
+     */
+    private boolean hasActedOn(Request request) {
+        User current = currentUserService.getCurrentUser();
+        return current != null
+                && workflowEngineService.hasActedOnRequest(request.getId(), current.getId());
+    }
+
+    /** True when the workflow has routed this request to the caller, personally or via their unit. */
+    private boolean isRoutedToCaller(Request request) {
+        User current = currentUserService.getCurrentUser();
+        if (current == null) return false;
+
+        boolean toMe = request.getCurrentApprover() != null
+                && Objects.equals(request.getCurrentApprover().getId(), current.getId());
+        boolean toMyUnit = request.getCurrentUnit() != null && current.getUnit() != null
+                && Objects.equals(request.getCurrentUnit().getId(), current.getUnit().getId());
+        return toMe || toMyUnit;
+    }
+
+    /**
+     * Refuses a request the caller has no business reading.
+     *
+     * <h2>Why reading is wider than changing</h2>
+     * Scope alone is the wrong rule here. An approval step routinely routes a branch request to
+     * somebody at Head Office or in a unit, and the whole point of the inbox is that they can open
+     * it — so a plain branch check would refuse the very people the workflow just asked to act. The
+     * listing already makes this exception; the single read has to make the same one or the inbox
+     * would list rows that will not open.
+     *
+     * <p>So: in scope, <b>or</b> routed to you. Both are legitimate relationships to a request.
+     */
+    private void requireRequestReadable(Request request) {
+        if (isRoutedToCaller(request)) return;
+        if (hasActedOn(request)) return;
+        if (mayIssue()) return;
+        accessScopeService.requireCanView(
+                pride.bank.erp.access.ScopeSubject.REQUESTS, branchOf(request), requesterOf(request));
+    }
+
+    /**
+     * Whether the caller's job is to fulfil requests.
+     *
+     * <h2>Why this is a third way in</h2>
+     * Issuance is cross-branch by design — the ordinary case is Head Office fulfilling a branch's
+     * request, the same reason {@code createMovement} carries no scope check. An issuer must be able
+     * to open the request they are issuing against, and neither of the other two limbs gets them
+     * there: the requester's branch is not theirs, and the "routed to me" exception has already
+     * lapsed, because {@code WorkflowEngineService} nulls {@code currentApprover} the moment the last
+     * step completes — which is exactly when issuing begins.
+     *
+     * <p><b>Measured before adding it.</b> Of the ten accounts holding {@code ISSUE_ITEMS}, five have
+     * no cross-branch request reach: three Head Office storekeepers with no unit, and two at Gulu.
+     * Without this limb those five could no longer do the job the permission names.
+     *
+     * <p>It is a read, and only a read: {@code requireRequestChangeable} does not consult it, so an
+     * issuer still cannot edit or delete what they are issuing against. And it is far narrower than
+     * what stood here before, which was that any holder of {@code READ_REQUEST} could read every
+     * request in the bank by id.
+     */
+    private boolean mayIssue() {
+        User current = currentUserService.getCurrentUser();
+        return current != null && current.getAuthorities().stream()
+                .map(org.springframework.security.core.GrantedAuthority::getAuthority)
+                .anyMatch(Constants.ISSUE_ITEMS::equals);
+    }
+
+    /**
+     * Refuses a change to a request the caller has no business changing.
+     *
+     * <h2>Deliberately narrower than the read</h2>
+     * Being asked to approve something is not a licence to edit or delete it. Updating a request is
+     * the requester's act — it is how a rejected one is corrected and resubmitted — and deleting is
+     * administrative, so both answer to the ordinary branch/owner rule with no routing exception.
+     *
+     * <p>Approving is a different act again and is guarded where it belongs, by
+     * {@code WorkflowEngineService.requireActorIsRouted}.
+     */
+    private void requireRequestChangeable(Request request) {
+        accessScopeService.requireCanManage(
+                pride.bank.erp.access.ScopeSubject.REQUESTS, branchOf(request), requesterOf(request));
+    }
+
+    /**
+     * Whose approval inbox the listing may show — the caller's own, unless they may see any branch's.
+     *
+     * <h2>The hole this closes</h2>
+     * {@code currentApproverId} arrived straight from the request, and {@code RequestSearchDao}
+     * <b>skips the branch/self scope entirely whenever it is set</b> — deliberately, because an
+     * approver often sits above the requester and the subordinate restriction would hide the very
+     * work the inbox exists to show. Correct on its own; fatal in combination with a client-supplied
+     * value.
+     *
+     * <p>So {@code GET /requests?currentApproverId=<a colleague>} dropped the scope and returned
+     * everything routed to that person, from every branch, to any holder of {@code READ_REQUEST}.
+     * The unit half of that predicate was already server-derived; only the approver half was not.
+     *
+     * <p>This is the same fault the movements approval inbox had — {@code
+     * GET /movements/pending-approval/{approverId}} took the approver from the path — and it is
+     * closed the same way: the caller's own id, with {@code MANAGE_ALL_BRANCH_REQUESTS} as the
+     * explicit override, since that grant is precisely "may act on any branch's requests".
+     *
+     * <p>Nothing changes for the front end, which only ever sends the signed-in user's own id.
+     *
+     * @param requested what the client asked for; may be null, meaning "not the inbox view"
+     * @return the approver id to filter on, or null to leave the inbox filter off
+     */
+    private Long resolveApproverInbox(Long requested) {
+        if (requested == null) return null;
+
+        User current = currentUserService.getCurrentUser();
+        Long own = current != null ? current.getId() : null;
+        if (requested.equals(own)) return own;
+
+        boolean mayReadAnyInbox = accessScopeService.scopeFor(
+                pride.bank.erp.access.ScopeSubject.REQUESTS,
+                pride.bank.erp.access.ScopeAction.MANAGE) == pride.bank.erp.dashboard.DashboardScope.ALL;
+        if (mayReadAnyInbox) {
+            log.info("User {} is reading approver {}'s inbox under MANAGE_ALL_BRANCH_REQUESTS",
+                    own, requested);
+            return requested;
+        }
+
+        // Narrowed to their own rather than refused: the parameter is a view selector, and the page
+        // that sends it is asking for "my inbox" in every legitimate case.
+        log.warn("User {} asked for approver {}'s inbox without cross-branch request management; "
+                + "narrowed to their own", own, requested);
+        return own;
+    }
+
+    /**
+     * What each of these requests is currently waiting for, keyed by request id.
+     *
+     * <p>Absent for a finished or rejected request, and for one predating the workflow engine — the
+     * caller reads that as "no action is due", which is the safe answer: without a workflow there is
+     * no way to know the stage, and offering a wrong action on a real request is worse than offering
+     * none.
+     */
+    private Map<Long, String> currentStepTypes(List<Request> requests) {
+        List<Long> ids = requests.stream()
+                .map(Request::getId).filter(Objects::nonNull).toList();
+        if (ids.isEmpty()) return Map.of();
+
+        Map<Long, String> byRequest = new HashMap<>();
+        for (Object[] row : instanceRepository.findCurrentStepTypes(ids)) {
+            if (row[0] != null && row[1] != null) {
+                byRequest.put((Long) row[0], stageOf(row[1], row.length > 2 ? row[2] : null));
+            }
+        }
+        return byRequest;
+    }
+
+    /**
+     * The stage a step represents, which is not always its type.
+     *
+     * <h2>ISSUANCE_APPROVAL is a stage the enum does not have a name for</h2>
+     * Signing off an issuance is stored as a {@code REQUEST_APPROVAL} step carrying
+     * {@code approverSubject = ISSUER}: it is routed to the <em>issuer's</em> manager, and
+     * {@code resolveStatusCode} maps it to {@code issuanceApproved} rather than to an approval
+     * status. Everything except the enum already treats it as its own stage.
+     *
+     * <p>Reporting it as a plain approval is not cosmetic. The two acts post to different endpoints —
+     * {@code POST /approvals} merely advances the step, while {@code POST /approve-issuance} creates
+     * the fulfilment movement that actually sends the items. A screen told "this is an approval"
+     * offers the first, and the request advances recorded as approved with nothing on its way.
+     *
+     * <p>Named here rather than on {@code StepType} because it is a reading of two fields, not a new
+     * kind of step: the workflow editor still configures an approval step with an issuer subject.
+     */
+    private static String stageOf(Object stepType, Object approverSubject) {
+        boolean issuerApproval =
+                pride.bank.erp.workflow.StepType.REQUEST_APPROVAL.equals(stepType)
+                        && pride.bank.erp.workflow.ApproverSubject.ISSUER.equals(approverSubject);
+        return issuerApproval ? "ISSUANCE_APPROVAL" : stepType.toString();
+    }
+
     private List<Long> requestersList() {
         return switch (accessScopeService.scopeFor(
                 pride.bank.erp.access.ScopeSubject.REQUESTS,
@@ -1169,7 +1442,17 @@ public class RequestService {
      * Converts a list of Request entities to DTOs
      */
     public List<RequestDTO> convertToRequestDTOList(List<Request> requests) {
+        /*
+         * One query for the page, not one per row.
+         *
+         * The row menu needs to know what action is due, and that is a property of the workflow step
+         * rather than of the status. Resolving it through each request's instance and workflow
+         * individually is the shape that turns a listing into N+1.
+         */
+        Map<Long, String> stepTypes = currentStepTypes(requests);
+
         return requests.stream().map(request -> RequestDTO.builder()
+                .currentStepType(stepTypes.get(request.getId()))
                 .id(request.getId())
                 .name(request.getName())
                 .priority(request.getPriority())
@@ -1183,6 +1466,7 @@ public class RequestService {
                 .lastModifiedBy(request.getLastModifiedBy())
                 .requester(request.getRequester())
                 .currentApprover(request.getCurrentApprover())
+                .currentUnit(request.getCurrentUnit())
                 .commodities(getRequestCommodities(request))
                 .requestReports(request.getRequestReportDAOS())
                 .assetTypeId(request.getAssetType() != null ? request.getAssetType().getId() : null)
@@ -1255,6 +1539,10 @@ public class RequestService {
                 .requestReports(reports)
                 .currentApprover(request.getCurrentApprover() != null ?
                         userBuilder.builder(request.getCurrentApprover()) : null)
+                // Needed by the detail page to know a group step is its viewer's to take.
+                .currentUnit(request.getCurrentUnit())
+                // And what kind of action is due, so the page offers that one and no other.
+                .currentStepType(currentStepTypes(List.of(request)).get(request.getId()))
                 .assetTypeId(request.getAssetType() != null ? request.getAssetType().getId() : null)
                 .assetType(AssetTypeRefDTO.from(request.getAssetType()))
                 .attributes(request.getAttributes())

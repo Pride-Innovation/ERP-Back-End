@@ -3,6 +3,8 @@ package pride.bank.erp.movement;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -68,6 +70,32 @@ public interface MovementRepository extends JpaRepository<Movement, Long> {
      */
     java.util.Optional<Movement> findFirstByItems_Asset_IdAndMovementTypeOrderByIdDesc(
             Long assetId, MovementType movementType);
+
+    /**
+     * Where each of these assets came from, newest movement first.
+     *
+     * <h2>Why a listing needs this</h2>
+     * An asset's {@code branch} says where it <em>is</em>. Once it moves into the bank-wide IT or
+     * Disposal store — both held at Head Office — that becomes Head Office, because Head Office
+     * genuinely has custody. The branch it belongs to survives only here, as the
+     * {@code originLocation} captured on the movement that took it away, which is also what the
+     * return leg aims at.
+     *
+     * <p>So a branch asking "what of mine is away being repaired" can only be answered from this
+     * column. Fetched for a whole page of assets at once rather than per row: the alternative is a
+     * query per asset inside a filter.
+     *
+     * <p>Every join is inner and deliberately so — a movement with no origin, or a consumable line
+     * with no asset, has no answer to give and should not produce a row. That is the one shape where
+     * trap #1 does not apply, because nothing here is optional.
+     *
+     * @return rows of {@code [assetId, originLocationId]}, newest movement first; the caller keeps
+     *         the first row seen per asset.
+     */
+    @Query("SELECT a.id, ol.id FROM Movement m "
+            + "JOIN m.items i JOIN i.asset a JOIN m.originLocation ol "
+            + "WHERE a.id IN :assetIds ORDER BY m.id DESC")
+    List<Object[]> findOriginLocationsForAssets(@Param("assetIds") java.util.Collection<Long> assetIds);
 
     /**
      * The loaner currently out with a user, if any: the newest TEMP_REPLACEMENT issued to them that

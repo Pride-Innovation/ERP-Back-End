@@ -65,6 +65,20 @@ class MovementRouteAuthorizationTest {
     private static final String BRANCH_REFUSAL = "not attached to a branch";
 
     /**
+     * The same refusal, for a caller the service cannot identify at all.
+     *
+     * <p>Movements now narrow by <em>person</em> at SELF scope — a movement has no owner column, so
+     * "mine" is the set of people party to it — and an unidentifiable caller is refused there rather
+     * than at the branch check. {@code @WithMockUser} populates the security context but not the JWT
+     * that {@code CurrentUserService} reads, so these tests land on this message instead of the
+     * branch one whenever the resolved scope is SELF.
+     *
+     * <p>Both are business refusals from behind the permission rule, and neither means the route
+     * guard let the caller down — which is the distinction this file exists to keep.
+     */
+    private static final String IDENTITY_REFUSAL = "could not be identified";
+
+    /**
      * A movement id that cannot exist.
      *
      * <p>These cases are about the filter chain — which authority opens which route — and nothing
@@ -110,7 +124,10 @@ class MovementRouteAuthorizationTest {
         } catch (Exception handlerFailed) {
             return;
         }
-        if (status == 403 && body.contains(BRANCH_REFUSAL)) return;
+        if (status == 403
+                && (body.contains(BRANCH_REFUSAL) || body.contains(IDENTITY_REFUSAL))) {
+            return;
+        }
         assertThat(status).as("expected authorization to let this through").isNotEqualTo(403);
     }
 

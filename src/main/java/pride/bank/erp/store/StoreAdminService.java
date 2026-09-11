@@ -40,6 +40,47 @@ public class StoreAdminService {
     private final StoreBalanceRepository storeBalanceRepository;
     private final BranchRepository branchRepository;
     private final DepartmentRepository departmentRepository;
+    private final pride.bank.erp.access.AccessScopeService accessScopeService;
+
+    /**
+     * Refuses a change to a store the caller has no business touching.
+     *
+     * <h2>Two rules, because two kinds of store</h2>
+     * Both entry points below reach a store <b>by id</b>, and until now neither asked whose it was.
+     * {@code UPDATE_STORE} admitted the caller to the endpoint and nothing afterwards looked at the
+     * store — so a Gulu officer could rename or deactivate Kampala's department store, or rename the
+     * bank-wide IT store, simply by knowing its id. That is the same shape of hole assets had before
+     * {@code requireAssetInScope}.
+     *
+     * <p><b>An ordinary store answers to its branch.</b> A department store at Gulu is Gulu's, and a
+     * branch's ADMIN store likewise, so the location is the key.
+     *
+     * <p><b>The bank-wide singletons answer to nobody below ALL.</b> The IT and Disposal stores are
+     * one each for the whole bank and every branch's repairs and write-offs route through them. They
+     * stand at Head Office, so guarding by location alone would hand them to any Head Office officer
+     * with branch reach — and one branch renaming or reactivating a store the other twenty depend on
+     * is not a branch-sized decision. It needs the explicit cross-branch grant.
+     */
+    private void requireStoreChangeable(Store store) {
+        boolean bankWide = store.getStoreType() == StoreType.IT
+                || store.getStoreType() == StoreType.DISPOSAL;
+
+        if (bankWide) {
+            if (accessScopeService.scopeFor(pride.bank.erp.access.ScopeSubject.INVENTORY,
+                    pride.bank.erp.access.ScopeAction.MANAGE)
+                    != pride.bank.erp.dashboard.DashboardScope.ALL) {
+                throw new org.springframework.security.access.AccessDeniedException(
+                        "'" + store.getName() + "' is shared by the whole bank. Changing it needs "
+                                + "cross-branch inventory management.");
+            }
+            return;
+        }
+
+        accessScopeService.requireCanManage(
+                pride.bank.erp.access.ScopeSubject.INVENTORY,
+                store.getLocation() != null ? store.getLocation().getId() : null,
+                null);
+    }
 
     @Transactional
     public Store createDepartmentStore(StoreAdminDTO request) throws NotFoundException {
@@ -88,6 +129,7 @@ public class StoreAdminService {
     public Store setActive(Long storeId, boolean active) throws NotFoundException {
         Store store = storeRepository.findById(storeId)
                 .orElseThrow(() -> new NotFoundException("Store " + storeId + " not found"));
+        requireStoreChangeable(store);
 
         if (!active) {
             if (store.getDepartment() == null) {
@@ -115,6 +157,7 @@ public class StoreAdminService {
         }
         Store store = storeRepository.findById(storeId)
                 .orElseThrow(() -> new NotFoundException("Store " + storeId + " not found"));
+        requireStoreChangeable(store);
         store.setName(name.trim());
         return storeRepository.save(store);
     }

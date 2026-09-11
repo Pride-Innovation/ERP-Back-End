@@ -52,6 +52,9 @@ public class StockTakeService {
     private final CurrentUserService currentUserService;
     private final StockTakePostingService postingService;
 
+    /** The one resolver for how far a person may reach — see AccessScopeService. */
+    private final pride.bank.erp.access.AccessScopeService accessScopeService;
+
     // ── Opening ─────────────────────────────────────────────────────────────
 
     /**
@@ -59,6 +62,42 @@ public class StockTakeService {
      * store holds. The snapshot is what variances are later measured against.
      */
     @Transactional
+    /**
+     * Refuses unless this store is one the caller could physically count.
+     *
+     * <h2>Why the store's location, and not the items' branches</h2>
+     * A stock take is a physical act at a physical place — someone standing at the shelves writing
+     * down what is on them. So it is scoped by where the store <em>is</em>: a Gulu officer counts
+     * Gulu's Admin store, and only Head Office counts the bank-wide IT and Disposal stores, because
+     * nobody in Gulu can walk into those rooms.
+     *
+     * <p>That is a different key from the one balance <em>visibility</em> uses, which is the item's
+     * own branch — a Gulu asset awaiting repair in the Head Office IT store is Gulu's to see. Two
+     * different questions ("whose item is this?" and "where am I standing?"), two different answers,
+     * and the model is being honest rather than inconsistent.
+     *
+     * <p>Consequence, accepted deliberately: a branch cannot formally count its own items sitting
+     * inside the shared IT or Disposal store. Seeing them is a report and is already answered by the
+     * branch-scoped balance listing; counting them is not something a branch can actually do.
+     */
+    private void requireStoreCountable(Store store, pride.bank.erp.access.ScopeAction action) {
+        Long locationId = store != null && store.getLocation() != null
+                ? store.getLocation().getId() : null;
+
+        if (action == pride.bank.erp.access.ScopeAction.MANAGE) {
+            accessScopeService.requireCanManage(
+                    pride.bank.erp.access.ScopeSubject.INVENTORY, locationId, null);
+        } else {
+            accessScopeService.requireCanView(
+                    pride.bank.erp.access.ScopeSubject.INVENTORY, locationId, null);
+        }
+    }
+
+    /** As above, for an action reached through the count rather than the store. */
+    private void requireCountInScope(StockCount count, pride.bank.erp.access.ScopeAction action) {
+        requireStoreCountable(count.getStore(), action);
+    }
+
     public CountView openCount(OpenCountRequest request) throws NotFoundException {
         if (request.getStoreId() == null) {
             throw new IllegalArgumentException("A store is required to open a count");
@@ -66,6 +105,9 @@ public class StockTakeService {
 
         Store store = storeRepository.findById(request.getStoreId())
                 .orElseThrow(() -> new NotFoundException("Store " + request.getStoreId() + " not found"));
+
+        // Opening a count claims a set of shelves. You can only claim shelves you can reach.
+        requireStoreCountable(store, pride.bank.erp.access.ScopeAction.MANAGE);
 
         // Two simultaneous counts of the same shelves produce two conflicting truths.
         List<StockCount> open = countRepository.findOpenForStore(store.getId());
@@ -120,6 +162,7 @@ public class StockTakeService {
     @Transactional
     public CountView saveCounts(Long countId, SaveCountsRequest request) throws NotFoundException {
         StockCount count = find(countId);
+        requireCountInScope(count, pride.bank.erp.access.ScopeAction.MANAGE);
         requireStatus(count, "record counts against", StockCountStatus.DRAFT, StockCountStatus.IN_PROGRESS);
 
         if (request == null || request.getLines() == null || request.getLines().isEmpty()) {
@@ -165,6 +208,7 @@ public class StockTakeService {
     @Transactional
     public CountView submit(Long countId) throws NotFoundException {
         StockCount count = find(countId);
+        requireCountInScope(count, pride.bank.erp.access.ScopeAction.MANAGE);
         requireStatus(count, "submit", StockCountStatus.DRAFT, StockCountStatus.IN_PROGRESS);
 
         List<StockCountLine> lines = lines(countId);
@@ -212,6 +256,7 @@ public class StockTakeService {
     @Transactional
     public CountView approve(Long countId, ReviewRequest request) throws NotFoundException {
         StockCount count = find(countId);
+        requireCountInScope(count, pride.bank.erp.access.ScopeAction.MANAGE);
         requireStatus(count, "approve", StockCountStatus.SUBMITTED);
 
         User approver = currentUserService.getCurrentUser();
@@ -233,6 +278,7 @@ public class StockTakeService {
     @Transactional
     public CountView sendBack(Long countId, ReviewRequest request) throws NotFoundException {
         StockCount count = find(countId);
+        requireCountInScope(count, pride.bank.erp.access.ScopeAction.MANAGE);
         requireStatus(count, "send back", StockCountStatus.SUBMITTED);
 
         if (request == null || isBlank(request.getRemarks())) {
@@ -248,6 +294,7 @@ public class StockTakeService {
     @Transactional
     public CountView cancel(Long countId, ReviewRequest request) throws NotFoundException {
         StockCount count = find(countId);
+        requireCountInScope(count, pride.bank.erp.access.ScopeAction.MANAGE);
         if (count.getStatus() == StockCountStatus.POSTED) {
             throw new IllegalArgumentException("A posted count cannot be cancelled — count again instead");
         }
@@ -268,7 +315,10 @@ public class StockTakeService {
      * back to IN_PROGRESS, and nothing is posted.
      */
     public CountView post(Long countId) throws NotFoundException {
-        requireStatus(find(countId), "post", StockCountStatus.APPROVED);
+        StockCount toPost = find(countId);
+        // The sharpest action here: this writes the counted quantities into live balances.
+        requireCountInScope(toPost, pride.bank.erp.access.ScopeAction.MANAGE);
+        requireStatus(toPost, "post", StockCountStatus.APPROVED);
 
         // Deliberately NOT @Transactional here. The drift check must commit the recount flags it
         // sets and only then refuse; running it inside the posting transaction would roll those
@@ -290,7 +340,9 @@ public class StockTakeService {
 
     @Transactional(readOnly = true)
     public CountView fetch(Long countId) throws NotFoundException {
-        return toView(find(countId), true);
+        StockCount count = find(countId);
+        requireCountInScope(count, pride.bank.erp.access.ScopeAction.VIEW);
+        return toView(count, true);
     }
 
     @Transactional(readOnly = true)
@@ -298,7 +350,31 @@ public class StockTakeService {
         List<StockCount> counts = (storeId != null)
                 ? countRepository.findByStore_IdOrderByIdDesc(storeId)
                 : countRepository.findAllByOrderByIdDesc();
-        return counts.stream().map(c -> toView(c, false)).toList();
+
+        /*
+         * Filtered in memory rather than in the query.
+         *
+         * The scope here is "stores I could physically reach", which is a property of the store's
+         * location — and the repository's two finders are a store id or everything. Pushing the rule
+         * into JPQL would mean a third finder and a join purely to express what one predicate says
+         * plainly. Counts are opened one store at a time and closed within days, so this list is
+         * tens of rows, not thousands; if it ever grows, this is the line to move into the query.
+         *
+         * Silent narrowing, not a refusal: asking for "the counts" with no store named should return
+         * the ones you can act on, not an error.
+         */
+        return counts.stream()
+                .filter(this::countIsInScope)
+                .map(c -> toView(c, false))
+                .toList();
+    }
+
+    /** Whether this count's store is one the caller could reach, without throwing. */
+    private boolean countIsInScope(StockCount count) {
+        Long locationId = count.getStore() != null && count.getStore().getLocation() != null
+                ? count.getStore().getLocation().getId() : null;
+        return accessScopeService.canView(
+                pride.bank.erp.access.ScopeSubject.INVENTORY, locationId, null);
     }
 
     /** Adjustment history — what was corrected, by how much, and why. */

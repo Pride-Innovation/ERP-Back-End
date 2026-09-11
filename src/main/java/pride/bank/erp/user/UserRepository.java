@@ -49,6 +49,18 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Query("SELECT u.id FROM User u WHERE u.title.id IN :titleIds")
     List<Long> findUserIdsByTitleIds(@Param("titleIds") List<Long> titleIds);
 
+    /**
+     * The same lookup, confined to one branch.
+     *
+     * <p>A title is organisation-wide — "Teller" is the same title at every branch — so resolving
+     * subordinates by title alone answers with people from the whole bank. That is how a Gulu
+     * supervisor came to see Mbarara's requests: the reporting line is a property of the title, and
+     * the branch has to be applied separately.
+     */
+    @Query("SELECT u.id FROM User u WHERE u.title.id IN :titleIds AND u.branch.id = :branchId")
+    List<Long> findUserIdsByTitleIdsAndBranchId(@Param("titleIds") List<Long> titleIds,
+                                                @Param("branchId") Long branchId);
+
     @Query("SELECT u FROM User u WHERE u.title.id = :titleId AND u.branch.id = :branchId")
     List<User> findByTitleIdAndBranchId(@Param("titleId") Long titleId, @Param("branchId") Long branchId);
 

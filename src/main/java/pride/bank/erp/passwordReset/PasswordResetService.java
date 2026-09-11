@@ -31,7 +31,6 @@ public class PasswordResetService {
     private final Email emailService;
     private final JwtService jwtService;
     private final BCryptPasswordEncoder passwordEncoder;
-    private final PasswordResetRepository passwordResetRepository;
     /** Password changes are credential events; they belong in the trail whoever initiated them. */
     private final AuditService auditService;
 
@@ -100,11 +99,7 @@ public class PasswordResetService {
         }
 
         return userRepository.findByEmail(email)
-                .map(user -> {
-                            saveNewPassword(user, token, newPassword);
-                            return updatePassword(user, newPassword);
-                        }
-                )
+                .map(user -> updatePassword(user, newPassword))
                 .orElseGet(() -> createResponse(
                                 false,
                                 "Account for: " + email + " does not exist.",
@@ -113,6 +108,24 @@ public class PasswordResetService {
                 );
     }
 
+    /**
+     * Sets the new password.
+     *
+     * <h2>Nothing is written to {@code password_reset} any more</h2>
+     * A reset used to insert a row there as well, and that row broke the feature: {@code PasswordReset}
+     * maps {@code user} as {@code @OneToOne}, so Hibernate makes {@code user_id} unique — the first
+     * reset for a user succeeded and <b>every later one failed</b> with a duplicate-key error naming
+     * their id. Anyone who had ever reset their password could not do it again.
+     *
+     * <p>The row was not made to upsert, because it should not exist at all. The repository declares
+     * no query methods and nothing outside its own package referenced it: the table was written on
+     * every reset and read by nothing. What it stored was a second bcrypt hash of the user's current
+     * password plus the reset JWT — a duplicate credential and a replayable token, kept permanently
+     * for no consumer, which widens what a database disclosure costs.
+     *
+     * <p>The legitimate need — knowing that a password changed, and when — is met by the audit trail
+     * below, which records it as CRITICAL without keeping any credential material.
+     */
     private Map<String, Object> updatePassword(User user, String newPassword) {
         user.setPassword(passwordEncoder.encode(newPassword));
         userRepository.save(user);
@@ -134,12 +147,4 @@ public class PasswordResetService {
         return response;
     }
 
-    private void saveNewPassword(User user, String token, String password) {
-        PasswordReset passwordReset = PasswordReset.builder()
-                .user(user)
-                .token(token)
-                .password(passwordEncoder.encode(password))
-                .build();
-        passwordResetRepository.save(passwordReset);
-    }
 }

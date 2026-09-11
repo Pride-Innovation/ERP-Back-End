@@ -149,7 +149,6 @@ class EndpointGuardCoverageTest {
             "PUT /api/v1/units/{id}",
 
             // Approval workflows — plan Phase 3. Editing one changes who approves what, bank-wide.
-            "GET /api/v1/workflow/step-logs/{requestId}",
 
             // Issuance, GRN and reconciliation — plan Phase 3. The writes are matched; the reads are not.
             "GET /api/v1/acknowledge-issuance/{requestId}",
@@ -157,8 +156,6 @@ class EndpointGuardCoverageTest {
             "GET /api/v1/approve-issuance/{requestId}",
             "GET /api/v1/grn-commodities/{stockID}",
             "GET /api/v1/grn-reports/{grnReportId}/document",
-            "GET /api/v1/issuance/{requestId}",
-            "GET /api/v1/last-issued/{commodityId}",
             "GET /api/v1/stock-reconciliation",
             "POST /api/v1/acknowledge-issuance",
 
@@ -172,7 +169,6 @@ class EndpointGuardCoverageTest {
             "GET /api/v1/inventory/low-stock",
             "GET /api/v1/inventory/my-items",
             "GET /api/v1/statuses",
-            "GET /api/v1/store",
 
             // Reporting. Each returns aggregates across the estate, so each wants the read permission of
             // whatever it summarises.
@@ -182,10 +178,7 @@ class EndpointGuardCoverageTest {
             "GET /api/v1/leave",
             "GET /api/v1/monthly-itAndOffice-stats",
             "GET /api/v1/request-rating-stats",
-            "GET /api/v1/request-report/{requestId}",
             "GET /api/v1/request-stats-one-year",
-            "GET /api/v1/stationery-report",
-            "GET /api/v1/stationery-report/branch",
             "GET /api/v1/stationery/monthly-request",
             "GET /api/v1/stationery/monthly-stock",
             "POST /api/v1/leave/{userId}",

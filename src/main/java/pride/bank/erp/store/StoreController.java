@@ -57,6 +57,18 @@ public class StoreController {
         return new ResponseEntity<>(storeAdminService.rename(storeId, request.getName()), HttpStatus.OK);
     }
 
+    /*
+     * Both branch reads were scoped but not gated: neither carried a @PreAuthorize, so they fell
+     * through to `.anyRequest().authenticated()` and the rule was "any login, your own branch".
+     *
+     * The page in front of them already requires READ_STORE (`StoreRoutes` gates /store/admin,
+     * /store/it and /store/disposal on it), so the endpoint and the route now ask for the same
+     * thing — the rule this codebase has broken three times by letting them differ. READ_INVENTORY
+     * rides alongside for the same reason the store directory and the stationery reports take a
+     * disjunction: several unrelated jobs read a branch's stock position, and naming one permission
+     * refuses one of them.
+     */
+    @PreAuthorize("hasAnyAuthority('" + Constants.READ_STORE + "', '" + Constants.READ_INVENTORY + "')")
     @GetMapping("/store/{branchId}")
     public ResponseEntity<List<StoreBalance>> findStoreListByBranch(@PathVariable Long branchId) {
         // Named explicitly in the path, so refuse rather than silently substitute the caller's own
@@ -66,6 +78,7 @@ public class StoreController {
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
 
+    @PreAuthorize("hasAnyAuthority('" + Constants.READ_STORE + "', '" + Constants.READ_INVENTORY + "')")
     @GetMapping("/store")
     public ResponseEntity<Page<StoreBalance>> fetchStoreDetailsPerBranchPerAssetType(
             @RequestParam Long branchId,
@@ -101,11 +114,48 @@ public class StoreController {
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
 
+    /**
+     * How many balance lines each category holds — the store page's "Inventory by category" strip.
+     *
+     * <h2>Why this endpoint exists</h2>
+     * The strip had no endpoint of its own, so it called {@code GET /store} <b>once per category</b>
+     * with {@code pageSize=1} and read {@code totalElements} off each reply. Twelve categories is
+     * twelve round trips to draw one row of tiles — and when the branch is outside the caller's
+     * reach, twelve refusals instead of one.
+     *
+     * <p>Mapped above {@code /store/{branchId}} in the file but not in Spring's eyes: a literal path
+     * segment always beats a template, so "category-counts" cannot be mistaken for a branch id.
+     *
+     * @return {@code {assetTypeId: count}}, omitting categories with nothing in this store
+     */
+    @PreAuthorize("hasAnyAuthority('" + Constants.READ_STORE + "', '" + Constants.READ_INVENTORY + "')")
+    @GetMapping("/store/category-counts")
+    public ResponseEntity<Map<Long, Long>> countStoreLinesByCategory(
+            @RequestParam Long branchId,
+            @RequestParam(required = false) StoreType storeType
+    ) {
+        // Same guard as the listing beside it, and for the same reason: naming another branch is a
+        // deliberate act, so it is refused rather than quietly rewritten to the caller's own.
+        branchScope.requireAccessTo(branchId);
+        return new ResponseEntity<>(storeService.countByAssetType(branchId, storeType), HttpStatus.OK);
+    }
+
+    /*
+     * Both stationery reports were unguarded — no @PreAuthorize, so they fell through to
+     * `.anyRequest().authenticated()` and any signed-in user could read them. The bank-wide one is
+     * now scoped in the service as well as gated here; the branch one already read only the caller's
+     * own branch and needed the gate rather than the scope.
+     *
+     * Guarded by the same disjunction the store directory uses: several unrelated jobs legitimately
+     * read stock figures, and naming a single permission would refuse one of them.
+     */
+    @PreAuthorize("hasAnyAuthority('" + Constants.READ_STORE + "', '" + Constants.READ_INVENTORY + "')")
     @GetMapping("/stationery-report")
     public ResponseEntity<AssetTypeSummaryView> findCommoditiesInStockByAssetType() {
         return new ResponseEntity<>(storeService.findCommoditiesInStockByAssetType(), HttpStatus.OK);
     }
 
+    @PreAuthorize("hasAnyAuthority('" + Constants.READ_STORE + "', '" + Constants.READ_INVENTORY + "')")
     @GetMapping("/stationery-report/branch")
     public ResponseEntity<Map<String, Object>> getCurrentMonthStationeryForBranch() {
         return new ResponseEntity<>(storeService.getCurrentMonthStationeryForBranch(), HttpStatus.OK);

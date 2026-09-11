@@ -31,6 +31,7 @@ import pride.bank.erp.workflow.ApproverSubject;
 import pride.bank.erp.workflow.NotifyGroupSource;
 import pride.bank.erp.workflow.ResolvedApprover;
 import pride.bank.erp.workflow.StepApproverType;
+import pride.bank.erp.exception.BusinessRuleException;
 import pride.bank.erp.workflow.StepType;
 import pride.bank.erp.workflow.WorkflowBranchScope;
 import pride.bank.erp.workflow.WorkflowResolveService;
@@ -219,6 +220,23 @@ public class WorkflowEngineService {
     }
 
     /**
+     * Whether this person was ever part of this request's approval.
+     *
+     * <p>Being routed a request is a <em>durable</em> relationship with it, not a momentary one. The
+     * request's {@code currentApprover} only names whoever must act <b>now</b>, and approving moves
+     * it to the next tier — so an approver stopped being able to read the record at the instant they
+     * approved it, which is when they most want to look at it.
+     *
+     * <p>Any log naming them counts, whatever its action: a step assigned to them and then escalated
+     * past them was still theirs to see.
+     */
+    @Transactional(readOnly = true)
+    public boolean hasActedOnRequest(Long requestId, Long userId) {
+        if (requestId == null || userId == null) return false;
+        return stepLogRepository.existsByRequestIdAndActorId(requestId, userId);
+    }
+
+    /**
      * Returns all step logs for a request (for the approval timeline UI).
      */
     @Transactional(readOnly = true)
@@ -235,6 +253,100 @@ public class WorkflowEngineService {
     @Transactional(readOnly = true)
     public Optional<RequestWorkflowInstance> getInstance(Long requestId) {
         return instanceRepository.findTopByRequestIdOrderByIdDesc(requestId);
+    }
+
+    /**
+     * Refuses an action that does not belong to the stage the request is actually at.
+     *
+     * <h2>Why the engine cannot catch this on its own</h2>
+     * {@link #processStepAction} resolves whatever step is <em>current</em> and applies the action it
+     * is handed. It never asks whether the two suit each other, and it cannot usefully be made to:
+     * {@code APPROVED} is legitimate at a {@code REQUEST_APPROVAL} step <b>and</b> at an
+     * {@code ISSUANCE} one, because approving an issuance sends the same word. The action vocabulary
+     * does not distinguish "approve the request" from "approve the issuance".
+     *
+     * <p>So the assertion belongs with the caller, which does know which act it is performing. Each
+     * service states the step it is for, the way {@code IssuanceApprovalRecordService} already reads
+     * {@code StepType.ISSUANCE} for its unit check.
+     *
+     * <p>What this prevents is not cosmetic. A request at the issuance step still carries an
+     * approval-flavoured status ({@code unitAcknowledged}), so an approval call arriving then would
+     * have marked the <b>issuance</b> step approved and advanced the workflow — recording the request
+     * as issued when nothing had been issued.
+     *
+     * <p><b>Permissive where the engine is permissive.</b> A request with no active instance predates
+     * the workflow engine, and {@code processStepAction} already returns quietly for those. Refusing
+     * here would strand work nobody could then clear, which is the failure mode every other guard in
+     * this class is careful to avoid.
+     */
+    @Transactional(readOnly = true)
+    public void requireCurrentStepIs(Long requestId, StepType expected) throws NotFoundException {
+        Optional<RequestWorkflowInstance> instanceOpt = getInstance(requestId);
+        if (instanceOpt.isEmpty() || instanceOpt.get().getStatus() != InstanceStatus.IN_PROGRESS) {
+            return;   // legacy or already finished — the engine will no-op too
+        }
+
+        RequestWorkflowInstance instance = instanceOpt.get();
+        ApprovalStep current = getStepByOrder(instance.getWorkflow(), instance.getCurrentStepOrder());
+        if (current == null || current.getStepType() == expected) {
+            return;
+        }
+
+        log.warn("Refused a {} action on request {}: the workflow is at a {} step ({})",
+                expected, requestId, current.getStepType(), current.getStepName());
+        throw new BusinessRuleException(
+                "This request is at the " + describe(current.getStepType())
+                        + " stage, so it cannot be " + describe(expected) + " now.");
+    }
+
+    /**
+     * Refuses an <em>approval</em> aimed at the issuance sign-off, which has its own endpoint.
+     *
+     * <h2>Why {@link #requireCurrentStepIs} cannot catch this</h2>
+     * The sign-off is stored as a {@code REQUEST_APPROVAL} step — it only differs by carrying
+     * {@code approverSubject = ISSUER}, meaning it approves the <em>issuer's</em> issuance rather
+     * than the requester's request. So it passes a check for "is this an approval step", and
+     * {@code POST /approvals} would advance it exactly like a ladder tier: the request would be
+     * recorded {@code issuanceApproved} with <b>nothing sent</b>, because the fulfilment movement is
+     * created by {@code POST /approve-issuance} and by nothing else.
+     *
+     * <p>This is the same shape as the wrong-stage approval that made the guard above necessary, one
+     * level finer: there, two rules disagreed about which stage the request was at; here, one stage
+     * wears another's name.
+     *
+     * <p><b>Rejection is deliberately not refused.</b> Refusing an issuance is a real decision and
+     * {@code handleRejection} is the only path that records it — there is no reject endpoint beside
+     * {@code /approve-issuance}. Blocking it here would leave the stage with no way to say no.
+     */
+    public void requireNotIssuanceApprovalStage(Long requestId) {
+        Optional<RequestWorkflowInstance> instanceOpt = getInstance(requestId);
+        if (instanceOpt.isEmpty() || instanceOpt.get().getStatus() != InstanceStatus.IN_PROGRESS) {
+            return;   // legacy or already finished — the engine will no-op too
+        }
+
+        RequestWorkflowInstance instance = instanceOpt.get();
+        ApprovalStep current = getStepByOrder(instance.getWorkflow(), instance.getCurrentStepOrder());
+        if (current == null
+                || current.getApproverSubject() != pride.bank.erp.workflow.ApproverSubject.ISSUER) {
+            return;
+        }
+
+        log.warn("Refused a plain approval on request {}: step {} ({}) is the issuance sign-off",
+                requestId, instance.getCurrentStepOrder(), current.getStepName());
+        throw new BusinessRuleException(
+                "This request is awaiting sign-off of its issuance, which has to be approved from "
+                        + "the issuance itself so the items are actually sent.");
+    }
+
+    /** Step types in the words the people using the system would use. */
+    private static String describe(StepType type) {
+        if (type == null) return "current";
+        return switch (type) {
+            case REQUEST_APPROVAL -> "approval";
+            case ACKNOWLEDGE_REQUEST -> "acknowledgement";
+            case ISSUANCE -> "issuance";
+            case ACKNOWLEDGE_RECEIPT -> "receipt acknowledgement";
+        };
     }
 
     /**

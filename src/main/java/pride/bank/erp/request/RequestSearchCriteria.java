@@ -31,6 +31,21 @@ public class RequestSearchCriteria {
     private LocalDateTime endDate;
     private Long currentUserId;
     private Long currentApproverId;
+
+    /**
+     * Filter: show only requests currently with this approver.
+     *
+     * <h2>Deliberately not {@link #currentApproverId}</h2>
+     * They look like the same thing and are not. {@code currentApproverId} means <em>"this is an
+     * approval inbox"</em>, and {@code RequestSearchDao} <b>drops the requester scope entirely</b>
+     * when it is set — correct there, because an approver often sits above the requester and the
+     * subordinate restriction would hide the very work the inbox exists to show.
+     *
+     * <p>Reusing it for an ordinary filter would therefore turn a dropdown into a way of switching
+     * scoping off: pick any approver and see every branch's requests. This one narrows and never
+     * widens, so it is a separate field and the scope predicate still applies alongside it.
+     */
+    private Long approverId;
     /** The logged-in user's unit id — so the approval inbox also shows requests routed to their unit. */
     private Long currentUnitId;
 

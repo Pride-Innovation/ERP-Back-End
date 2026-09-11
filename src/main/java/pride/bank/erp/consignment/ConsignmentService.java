@@ -54,6 +54,8 @@ public class ConsignmentService {
     /** Hand-overs delegate here so there is only ever one implementation of receiving a movement. */
     private final MovementService movementService;
     private final pride.bank.erp.auditing.trail.AuditService auditService;
+    private final pride.bank.erp.access.AccessScopeService accessScopeService;
+    private final ConsignmentSearchDao consignmentSearchDao;
 
     // ── Assembly ─────────────────────────────────────────────────────────────
 
@@ -106,6 +108,7 @@ public class ConsignmentService {
     @Transactional
     public Consignment addMovement(Long consignmentId, Long movementId) throws NotFoundException {
         Consignment consignment = findConsignment(consignmentId);
+        requireConsignmentInScope(consignment, pride.bank.erp.access.ScopeAction.MANAGE);
         requireDraft(consignment, "add movements to");
 
         Movement movement = movementRepository.findDetailById(movementId)
@@ -145,6 +148,7 @@ public class ConsignmentService {
     @Transactional
     public Consignment removeMovement(Long consignmentId, Long movementId) throws NotFoundException {
         Consignment consignment = findConsignment(consignmentId);
+        requireConsignmentInScope(consignment, pride.bank.erp.access.ScopeAction.MANAGE);
         requireDraft(consignment, "remove movements from");
 
         Movement movement = movementRepository.findDetailById(movementId)
@@ -166,6 +170,7 @@ public class ConsignmentService {
     @Transactional
     public Consignment dispatch(Long consignmentId, ConsignmentDispatchDTO dto) throws NotFoundException {
         Consignment consignment = findConsignment(consignmentId);
+        requireConsignmentInScope(consignment, pride.bank.erp.access.ScopeAction.MANAGE);
         requireDraft(consignment, "dispatch");
 
         List<Movement> movements = movementsOn(consignmentId);
@@ -230,6 +235,7 @@ public class ConsignmentService {
     @Transactional
     public Consignment markInTransit(Long consignmentId) throws NotFoundException {
         Consignment consignment = findConsignment(consignmentId);
+        requireConsignmentInScope(consignment, pride.bank.erp.access.ScopeAction.MANAGE);
         if (consignment.getStatus() != ConsignmentStatus.DISPATCHED) {
             throw new IllegalStateException("Only a dispatched consignment can be marked in transit");
         }
@@ -263,6 +269,7 @@ public class ConsignmentService {
     @Transactional
     public Consignment markArrived(Long consignmentId) throws NotFoundException {
         Consignment consignment = findConsignment(consignmentId);
+        requireConsignmentInScope(consignment, pride.bank.erp.access.ScopeAction.MANAGE);
         if (consignment.getStatus() != ConsignmentStatus.IN_TRANSIT) {
             throw new IllegalStateException(
                     "Only a consignment in transit can be marked as arrived (current: "
@@ -305,6 +312,7 @@ public class ConsignmentService {
     @Transactional
     public Consignment receive(Long consignmentId, ConsignmentReceiveDTO dto) throws NotFoundException {
         Consignment consignment = findConsignment(consignmentId);
+        requireConsignmentInScope(consignment, pride.bank.erp.access.ScopeAction.MANAGE);
         if (consignment.getStatus() != ConsignmentStatus.ARRIVED) {
             throw new IllegalStateException(
                     "The goods have to arrive before they can be handed over. This consignment is "
@@ -367,6 +375,7 @@ public class ConsignmentService {
     @Transactional
     public Consignment cancel(Long consignmentId, String reason) throws NotFoundException {
         Consignment consignment = findConsignment(consignmentId);
+        requireConsignmentInScope(consignment, pride.bank.erp.access.ScopeAction.MANAGE);
         if (consignment.getStatus() != ConsignmentStatus.DRAFT) {
             throw new IllegalStateException(
                     "Only a consignment that has not been dispatched can be cancelled. This one is "
@@ -397,6 +406,92 @@ public class ConsignmentService {
     // ── Reads ────────────────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
+    /**
+     * Refuses a journey the caller has no part in.
+     *
+     * <h2>What was open</h2>
+     * Every entry point below reaches a consignment <b>by id</b>, and until now the permission was
+     * the whole check — nothing afterwards asked whose journey it was. So any holder of
+     * {@code DISPATCH_MOVEMENT} could dispatch another branch's van, and {@code CANCEL_MOVEMENT}
+     * could cancel one, by knowing its id. The movement actions were closed against exactly this;
+     * consignments, which carry those same movements, were not.
+     *
+     * <p><b>Either end.</b> A journey runs between two branches and both are legitimately involved —
+     * the sender loads it, the receiver takes it in — so the caller is in reach if either end is
+     * theirs. That mirrors {@code ConsignmentRepository#findForBranch} and the multi-ended rule a
+     * movement already gets, and for the same reason: a guard computing reach differently from the
+     * listing would show someone a row they could not then act on.
+     *
+     * <p><b>Creation stays unguarded</b>, as it does for movements: a Head Office issuer opening a
+     * journey to a branch is the ordinary case, and consignments exist precisely to span two places.
+     * The check belongs on the acts a person performs on an existing journey.
+     */
+    private void requireConsignmentInScope(Consignment consignment,
+                                           pride.bank.erp.access.ScopeAction action) {
+        java.util.List<Long> ends = new java.util.ArrayList<>();
+        if (consignment.getSourceLocation() != null) ends.add(consignment.getSourceLocation().getId());
+        if (consignment.getDestLocation() != null) ends.add(consignment.getDestLocation().getId());
+
+        if (action == pride.bank.erp.access.ScopeAction.MANAGE) {
+            accessScopeService.requireCanManageAny(
+                    pride.bank.erp.access.ScopeSubject.MOVEMENTS, ends);
+        } else {
+            accessScopeService.requireCanViewAny(
+                    pride.bank.erp.access.ScopeSubject.MOVEMENTS, ends);
+        }
+    }
+
+    /** The read guard, for the single-consignment endpoint. */
+    @Transactional(readOnly = true)
+    public Consignment findConsignmentInScope(Long consignmentId) throws NotFoundException {
+        Consignment consignment = findConsignment(consignmentId);
+        requireConsignmentInScope(consignment, pride.bank.erp.access.ScopeAction.VIEW);
+        return consignment;
+    }
+
+    /**
+     * The branch a consignment listing is narrowed to, or {@code null} for no restriction.
+     *
+     * <p>Null answers two opposite callers — one who may see every branch, and one with no branch on
+     * record — and downstream null means "no restriction", so an unconfigured account would be handed
+     * the whole register. Separated here, as it is for movements.
+     */
+    private Long consignmentScope() {
+        if (accessScopeService.scopeFor(pride.bank.erp.access.ScopeSubject.MOVEMENTS,
+                pride.bank.erp.access.ScopeAction.VIEW) == pride.bank.erp.dashboard.DashboardScope.ALL) {
+            return null;
+        }
+        Long own = accessScopeService.currentUserBranchId();
+        if (own == null) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Your account is not attached to a branch, so consignments cannot be shown. "
+                            + "Ask an administrator to set your branch.");
+        }
+        return own;
+    }
+
+    /** The consignments register, filtered and paged in the database. */
+    @Transactional(readOnly = true)
+    public org.springframework.data.domain.Page<Consignment> search(
+            ConsignmentSearchCriteria criteria,
+            org.springframework.data.domain.Pageable pageable) {
+        criteria.setScopedBranchId(consignmentScope());
+        return consignmentSearchDao.search(criteria, pageable);
+    }
+
+    /** Status totals for the same filters, so the tabs and the register agree. */
+    @Transactional(readOnly = true)
+    public java.util.Map<ConsignmentStatus, Long> countByStatus(ConsignmentSearchCriteria criteria) {
+        criteria.setScopedBranchId(consignmentScope());
+        return consignmentSearchDao.countByStatus(criteria);
+    }
+
+    /** The dropdown values, from the whole scoped register. */
+    @Transactional(readOnly = true)
+    public ConsignmentSearchDao.FilterOptions filterOptions() {
+        return consignmentSearchDao.filterOptions(consignmentScope());
+    }
+
     public Consignment findConsignment(Long consignmentId) throws NotFoundException {
         return consignmentRepository.findDetailById(consignmentId)
                 .orElseThrow(() -> new NotFoundException("Consignment " + consignmentId + " not found"));

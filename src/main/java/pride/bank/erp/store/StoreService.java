@@ -30,6 +30,7 @@ public class StoreService {
     private final BranchService branchService;
     private final CurrentUserService currentUserService;
     private final InventoryService inventoryService;
+    private final pride.bank.erp.config.BranchScopeService branchScope;
 
     /**
      * Adds or updates commodities in the ADMIN store of a specific branch.
@@ -102,6 +103,23 @@ public class StoreService {
     }
 
     /**
+     * The "items per category" strip for one branch's store container.
+     *
+     * <p>Keyed by asset type id so the caller can look a tile up directly. A category with nothing in
+     * this store is <b>absent rather than zero</b> — the page hides empty tiles, and sending a row of
+     * zeroes for every category in the bank would make it decide the same thing from more data.
+     */
+    public Map<Long, Long> countByAssetType(Long branchId, StoreType storeType) {
+        Map<Long, Long> counts = new LinkedHashMap<>();
+        for (Object[] row : storeBalanceRepository.countByAssetType(branchId, storeType)) {
+            if (row[0] != null) {
+                counts.put(((Number) row[0]).longValue(), ((Number) row[1]).longValue());
+            }
+        }
+        return counts;
+    }
+
+    /**
      * Accepts only the three levels the query understands; anything else is treated as no filter.
      *
      * <p>Rejecting silently rather than throwing because an unrecognised value can only come from a
@@ -143,8 +161,23 @@ public class StoreService {
     // implementation of "take stock out of a store" alongside InventoryService.debitConsumable —
     // with different validation. Debits belong to the ledger; use InventoryService.debitConsumable.
 
+    /**
+     * How much stationery is on hand — for the whole bank at ALL scope, otherwise for the caller's
+     * own branch.
+     *
+     * <p>It used to be the bank-wide figure for everybody, on an endpoint with no {@code
+     * @PreAuthorize} at all: any signed-in user could read the organisation's total stationery
+     * position. Narrowed rather than refused, because a branch officer asking what stationery is in
+     * stock is asking a reasonable question — just about their own branch.
+     */
     public AssetTypeSummaryView findCommoditiesInStockByAssetType() {
-        return storeBalanceRepository.findAssetTypeSummary("Stationery");
+        if (branchScope.canViewAllBranches()) {
+            return storeBalanceRepository.findAssetTypeSummary("Stationery");
+        }
+        Long own = branchScope.currentUserBranchId();
+        // No branch and no cross-branch reach: there is no figure this caller is entitled to.
+        if (own == null) return null;
+        return storeBalanceRepository.findAssetTypeSummaryForBranch("Stationery", own);
     }
 
     public Map<String, Object> getCurrentMonthStationeryForBranch() {

@@ -93,6 +93,20 @@ public class RequestReportService {
             workflowAction = resolveWorkflowAction(status.getStatus());
         }
 
+        // The stage this service is for. A request at the issuance step still carries an
+        // approval-flavoured status, so without this an approval arriving late would advance
+        // the *issuance* step and record the request as issued.
+        workflowEngineService.requireCurrentStepIs(
+                body.getRequestId(), pride.bank.erp.workflow.StepType.REQUEST_APPROVAL);
+
+        // And an approval step is not always *this* stage. The issuance sign-off is stored as one,
+        // so approving it here would advance the workflow without creating the fulfilment movement
+        // that /approve-issuance exists to create. Rejection stays open — it is the only way to
+        // refuse an issuance.
+        if (!"REJECTED".equals(workflowAction)) {
+            workflowEngineService.requireNotIssuanceApprovalStage(body.getRequestId());
+        }
+
         if (workflowEngineService.hasActiveInstance(body.getRequestId())) {
             // Workflow mode: engine handles status update, next-approver assignment, and notifications
             workflowEngineService.processStepAction(

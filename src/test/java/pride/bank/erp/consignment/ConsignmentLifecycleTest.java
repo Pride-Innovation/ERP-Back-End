@@ -36,6 +36,51 @@ class ConsignmentLifecycleTest {
     @Autowired
     private BranchRepository branchRepository;
 
+    @Autowired
+    private pride.bank.erp.user.UserRepository userRepository;
+
+    @Autowired
+    private pride.bank.erp.config.JwtService jwtService;
+
+    /**
+     * Runs these as somebody entitled to act on a journey.
+     *
+     * <h2>Why a principal is needed now</h2>
+     * The consignment lifecycle used to be reachable by anyone holding the permission — the service
+     * never asked whose journey it was, so a test with no authenticated user sailed through. It now
+     * refuses a journey neither of whose ends is the caller's, which is correct, and which would
+     * otherwise stop every assertion below <em>before</em> the business rule it is pinning.
+     *
+     * <p>Accepting {@code AccessDeniedException} in the assertions was the wrong way out: they would
+     * then pass whether or not the lifecycle rules still held, and those rules are the point —
+     * marking a consignment arrived credits stock for every movement riding on it.
+     *
+     * <h2>Why a bound request rather than a SecurityContext principal</h2>
+     * {@code CurrentUserService} resolves the caller by decoding the JWT on the incoming request, not
+     * from {@code SecurityContextHolder} — so setting an {@code Authentication} does nothing at all,
+     * silently. A token is minted for a real user holding the cross-branch grant and bound to a mock
+     * request, which is the only thing the resolver actually reads.
+     */
+    @org.junit.jupiter.api.BeforeEach
+    void actAsSomeoneEntitled() {
+        userRepository.findAll().stream()
+                .filter(u -> u.getAuthorities().stream()
+                        .map(org.springframework.security.core.GrantedAuthority::getAuthority)
+                        .anyMatch(pride.bank.erp.helper.Constants.MANAGE_ALL_BRANCH_MOVEMENTS::equals))
+                .findFirst()
+                .ifPresent(user -> {
+                    var request = new org.springframework.mock.web.MockHttpServletRequest();
+                    request.addHeader("Authorization", "Bearer " + jwtService.generateToken(user));
+                    org.springframework.web.context.request.RequestContextHolder.setRequestAttributes(
+                            new org.springframework.web.context.request.ServletRequestAttributes(request));
+                });
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void clearPrincipal() {
+        org.springframework.web.context.request.RequestContextHolder.resetRequestAttributes();
+    }
+
     @Test
     @Transactional
     void aConsignmentCannotStartAndEndInTheSameLocation() {

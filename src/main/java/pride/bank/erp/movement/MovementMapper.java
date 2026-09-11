@@ -163,6 +163,7 @@ public class MovementMapper {
                 .id(r.getId())
                 .name(r.getName())
                 .status(r.getStatus() == null ? null : r.getStatus().getStatus())
+                .requesterId(r.getRequester() == null ? null : r.getRequester().getId())
                 .build();
     }
 

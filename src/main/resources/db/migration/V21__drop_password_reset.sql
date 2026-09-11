@@ -1,0 +1,23 @@
+-- Drops password_reset.
+--
+-- The table stored, for every password reset ever performed, a second bcrypt hash of the user's live
+-- password together with the JWT that authorised the reset. Nothing read it: the repository declared
+-- no query methods and nothing outside its own package referenced it, so it was written on every
+-- reset and consumed by nobody.
+--
+-- It also broke the feature it belonged to. `PasswordReset` mapped `user` as @OneToOne, so `user_id`
+-- carried a unique constraint, and the service inserted a fresh row each time — the first reset for a
+-- user succeeded and every later one failed with "Duplicate entry: '<user id>'". Anyone who had ever
+-- reset their password could not do it again, and the message read as a database fault rather than as
+-- a feature that only works once.
+--
+-- The write has already been removed from PasswordResetService. This removes what it left behind:
+-- duplicated credential hashes and replayable reset tokens, kept indefinitely for no consumer. A
+-- database disclosure should not cost more than it has to.
+--
+-- Nothing is migrated out first, deliberately. The rows are copies of credentials, not records of
+-- anything: the fact that a password changed, and when, is in `audit_event` as
+-- PASSWORD_RESET_COMPLETED at CRITICAL severity, which is the part worth keeping and the part that
+-- names an actor.
+
+DROP TABLE IF EXISTS password_reset;

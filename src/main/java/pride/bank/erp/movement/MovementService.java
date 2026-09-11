@@ -55,6 +55,7 @@ import java.util.List;
 public class MovementService {
 
     private final MovementRepository movementRepository;
+    private final MovementSearchDao movementSearchDao;
     private final StoreRepository storeRepository;
     private final UserRepository userRepository;
     private final BranchRepository branchRepository;
@@ -645,12 +646,108 @@ public class MovementService {
      */
     @Transactional(readOnly = true)
     public Page<Movement> listMovements(Pageable pageable) {
-        Long scoped = accessScopeService.resolveBranch(
-                pride.bank.erp.access.ScopeSubject.MOVEMENTS, null);
-        if (scoped == null) {
-            return movementRepository.findAll(pageable);
+        return listMovements(new MovementSearchCriteria(), pageable);
+    }
+
+    /**
+     * The movements register, filtered and paged in the database.
+     *
+     * <p>The scope is stamped on here and never bound from the request — a client-supplied scope is
+     * not a scope. Everything else on the criteria came from the caller and is optional.
+     *
+     * <p>The two hand-written finders this replaces are kept for their other callers, but the
+     * listing no longer uses them: neither could filter, and neither ordered by anything, so paging
+     * over them repeated and dropped rows (trap #3).
+     */
+    @Transactional(readOnly = true)
+    public Page<Movement> listMovements(MovementSearchCriteria criteria, Pageable pageable) {
+        applyScope(criteria);
+        return movementSearchDao.search(criteria, pageable);
+    }
+
+    /**
+     * The branch a movement listing is narrowed to, or {@code null} for no restriction.
+     *
+     * <h2>Null means two opposite things, and only one of them is safe</h2>
+     * {@code AccessScopeService.resolveBranch} answers null both for a caller who may see every
+     * branch <em>and</em> for a caller with no branch on record — and downstream, null reads as "no
+     * restriction". So a user with no duty station and no cross-branch grant was handed the whole
+     * bank's movements, which is the exact opposite of what their permissions say.
+     *
+     * <p>This is the trap {@code BranchScopeService#resolve} was written to close for the inventory
+     * listings; the movement listing called the resolver directly and never got that protection.
+     * A caller with no branch is now told so rather than silently widened — an unconfigured account
+     * is a configuration fault, and answering it with everybody's data is the worst way to report
+     * one.
+     */
+    /**
+     * Stamps the caller's reach onto a search — by branch, by person, or not at all.
+     *
+     * <h2>SELF used to collapse into BRANCH</h2>
+     * This returned a branch id for everything below ALL, so SELF and BRANCH were the same query and
+     * an officer granted {@code READ_MOVEMENT} saw their whole branch's register. A movement has no
+     * owner column to narrow on, which is why the SELF rule is expressed as person <em>links</em> —
+     * see {@code MovementSearchCriteria#scopedUserId}.
+     *
+     * <p>The two are mutually exclusive: at SELF the branch is not also applied, or a movement I am a
+     * party to at another branch — a transfer coming to me, say — would be filtered back out.
+     */
+    private void applyScope(MovementSearchCriteria criteria) {
+        pride.bank.erp.dashboard.DashboardScope scope = accessScopeService.scopeFor(
+                pride.bank.erp.access.ScopeSubject.MOVEMENTS,
+                pride.bank.erp.access.ScopeAction.VIEW);
+
+        if (scope == pride.bank.erp.dashboard.DashboardScope.ALL) {
+            return;   // legitimately every branch
         }
-        return movementRepository.findForBranch(scoped, pageable);
+
+        if (scope == pride.bank.erp.dashboard.DashboardScope.SELF) {
+            Long me = accessScopeService.currentUserId();
+            if (me == null) {
+                throw new org.springframework.security.access.AccessDeniedException(
+                        "Your account could not be identified, so movements cannot be shown.");
+            }
+            criteria.setScopedUserId(me);
+            return;
+        }
+
+        Long own = accessScopeService.currentUserBranchId();
+        if (own == null) {
+            // Null means "no restriction" downstream, so a branchless account must be refused rather
+            // than handed the whole register.
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Your account is not attached to a branch, so movements cannot be shown. "
+                            + "Ask an administrator to set your branch.");
+        }
+        criteria.setScopedBranchId(own);
+    }
+
+    /**
+     * How many movements sit in each status, over everything the filters match.
+     *
+     * <p>Feeds the page's status tiles. They used to count the rows the browser happened to hold
+     * while the heading above them showed the true total, so the two disagreed silently once the
+     * register grew past the fetch size.
+     */
+    @Transactional(readOnly = true)
+    public java.util.Map<MovementStatus, Long> countMovementsByStatus(MovementSearchCriteria criteria) {
+        applyScope(criteria);
+        return movementSearchDao.countByStatus(criteria);
+    }
+
+    /**
+     * The values the filter dropdowns should offer.
+     *
+     * <p>Derived from the scoped register rather than from the loaded page, so the panel cannot fail
+     * to offer a value it would have matched.
+     */
+    @Transactional(readOnly = true)
+    public MovementSearchDao.FilterOptions movementFilterOptions() {
+        // Scope only, no filters: the dropdowns must not narrow as choices are made, or picking a
+        // source would empty the destination list and the panel could never be widened again.
+        MovementSearchCriteria scopeOnly = new MovementSearchCriteria();
+        applyScope(scopeOnly);
+        return movementSearchDao.filterOptions(scopeOnly);
     }
 
     /**
@@ -697,18 +794,54 @@ public class MovementService {
      */
     private void requireMovementInScope(Movement movement, pride.bank.erp.access.ScopeAction action) {
         java.util.Set<Long> branches = branchesTouchedBy(movement);
+        java.util.Set<Long> people = peoplePartyTo(movement);
         if (action == pride.bank.erp.access.ScopeAction.MANAGE) {
-            accessScopeService.requireCanManageAny(
-                    pride.bank.erp.access.ScopeSubject.MOVEMENTS, branches);
+            accessScopeService.requireCanManageAnyOf(
+                    pride.bank.erp.access.ScopeSubject.MOVEMENTS, branches, people);
         } else {
-            accessScopeService.requireCanViewAny(
-                    pride.bank.erp.access.ScopeSubject.MOVEMENTS, branches);
+            accessScopeService.requireCanViewAnyOf(
+                    pride.bank.erp.access.ScopeSubject.MOVEMENTS, branches, people);
         }
     }
 
+    /**
+     * Everyone party to a movement — what "mine" means at SELF scope.
+     *
+     * <p>A movement has no owner column, so being on one is a union: whoever raised it, whoever it
+     * left, whoever it is going to, whoever signed for it, and whoever asked for the item it carries.
+     *
+     * <p><b>Mirrors {@code MovementSearchDao}'s SELF predicate exactly.</b> If the two ever answer
+     * differently, the register shows a row the detail page refuses, or hides one it would have
+     * opened — which is the whole failure this scoping exists to avoid.
+     */
+    private static java.util.Set<Long> peoplePartyTo(Movement movement) {
+        java.util.Set<Long> people = new java.util.LinkedHashSet<>();
+        if (movement.getInitiator() != null) people.add(movement.getInitiator().getId());
+        if (movement.getSourceUser() != null) people.add(movement.getSourceUser().getId());
+        if (movement.getRecipientUser() != null) people.add(movement.getRecipientUser().getId());
+        if (movement.getReceivingOfficer() != null) people.add(movement.getReceivingOfficer().getId());
+        if (movement.getRequest() != null && movement.getRequest().getRequester() != null) {
+            people.add(movement.getRequest().getRequester().getId());
+        }
+        people.remove(null);
+        return people;
+    }
+
+    /**
+     * The movements raised to fulfil one request.
+     *
+     * <p>Guarded on {@code READ_MOVEMENT} at the endpoint but previously not scoped, so a request id
+     * was enough to read another branch's movements — the same by-id gap the single read and the
+     * lifecycle actions had. Each row is checked on its own ends, because a fulfilment movement
+     * legitimately runs between two branches and the caller need only be at one of them.
+     */
     @Transactional(readOnly = true)
     public List<Movement> findByRequest(Long requestId) {
-        return movementRepository.findByRequest_Id(requestId);
+        return movementRepository.findByRequest_Id(requestId).stream()
+                .filter(m -> accessScopeService.canViewAnyOf(
+                        pride.bank.erp.access.ScopeSubject.MOVEMENTS,
+                        branchesTouchedBy(m), peoplePartyTo(m)))
+                .toList();
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────

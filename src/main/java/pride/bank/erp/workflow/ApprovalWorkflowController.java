@@ -29,7 +29,24 @@ public class ApprovalWorkflowController {
      * Reads are separated from writes: seeing how a request will be routed is useful to anyone
      * administering the system, while changing it is not.
      */
-    @PreAuthorize("hasAuthority('" + Constants.READ_SETTING + "')")
+    /*
+     * A disjunction, because two unrelated jobs read this list.
+     *
+     * Administering workflows is one — READ_SETTING, which is what this originally required. But the
+     * create-request form also renders `WorkflowRoutesPanel`, a read-only guide naming the approval
+     * routes that apply at the requester's location so they do not mix items from different routes in
+     * one request. A branch requester holds CREATE_REQUEST and has no business holding READ_SETTING,
+     * so gating on the latter alone gave them a 403 on the form they were filling in.
+     *
+     * Granting READ_SETTING to make that panel work would have been much the larger change: it opens
+     * the Settings pages. Naming both permissions is the same shape the store directory uses, and for
+     * the same reason — several legitimate jobs need one list.
+     *
+     * Writes stay on UPDATE_SETTING, and `/resolve` and `/{id}` stay on READ_SETTING: those serve the
+     * settings editor and the workflow tester, not the request form.
+     */
+    @PreAuthorize("hasAnyAuthority('" + Constants.READ_SETTING + "', '"
+            + Constants.CREATE_REQUEST + "')")
     @GetMapping
     public ResponseEntity<List<ApprovalWorkflowDTO>> findAll() {
         return ResponseEntity.ok(service.findAll());

@@ -18,6 +18,7 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import pride.bank.erp.exception.BadRequestException;
@@ -56,6 +57,19 @@ public class RequestController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String requestedBy,
             @RequestParam(required = false) String approver,
+            /*
+             * The same two filters, by id.
+             *
+             * The name forms match partially across first, last and other name — so two people called
+             * Okello are one filter, and a misremembered spelling returns nothing with no hint why.
+             * The page now picks a person from the directory and sends their id; the name parameters
+             * stay declared so nothing that still sends one breaks.
+             *
+             * `approverId` is not `currentApproverId`: that one means "this is my approval inbox" and
+             * suppresses the requester scope. This narrows within it.
+             */
+            @RequestParam(required = false) Long requesterId,
+            @RequestParam(required = false) Long approverId,
             @RequestParam(required = false, defaultValue = "false") Boolean deleted,
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
@@ -67,7 +81,6 @@ public class RequestController {
 
             @RequestParam(required = false) Long currentApproverId
     ) {
-        System.out.println("Request information!!!");
         Page<RequestDTO> requests = requestService.fetchAllRequests(
                 pageSize,
                 sortDirection,
@@ -81,6 +94,8 @@ public class RequestController {
                 status,
                 requestedBy,
                 approver,
+                requesterId,
+                approverId,
                 deleted,
                 startDate,
                 endDate,
@@ -220,16 +235,27 @@ public class RequestController {
         try {
             var response = requestService.deleteRequest(requestID);
             return new ResponseEntity<>(response, HttpStatusCode.valueOf(201));
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            throw e;
         } catch (Exception e) {
             return new ResponseEntity<>(e.getMessage(), HttpStatus.BAD_REQUEST);
         }
     }
 
+    /*
+     * A refusal is a 403, not a 400.
+     *
+     * The blanket catch turned every outcome into "bad request" with the raw exception text — so a
+     * boundary read as a malformed call, and internals leaked into the body. AccessDeniedException
+     * is left to propagate so Spring Security renders it properly.
+     */
     @GetMapping("/requests/{requestID}")
     public ResponseEntity<?> findRequest(@PathVariable Long requestID) {
         try {
             RequestDTO response = requestService.fetchSingleRequest(requestID);
             return new ResponseEntity<>(response, HttpStatusCode.valueOf(200));
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            throw e;
         } catch (Exception e) {
             return new ResponseEntity<>(e.getMessage(), HttpStatus.BAD_REQUEST);
         }
@@ -241,6 +267,14 @@ public class RequestController {
      * @param branchId the branch the dashboard's selector is focused on; only meaningful at ALL
      *                 scope, and naming another branch without it is refused rather than rewritten.
      */
+    /*
+     * Outside /requests/**, so the module's route matchers never covered it and any signed-in user
+     * could read it. The figures were already scoped in the service; what was missing was the gate.
+     * DASH_VIEW_REQUESTS is admitted alongside READ_REQUEST because this feeds a dashboard widget,
+     * and granting the dashboard axis alone is the entire point of it existing separately.
+     */
+    @PreAuthorize("hasAnyAuthority('" + Constants.READ_REQUEST + "', '"
+            + Constants.DASH_VIEW_REQUESTS + "')")
     @GetMapping("/current-year-summary")
     public ResponseEntity<List<AssetRequestSummaryDTO>> getCurrentYearRequestSummary(
             @RequestParam(required = false) Long branchId) {

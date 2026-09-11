@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import pride.bank.erp.exception.BusinessRuleException;
 import pride.bank.erp.exception.NotFoundException;
@@ -24,6 +25,7 @@ import static pride.bank.erp.helper.Constants.GENERAL_ROUTE;
 @RequiredArgsConstructor
 public class RequestReportController {
     private final RequestReportService requestReportService;
+    private final pride.bank.erp.request.RequestService requestService;
 
     @PostMapping("/approvals")
     public ResponseEntity<?> approveRequest(@RequestBody RequestReportDTO requestReportDTO) {
@@ -39,8 +41,18 @@ public class RequestReportController {
         }
     }
 
+    /**
+     * A request's approval report.
+     *
+     * <p>Sat outside {@code /requests/**}, so the route matchers that guard the module did not cover
+     * it and any signed-in user could read it by id. Gated and scoped through the request it belongs
+     * to, like the approval trail.
+     */
+    @PreAuthorize("hasAuthority('" + pride.bank.erp.helper.Constants.READ_REQUEST + "')")
     @GetMapping("/request-report/{requestId}")
-    public ResponseEntity<RequestReportDAO> findRequestReportByRequestId(@PathVariable Long requestId) {
+    public ResponseEntity<RequestReportDAO> findRequestReportByRequestId(@PathVariable Long requestId)
+            throws NotFoundException {
+        requestService.requireReadableById(requestId);
         return ResponseEntity.ok(requestReportService.findRequestReportByRequestId(requestId));
     }
 }

@@ -40,7 +40,7 @@ public enum ScopeSubject {
      * The permission that widens this subject for the given action.
      *
      * <p>Note that MANAGE asks for the manage multiplier <b>only</b>. Seeing every branch's assets
-     * is not licence to edit them, and the pair exists so that reading and writing can be granted
+     * is not license to edit them, and the pair exists so that reading and writing can be granted
      * apart — which is the ordinary case, not the exception.
      */
     public String multiplierFor(ScopeAction action) {

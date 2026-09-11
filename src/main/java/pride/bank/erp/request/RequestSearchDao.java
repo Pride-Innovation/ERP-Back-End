@@ -114,6 +114,19 @@ public class RequestSearchDao {
                     requestRoot.get("status").get("id").in(requestSearchCriteria.getExcludedStatusIds())));
         }
 
+        /*
+         * Approver, chosen from the directory rather than typed.
+         *
+         * Narrows *within* the caller's scope — unlike currentApproverId, which suppresses the
+         * requester restriction because it means "this is my inbox". Same LEFT join as the name
+         * match below it, reused rather than created again.
+         */
+        if (Objects.nonNull(requestSearchCriteria.getApproverId())) {
+            predicates.add(criteriaBuilder.equal(
+                    reuseJoin(requestRoot, "currentApprover").get("id"),
+                    requestSearchCriteria.getApproverId()));
+        }
+
         if (Objects.nonNull(requestSearchCriteria.getRaisedByUserId())) {
             predicates.add(criteriaBuilder.equal(
                     reuseJoin(requestRoot, "requester").get("id"),

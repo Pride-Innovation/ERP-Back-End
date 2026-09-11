@@ -233,8 +233,22 @@ public class SecurityConfiguration {
                                 .requestMatchers(HttpMethod.GET, REPORT_REQUEST_SUMMARY)
                                 .hasAnyAuthority(READ_REQUEST, DASH_VIEW_REQUESTS)
                                 // Requests approval and Acknowledgements
-                                .requestMatchers(HttpMethod.POST, REQUEST_APPROVAL).hasAuthority(APPROVE_REQUEST)
-                                .requestMatchers(HttpMethod.POST, REQUEST_APPROVAL).hasAuthority(REJECT_REQUEST)
+                                /*
+                                 * One rule, not two.
+                                 *
+                                 * This was two matchers for the same method and path — APPROVE_REQUEST
+                                 * then REJECT_REQUEST. The first match wins, so the second was
+                                 * unreachable and a role granted only REJECT_REQUEST could not reject:
+                                 * the filter chain refused it before the handler was ever consulted.
+                                 * Latent while MANAGER holds both, and live the moment anyone
+                                 * configures a reject-only role in Settings.
+                                 *
+                                 * Which of the two acts is being performed is decided by the payload
+                                 * and enforced downstream; this gate only asks whether the caller has
+                                 * business at an approval step at all.
+                                 */
+                                .requestMatchers(HttpMethod.POST, REQUEST_APPROVAL)
+                                .hasAnyAuthority(APPROVE_REQUEST, REJECT_REQUEST)
                                 .requestMatchers(HttpMethod.POST, REQUEST_ISSUANCE).hasAuthority(ISSUE_ITEMS)
                                 .requestMatchers(HttpMethod.POST, REQUEST_ACKNOWLEDGEMENT).hasAuthority(ACKNOWLEDGE_REQUEST)
                                 .requestMatchers(HttpMethod.POST, ISSUANCE_APPROVAL).hasAuthority(APPROVE_ISSUANCE)

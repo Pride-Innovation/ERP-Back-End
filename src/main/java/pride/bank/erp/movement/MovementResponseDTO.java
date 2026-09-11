@@ -149,6 +149,14 @@ public class MovementResponseDTO {
         private Long id;
         private String name;
         private String status;
+        /**
+         * Who raised it.
+         *
+         * <p>Carried because being the requester is one of the ways a person is party to a movement,
+         * and therefore one of the ways it counts as theirs at SELF scope. Without it the front end
+         * cannot mirror the server's rule and would hide a control the server would have allowed.
+         */
+        private Long requesterId;
     }
 
     @Data

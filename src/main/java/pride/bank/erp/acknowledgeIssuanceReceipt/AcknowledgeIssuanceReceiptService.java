@@ -48,6 +48,11 @@ public class AcknowledgeIssuanceReceiptService {
                 .build();
         acknowledgeIssuanceReceiptRepository.save(acknowledgeIssuanceReceipt);
 
+        // Same stage assertion the approval path makes: this service is the requester confirming what arrived,
+        // and the engine applies whatever action it is handed to whatever step is current.
+        workflowEngineService.requireCurrentStepIs(
+                request.getId(), pride.bank.erp.workflow.StepType.ACKNOWLEDGE_RECEIPT);
+
         if (workflowEngineService.hasActiveInstance(request.getId())) {
             // Workflow mode: engine handles status update, next-step notification and store update
             workflowEngineService.processStepAction(

@@ -35,11 +35,21 @@ public interface StoreBalanceRepository extends JpaRepository<StoreBalance, Long
     Optional<StoreBalance> findByBranchIdAndStore_StoreTypeAndCommodity_Id(
             Long branchId, StoreType storeType, Long commodityId);
 
+    /*
+     * The courier exclusion goes through an explicit LEFT JOIN.
+     *
+     * Written as `s.store.storeType <> COURIER` the dotted path compiles to an INNER JOIN sitting in
+     * the FROM clause, which drops every balance holding no store *before* the `IS NULL` disjunct
+     * beside it can rescue them — so that disjunct was dead code and storeless stock silently
+     * vanished from the listing. Trap #1, in the shape it most often takes: an optional association
+     * mentioned inside an OR.
+     */
     @Query("SELECT s FROM StoreBalance s " +
             "JOIN FETCH s.commodity " +
             "JOIN FETCH s.branch " +
+            "LEFT JOIN s.store st " +
             "WHERE s.branch.id = :branchId " +
-            "AND (s.store IS NULL OR s.store.storeType <> pride.bank.erp.store.StoreType.COURIER)")
+            "AND (st IS NULL OR st.storeType <> pride.bank.erp.store.StoreType.COURIER)")
     List<StoreBalance> findAllByBranchIdWithCommodityAndBranch(@Param("branchId") Long branchId);
 
     /**
@@ -90,16 +100,56 @@ public interface StoreBalanceRepository extends JpaRepository<StoreBalance, Long
             @Param("stockLevel") String stockLevel,
             Pageable pageable);
 
+    /**
+     * How many balance lines each category holds in one branch's store — the whole strip in one query.
+     *
+     * <h2>What this replaces</h2>
+     * The store page's "Inventory by category" strip asked {@link #search} <b>once per category</b>,
+     * with {@code pageSize=1}, purely to read {@code totalElements} off each response. On live data
+     * that is <b>twelve round trips to render one row of tiles</b>, twelve COUNT queries, and twelve
+     * refusals when the branch is out of the caller's reach.
+     *
+     * <p>The predicate is {@link #search}'s, minus the three filters the strip never sends, so the
+     * two cannot disagree about the same commodity — which is the only thing that made the per-category
+     * loop defensible in the first place.
+     *
+     * <p><b>Uncategorised lines are excluded, deliberately.</b> A balance whose commodity has no
+     * asset type was never counted by the loop either — every call named a category — so including
+     * it here would change the total printed beside the tiles without anything on screen to explain
+     * the difference. The strip counts categories; a line belonging to none belongs to no tile.
+     *
+     * @return rows of {@code [assetTypeId, count]}
+     */
+    @Query("""
+            SELECT at.id, COUNT(s)
+            FROM StoreBalance s
+            LEFT JOIN s.commodity c
+            LEFT JOIN c.assetType at
+            LEFT JOIN s.store st
+            WHERE s.branch.id = :branchId
+              AND (:storeType IS NOT NULL
+                   OR st IS NULL
+                   OR st.storeType <> pride.bank.erp.store.StoreType.COURIER)
+              AND (:storeType IS NULL OR st.storeType = :storeType)
+              AND at.id IS NOT NULL
+            GROUP BY at.id
+            """)
+    List<Object[]> countByAssetType(
+            @Param("branchId") Long branchId,
+            @Param("storeType") StoreType storeType);
+
     // ── Store-scoped listings: each store page (Admin / IT / Disposal) sees only its own lines.
     // Null-store legacy rows are backfilled to the branch ADMIN store by StoreSeeder on startup,
     // so the store container cannot hide live balances. The four single-purpose listings that used
     // to sit here are superseded by search() above, which does the same work with every filter
     // optional — they are gone rather than deprecated so nothing reaches for one and reintroduces
     // the missing name filter or the missing sort tie-break.
+    /** Same LEFT JOIN reasoning as above — a balance with no store must survive the filter. */
     @Query("SELECT s FROM StoreBalance s " +
+            "LEFT JOIN s.store st " +
             "WHERE s.branch.id = :branchId " +
             "AND s.commodity.assetType.id = :assetTypeId " +
-            "AND (s.store IS NULL OR s.store.storeType <> pride.bank.erp.store.StoreType.COURIER)")
+            "AND (st IS NULL OR st.storeType <> pride.bank.erp.store.StoreType.COURIER)")
     List<StoreBalance> findByBranchAndAssetType(@Param("branchId") Long branchId,
                                                 @Param("assetTypeId") Long assetTypeId);
 
@@ -118,14 +168,43 @@ public interface StoreBalanceRepository extends JpaRepository<StoreBalance, Long
             """, nativeQuery = true)
     AssetTypeSummaryView findAssetTypeSummary(@Param("assetTypeName") String assetTypeName);
 
+    /**
+     * The same summary, narrowed to one branch.
+     *
+     * <p>The bank-wide form above answers "how much stationery does the bank hold", which is not a
+     * question a branch officer should be able to ask of an endpoint that never looked at who was
+     * calling. This is the scoped form the service falls back to below ALL.
+     *
+     * <p>The courier exclusion is a {@code LEFT JOIN} for the reason the JPQL siblings get wrong: a
+     * balance may have no store, and an inner join would drop those rows in the FROM clause before
+     * {@code sc.store_type IS NULL} could rescue them.
+     */
+    @Query(value = """
+                SELECT
+                    at.name AS assetTypeName,
+                    SUM(s.quantity) AS totalCount,
+                    MAX(s.create_date) AS lastUpdatedDate
+                FROM store s
+                JOIN commodity c ON c.id = s.commodity_id
+                JOIN asset_type at ON at.id = c.asset_type_id
+                LEFT JOIN store_container sc ON sc.id = s.store_id
+                WHERE at.name = :assetTypeName AND s.quantity > 0
+                  AND s.branch_id = :branchId
+                  AND (sc.store_type IS NULL OR sc.store_type <> 'COURIER')
+                GROUP BY at.name
+            """, nativeQuery = true)
+    AssetTypeSummaryView findAssetTypeSummaryForBranch(@Param("assetTypeName") String assetTypeName,
+                                                       @Param("branchId") Long branchId);
+
     @Query("""
                 SELECT c.name AS commodityName, SUM(s.quantity) AS totalQuantity
                 FROM StoreBalance s
                 JOIN s.commodity c
                 JOIN c.assetType at
+                LEFT JOIN s.store st
                 WHERE at.name = 'Stationery'
                   AND s.branch.id = :branchId
-                  AND (s.store IS NULL OR s.store.storeType <> pride.bank.erp.store.StoreType.COURIER)
+                  AND (st IS NULL OR st.storeType <> pride.bank.erp.store.StoreType.COURIER)
                 GROUP BY c.name
             """)
     List<CommoditySummary> getStationeryCommoditiesByCurrentMonthByBranch(@Param("branchId") Long branchId);
@@ -143,7 +222,9 @@ public interface StoreBalanceRepository extends JpaRepository<StoreBalance, Long
     // in a van as available on a shelf. These are the on-hand equivalents of findAll() /
     // findLowStock() / findByStore_Location_Id().
 
-    @Query("SELECT s FROM StoreBalance s WHERE s.store IS NULL OR s.store.storeType <> pride.bank.erp.store.StoreType.COURIER")
+    /** LEFT JOIN, so the "held by no store" half of this OR is reachable at all. See above. */
+    @Query("SELECT s FROM StoreBalance s LEFT JOIN s.store st "
+            + "WHERE st IS NULL OR st.storeType <> pride.bank.erp.store.StoreType.COURIER")
     List<StoreBalance> findAllOnHand();
 
     @Query("SELECT s FROM StoreBalance s WHERE s.store.location.id = :locationId "
@@ -166,7 +247,8 @@ public interface StoreBalanceRepository extends JpaRepository<StoreBalance, Long
                    COALESCE(SUM(s.quantity), 0),
                    SUM(CASE WHEN s.minLevel > 0 AND s.quantity <= s.minLevel THEN 1 ELSE 0 END)
             FROM StoreBalance s
-            WHERE s.store IS NULL OR s.store.storeType <> pride.bank.erp.store.StoreType.COURIER
+            LEFT JOIN s.store st
+            WHERE st IS NULL OR st.storeType <> pride.bank.erp.store.StoreType.COURIER
             GROUP BY s.branch.id
             """)
     List<Object[]> summariseByBranch();

@@ -10,6 +10,7 @@ package pride.bank.erp.access;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.stereotype.Service;
 import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.dashboard.DashboardScope;
@@ -26,7 +27,7 @@ import static pride.bank.erp.helper.Constants.*;
  *
  * <p>Holding a permission and being allowed to use it on a particular record are different
  * questions, and until now the application only asked the first. {@code UPDATE_ASSET} admitted the
- * caller to the endpoint and nothing afterwards looked at whose asset it was — a branch officer
+ * caller to the endpoint and nothing afterward looked at whose asset it was — a branch officer
  * could edit another branch's asset by id, having merely been unable to find it through the
  * listing. This service is the second question.
  *
@@ -48,13 +49,13 @@ import static pride.bank.erp.helper.Constants.*;
  *
  * <p>{@code DASH_SCOPE_ALL} widens VIEW to ALL but never MANAGE. Without that, a user whose
  * dashboard totals every branch would click into the assets page and find a fraction of what the
- * widget just counted; with a write it would be a licence nobody granted. Read follows the figures,
+ * widget just counted; with a write it would be a license nobody granted. Read follows the figures,
  * write waits for the explicit multiplier.
  *
  * <h2>Two vocabularies, on purpose</h2>
  * {@code DASH_SCOPE_*} governs summarised figures; the multipliers govern records and actions. They
  * are separate for the reason recorded in CLAUDE.md — borrowing a read permission to decide how much
- * of the estate someone sees summarised is what gave a branch officer the whole branch's totals. This
+ * of the estate someone sees summarized is what gave a branch officer the whole branch's totals. This
  * service is where the two meet, and the meeting happens once, here.
  *
  * <h2>Silent scoping versus refusal</h2>
@@ -90,7 +91,7 @@ public class AccessScopeService {
         User user = currentUserOrNull();
         if (user == null) return Set.of();
         return user.getAuthorities().stream()
-                .map(a -> a.getAuthority())
+                .map(GrantedAuthority::getAuthority)
                 .collect(Collectors.toSet());
     }
 
@@ -108,7 +109,7 @@ public class AccessScopeService {
             return DashboardScope.ALL;
         }
 
-        // The legacy cross-branch switch, honoured for reads so nobody who could see the bank
+        // The legacy cross-branch switch, honored for reads so nobody who could see the bank
         // yesterday is narrowed today. It was never a write permission and does not become one.
         if (action == ScopeAction.VIEW
                 && (held.contains(VIEW_ALL_BRANCHES) || held.contains(DASH_SCOPE_ALL))) {
@@ -119,7 +120,7 @@ public class AccessScopeService {
         if (held.contains(DASH_SCOPE_SELF)) return DashboardScope.SELF;
 
         // No explicit scope. Fall back to the signal that governed reach before this model existed —
-        // a duty station plus an organisational read permission meant the branch — so a role nobody
+        // a duty station plus an organizational read permission meant the branch — so a role nobody
         // has configured yet is not narrowed on the day this deploys.
         boolean readsOrgData = held.contains(READ_ASSET) || held.contains(READ_REQUEST)
                 || held.contains(READ_STORE) || held.contains(READ_INVENTORY);
@@ -208,22 +209,90 @@ public class AccessScopeService {
                 "You can only act on records that touch your own branch.");
     }
 
-    private void requireAny(ScopeSubject subject, ScopeAction action,
-                            Collection<Long> recordBranchIds, String message) {
+    /**
+     * As {@link #canView}, for a record that touches several branches at once.
+     *
+     * <p>The boolean form exists because a <em>listing</em> has to narrow rather than refuse: a
+     * fulfilment movement read through its request is filtered out, not thrown on. {@link #requireAny}
+     * delegates here so the guard and the filter cannot answer the question differently — which is
+     * the whole failure mode this class was written against.
+     */
+    public boolean canViewAny(ScopeSubject subject, Collection<Long> recordBranchIds) {
+        return anyInReach(subject, ScopeAction.VIEW, recordBranchIds, null);
+    }
+
+    /**
+     * As {@link #canViewAny}, for a record that also names the people party to it.
+     *
+     * <p>A movement is why this exists. It has no owner column, so at SELF "mine" cannot be a branch
+     * comparison — it is the set of people on the record: whoever raised it, sent it, is receiving
+     * it, signed for it, or asked for the item it carries. Passing those ids here is what keeps the
+     * guard saying the same thing as {@code MovementSearchDao}'s SELF predicate.
+     *
+     * <p><b>They must agree.</b> If the listing returns a movement because I am its recipient while
+     * the guard still asks only about branches, the table shows a row the detail page then refuses —
+     * the failure this class exists to prevent.
+     */
+    public boolean canViewAnyOf(ScopeSubject subject, Collection<Long> recordBranchIds,
+                                Collection<Long> recordOwnerIds) {
+        return anyInReach(subject, ScopeAction.VIEW, recordBranchIds, recordOwnerIds);
+    }
+
+    /** As {@link #canViewAnyOf}, for an action rather than a look. */
+    public void requireCanManageAnyOf(ScopeSubject subject, Collection<Long> recordBranchIds,
+                                      Collection<Long> recordOwnerIds) {
+        if (!anyInReach(subject, ScopeAction.MANAGE, recordBranchIds, recordOwnerIds)) {
+            throw new AccessDeniedException(
+                    "You can only act on records that touch your own branch.");
+        }
+    }
+
+    /** As {@link #canViewAnyOf}, refusing rather than reporting. */
+    public void requireCanViewAnyOf(ScopeSubject subject, Collection<Long> recordBranchIds,
+                                    Collection<Long> recordOwnerIds) {
+        if (!anyInReach(subject, ScopeAction.VIEW, recordBranchIds, recordOwnerIds)) {
+            throw new AccessDeniedException("You do not have access to this record.");
+        }
+    }
+
+    private boolean anyInReach(ScopeSubject subject, ScopeAction action,
+                               Collection<Long> recordBranchIds, Collection<Long> recordOwnerIds) {
         DashboardScope scope = scopeFor(subject, action);
+        Set<Long> owners = nonNull(recordOwnerIds);
+
+        /*
+         * At SELF, being named on the record is the whole question.
+         *
+         * Mirrors permits(), which stops at the owner as soon as a record has one: if the record
+         * names people and none of them is me, it is not mine, and falling through to the branch
+         * comparison would quietly widen SELF back into BRANCH — which is exactly the collapse this
+         * was written to end. A record naming nobody still falls through, so it does not become
+         * invisible to everyone.
+         */
+        if (scope == DashboardScope.SELF && !owners.isEmpty()) {
+            Long me = currentUserId();
+            return me != null && owners.contains(me);
+        }
 
         // No branch on any end — the same "unassigned record" case permits() allows, for the same
         // reason: it must not become invisible and unfixable to everyone but a cross-branch holder.
-        Set<Long> known = recordBranchIds == null ? Set.of()
-                : recordBranchIds.stream().filter(java.util.Objects::nonNull)
-                        .collect(Collectors.toSet());
+        Set<Long> known = nonNull(recordBranchIds);
         if (known.isEmpty()) {
-            if (!permits(scope, null, null)) throw new AccessDeniedException(message);
-            return;
+            return permits(scope, null, null);
         }
+        return known.stream().anyMatch(branchId -> permits(scope, branchId, null));
+    }
 
-        boolean anyInReach = known.stream().anyMatch(branchId -> permits(scope, branchId, null));
-        if (!anyInReach) throw new AccessDeniedException(message);
+    private static Set<Long> nonNull(Collection<Long> ids) {
+        return ids == null ? Set.of()
+                : ids.stream().filter(java.util.Objects::nonNull).collect(Collectors.toSet());
+    }
+
+    private void requireAny(ScopeSubject subject, ScopeAction action,
+                            Collection<Long> recordBranchIds, String message) {
+        if (!anyInReach(subject, action, recordBranchIds, null)) {
+            throw new AccessDeniedException(message);
+        }
     }
 
     private void require(ScopeSubject subject, ScopeAction action,
