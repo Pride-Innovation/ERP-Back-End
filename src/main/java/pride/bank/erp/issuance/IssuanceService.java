@@ -49,8 +49,10 @@ import pride.bank.erp.workflowinstance.WorkflowEngineService;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.logging.Logger;
 
 import static java.lang.String.format;
@@ -411,16 +413,34 @@ public class IssuanceService {
         // maintenance, still needing completion — is rejected here, so a stale frontend list or a
         // concurrent issuance can never hand out the same asset twice.
         List<String> notReady = new ArrayList<>();
+        // The status check alone cannot see a repeat *within one payload*: the same id twice both
+        // reads "Available for Issuance" here, because nothing is stamped until applyAssetIssuance
+        // runs later — and two IssuedAsset rows would then be written for one asset. The frontend
+        // rejects duplicates across lines, but that is not a guarantee the API can rely on.
+        Set<Long> seenAssetIds = new HashSet<>();
+        List<String> duplicated = new ArrayList<>();
+
         for (IssueAssetsDTO asst : assets) {
             Asset asset = assetService.findOne(asst.getId());
             String code = asset.getAssetStatus() != null ? asset.getAssetStatus().getStatus() : null;
             String label = asset.getAssetName() + " [id=" + asset.getId() + "]";
+
+            if (!seenAssetIds.add(asset.getId())) {
+                duplicated.add(label);
+                continue;
+            }
 
             if (!CODE_ISSUANCE_AVAILABLE.equals(code)) {
                 notReady.add(label + " — " + reasonNotIssuable(code));
             } else if (asset.getEngravedNumber() == null || asset.getEngravedNumber().isBlank()) {
                 notReady.add(label + " — missing engraved number");
             }
+        }
+
+        if (!duplicated.isEmpty()) {
+            throw new BadRequestException(
+                    "These assets were listed more than once on the same issuance: "
+                            + String.join("; ", duplicated));
         }
         if (!notReady.isEmpty()) {
             throw new BadRequestException(
