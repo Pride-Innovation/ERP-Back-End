@@ -175,9 +175,18 @@ public class IssuanceService {
             addIssuedCommodities(savedIssuance, request.getCommodities());
         }
 
-        // Link + (same-location only) assign issued assets. Cross-location assets are left
-        // untouched here — the fulfilment movement created at issuance approval assigns them
-        // on receipt, exactly like cross-location commodities defer to the same movement.
+        /*
+         * Link every issued asset and stamp it Issued — cross-location included.
+         *
+         * This comment used to say cross-location assets were "left untouched here" and picked up
+         * by the fulfilment movement on receipt. That was the old behaviour and it is no longer what
+         * applyAssetIssuance does, for a good reason: an asset left at "Available for Issuance"
+         * while it sat on a courier's bike was still in the issuable pool, so it could be issued a
+         * second time before the first delivery arrived. Live data still carries four assets in that
+         * state from before the change — see the method's javadoc.
+         *
+         * Assignment to the requester is what defers to receipt, not the removal from the pool.
+         */
         if (request.getAssets() != null && !request.getAssets().isEmpty()) {
             applyAssetIssuance(request.getAssets(), requester, savedIssuance, sameLocationAssets);
         }
