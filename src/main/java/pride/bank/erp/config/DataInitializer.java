@@ -38,6 +38,7 @@ import java.util.List;
 import java.util.Set;
 
 import static pride.bank.erp.helper.Constants.ADMIN;
+import static pride.bank.erp.helper.Constants.UPDATE_EXPORT_COLUMNS;
 import static pride.bank.erp.helper.Constants.VIEW_ALL_BRANCHES;
 import static pride.bank.erp.helper.Constants.READ_ASSIGNMENT_HISTORY;
 import static pride.bank.erp.helper.Constants.READ_REPAIR_HISTORY;
@@ -254,6 +255,15 @@ public class DataInitializer {
                 ensurePermission(CREATE_SETTING),
                 ensurePermission(DELETE_SETTING),
                 ensurePermission(UPDATE_SETTING),
+                /*
+                 * Declared here, and it matters that it is.
+                 *
+                 * initializeSuperAdminRole reconciles only against the list this method returns, so
+                 * a permission created anywhere else exists in the table and never reaches the super
+                 * administrator — silently, and forever. Being in this list is also what puts it in
+                 * Settings → Roles → Action permissions, so granting it needs no new screen.
+                 */
+                ensurePermission(UPDATE_EXPORT_COLUMNS),
                 // Audit Trails
                 ensurePermission(READ_AUDIT),
                 ensurePermission(CREATE_AUDIT),

@@ -78,7 +78,14 @@ class EndpointGuardCoverageTest {
             "GET /api/v1/notifications",
             "GET /api/v1/notifications/unread-count",
             "PUT /api/v1/notifications/{id}/read",
-            "PUT /api/v1/notifications/read-all"
+            "PUT /api/v1/notifications/read-all",
+            // Which columns a table puts into its exported file. Every export in the application
+            // reads this before building one, so gating it on the permission that *changes* it
+            // would 403 the download for everyone who is not an administrator — the page opens and
+            // the file never arrives, which reads as a broken button rather than a boundary. It
+            // discloses nothing either: column names, for tables the caller can already open, whose
+            // columns are already on their screen. The write is guarded (UPDATE_EXPORT_COLUMNS).
+            "GET /api/v1/export-columns"
     );
 
     /**

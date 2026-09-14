@@ -143,6 +143,20 @@ public class Constants {
     public static final String DELETE_INVENTORY = "DELETE_INVENTORY";
     public static final String UPDATE_INVENTORY = "UPDATE_INVENTORY";
 
+    /**
+     * Lets its holder decide which columns each table puts into its exported PDF / Excel.
+     *
+     * <p>A formatting right, not a disclosure one. Every column stays visible on screen to everyone
+     * who can open the table, and the file is still assembled in the browser from rows it already
+     * holds — this only decides what is worth printing, so a register running to eighteen columns
+     * can come out as the six people actually read.
+     *
+     * <p>Separate from {@code UPDATE_SETTING} because it is a far smaller thing to hand out: tidying
+     * reports is an everyday editorial job, while UPDATE_SETTING reaches branches, titles, units and
+     * the approval workflows. Somebody who should be allowed the first should not need the second.
+     */
+    public static final String UPDATE_EXPORT_COLUMNS = "UPDATE_EXPORT_COLUMNS";
+
     public static final String READ_SETTING = "READ_SETTING";
     public static final String CREATE_SETTING = "CREATE_SETTING";
     public static final String DELETE_SETTING = "DELETE_SETTING";
