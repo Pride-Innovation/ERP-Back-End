@@ -16,15 +16,22 @@ public class AppNotificationService {
     private final SimpMessagingTemplate messagingTemplate;
 
     @Transactional
+    /**
+     * Writes a notification and pushes it to the recipient's live session.
+     *
+     * @param entityType what the notification is about, so the reader can be taken to it. This was a
+     *                   frontend URL built in Java; see {@link NotificationTarget} for why it is not
+     *                   any more.
+     */
     public AppNotification createAndPush(User recipient, String title, String message,
-                                         String type, Long requestId, String link) {
+                                         String type, NotificationTarget entityType, Long entityId) {
         AppNotification notification = AppNotification.builder()
                 .recipient(recipient)
                 .title(title)
                 .message(message)
                 .type(type)
-                .requestId(requestId)
-                .link(link)
+                .entityType(entityType)
+                .entityId(entityId)
                 .isRead(false)
                 .build();
 
@@ -73,8 +80,8 @@ public class AppNotificationService {
                 .title(n.getTitle())
                 .message(n.getMessage())
                 .type(n.getType())
-                .requestId(n.getRequestId())
-                .link(n.getLink())
+                .entityType(n.getEntityType() == null ? null : n.getEntityType().name())
+                .entityId(n.getEntityId())
                 .isRead(n.isRead())
                 .createDate(n.getCreateDate())
                 .build();

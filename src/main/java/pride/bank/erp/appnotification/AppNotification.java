@@ -36,10 +36,24 @@ public class AppNotification {
     /** e.g. "REQUEST_SUBMITTED", "STEP_APPROVED", "STEP_REJECTED" */
     private String type;
 
-    private Long requestId;
+    /**
+     * What this notification is about, and which record.
+     *
+     * <p>These replaced a {@code link} column holding a frontend URL and a {@code requestId} that
+     * held a <em>movement</em> id for movement notifications - a field whose name was wrong for 69
+     * rows. Together they say the same thing without either fault: the frontend resolves the pair to
+     * a route, so Java never has to know one.
+     *
+     * <p>Nullable, because a notification need not be about a record. One with no target renders as
+     * plain text rather than as something to click - which is the honest rendering, and what 744
+     * dead links should have been.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "entity_type", length = 40)
+    private NotificationTarget entityType;
 
-    /** Frontend navigation URL */
-    private String link;
+    @Column(name = "entity_id")
+    private Long entityId;
 
     @Column(nullable = false)
     @Builder.Default

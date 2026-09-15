@@ -506,8 +506,8 @@ public class WorkflowEngineService {
                 "Request Rejected",
                 inAppLeadIn + " " + comment,
                 "STEP_REJECTED",
-                request.getId(),
-                frontEndUrl + "/assets-mgt/asset-request/view?id=" + request.getId()
+                pride.bank.erp.appnotification.NotificationTarget.REQUEST,
+                request.getId()
         );
     }
 
@@ -535,8 +535,8 @@ public class WorkflowEngineService {
                     "Request Process Completed",
                     "Your request \"" + request.getName() + "\" has been fully processed.",
                     "WORKFLOW_COMPLETED",
-                    request.getId(),
-                    frontEndUrl + "/assets-mgt/asset-request/view?id=" + request.getId()
+                    pride.bank.erp.appnotification.NotificationTarget.REQUEST,
+                    request.getId()
             );
         } else {
             instance.setCurrentStepOrder(nextStep.getStepOrder());
@@ -556,8 +556,8 @@ public class WorkflowEngineService {
                         "Your request \"" + request.getName() + "\" was approved at \""
                                 + currentStep.getStepName() + "\" and moved to \"" + nextStep.getStepName() + "\".",
                         "STEP_APPROVED",
-                        request.getId(),
-                        frontEndUrl + "/assets-mgt/asset-request/view?id=" + request.getId()
+                        pride.bank.erp.appnotification.NotificationTarget.REQUEST,
+                        request.getId()
                 );
             }
 
@@ -714,15 +714,14 @@ public class WorkflowEngineService {
         }
 
         // In-app notification: an individual approver, otherwise every member of the target unit.
-        String link = frontEndUrl + "/assets-mgt/asset-request/view?id=" + request.getId();
         if (approver != null) {
             notificationService.createAndPush(
                     approver,
                     step.getStepName() + " Needed",
                     "Request \"" + request.getName() + "\" is awaiting your action: " + step.getStepName(),
                     "STEP_PENDING",
-                    request.getId(),
-                    link
+                    pride.bank.erp.appnotification.NotificationTarget.REQUEST,
+                    request.getId()
             );
         } else if (stepUnit != null) {
             for (User member : userRepository.findByUnit_Id(stepUnit.getId())) {
@@ -731,8 +730,8 @@ public class WorkflowEngineService {
                         step.getStepName() + " Needed",
                         "Request \"" + request.getName() + "\" is awaiting your unit (" + stepUnit.getName() + "): " + step.getStepName(),
                         "STEP_PENDING",
-                        request.getId(),
-                        link
+                        pride.bank.erp.appnotification.NotificationTarget.REQUEST,
+                        request.getId()
                 );
             }
         }

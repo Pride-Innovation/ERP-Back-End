@@ -312,8 +312,10 @@ public class MovementApprovalService {
                 "Movement Approval Needed",
                 "Movement #" + movement.getId() + " is awaiting your approval.",
                 "MOVEMENT_PENDING",
-                movement.getId(),
-                movementLink(movement));
+                // A movement, said plainly. This id used to be written into a field called
+                // `requestId`, so the column's name was wrong for every movement notification.
+                pride.bank.erp.appnotification.NotificationTarget.MOVEMENT,
+                movement.getId());
 
         email.sendMovementEmail(
                 approver.getEmail(),
@@ -335,7 +337,7 @@ public class MovementApprovalService {
         if (movement.getInitiator() == null) return;
         notificationService.createAndPush(
                 movement.getInitiator(), title, message, "MOVEMENT_UPDATE",
-                movement.getId(), movementLink(movement));
+                pride.bank.erp.appnotification.NotificationTarget.MOVEMENT, movement.getId());
     }
 
     /** As above, plus the mail carrying the decision and whatever the approver said about it. */
@@ -387,6 +389,14 @@ public class MovementApprovalService {
      * every approval email and bell notification dropped the approver on the full list to hunt for
      * the movement by hand. That matters more now that the "pending my approval" table is gone: the
      * link is the route to the decision.
+     */
+    /**
+     * The absolute URL for an <b>email</b>.
+     *
+     * <p>In-app notifications no longer carry one: a link baked in Java cannot know when a route is
+     * renamed, and 744 of them were pointing at a route that did not exist. Mail is the one case that
+     * genuinely needs a full URL, because it is opened outside the application where there is no
+     * router to resolve a target.
      */
     private String movementLink(Movement movement) {
         return frontEndUrl + "/assets-mgt/movement/view/" + movement.getId();
