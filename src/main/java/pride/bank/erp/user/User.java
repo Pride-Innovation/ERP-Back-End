@@ -94,6 +94,14 @@ public class User implements UserDetails {
     private String availability;
     private String profileImage;
     private boolean blocked;
+    /**
+     * Whether this person is currently acting in another title.
+     *
+     * <p>Pinned for the same reason as {@code isHeadOffice} above: {@code isActing()} publishes as
+     * {@code "acting"}. Nothing reads it on the front end yet, which makes this the cheapest possible
+     * moment to state the name rather than leave the next consumer to discover it.
+     */
+    @JsonProperty("isActing")
     private boolean isActing;
     @Builder.Default
     private int failedLoginAttempts = 0;

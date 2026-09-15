@@ -1,5 +1,7 @@
 package pride.bank.erp.user;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -26,6 +28,14 @@ public class UserResponseDTO {
     private String availability;
     private String profileImage;
     private boolean blocked;
+    /**
+     * Whether this person is currently acting in another title.
+     *
+     * <p>Pinned for the same reason as {@code isHeadOffice} above: {@code isActing()} publishes as
+     * {@code "acting"}. Nothing reads it on the front end yet, which makes this the cheapest possible
+     * moment to state the name rather than leave the next consumer to discover it.
+     */
+    @JsonProperty("isActing")
     private boolean isActing;
     private int failedLoginAttempts;
     private boolean isEnabled;
@@ -70,7 +80,25 @@ public class UserResponseDTO {
         private Long id;
         private String name;
         private String shortCode;
-        private boolean isHeadOffice;
+        /**
+     * Whether this branch is the Head Office.
+     *
+     * <h2>Why the wire name is pinned</h2>
+     * Lombok gives a primitive {@code boolean isHeadOffice} the getter {@code isHeadOffice()}, and
+     * Jackson strips the {@code is} prefix — so this published as {@code "headOffice"} while most
+     * consumers asked for {@code isHeadOffice} and silently got {@code undefined}.
+     *
+     * <p>Three of the five readers were broken by it: the store page's Head Office fallback could
+     * never find a branch, the "HQ" badge on a branch never rendered, and the user form's rule
+     * <em>"Department is required for Head Office staff"</em> never fired. The two that worked did so
+     * by checking <b>both</b> spellings, with a comment explaining the trap — which is to tell that
+     * a derived name is a name every consumer has to rediscover.
+     *
+     * <p>Safe in both directions: nothing posts this field, and the two defensive readers accept
+     * either spelling, so pinning fixes three call sites and breaks none.
+     */
+    @JsonProperty("isHeadOffice")
+    private boolean isHeadOffice;
     }
 
     @Data

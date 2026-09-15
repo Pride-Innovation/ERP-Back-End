@@ -7,6 +7,8 @@ Managing Director
 
 package pride.bank.erp.branch;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -47,6 +49,24 @@ public class Branch {
      */
     @Column(name = "is_head_office", columnDefinition = "BIT NOT NULL DEFAULT 0")
     @Builder.Default
+    /**
+     * Whether this branch is the Head Office.
+     *
+     * <h2>Why the wire name is pinned</h2>
+     * Lombok gives a primitive {@code boolean isHeadOffice} the getter {@code isHeadOffice()}, and
+     * Jackson strips the {@code is} prefix — so this published as {@code "headOffice"} while most
+     * consumers asked for {@code isHeadOffice} and silently got {@code undefined}.
+     *
+     * <p>Three of the five readers were broken by it: the store page's Head Office fallback could
+     * never find a branch, the "HQ" badge on a branch never rendered, and the user form's rule
+     * <em>"Department is required for Head Office staff"</em> never fired. The two that worked did so
+     * by checking <b>both</b> spellings, with a comment explaining the trap — which is the tell that
+     * a derived name is a name every consumer has to rediscover.
+     *
+     * <p>Safe in both directions: nothing posts this field, and the two defensive readers accept
+     * either spelling, so pinning fixes three call sites and breaks none.
+     */
+    @JsonProperty("isHeadOffice")
     private boolean isHeadOffice = false;
 
     /**
