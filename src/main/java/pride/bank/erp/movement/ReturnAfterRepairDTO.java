@@ -41,6 +41,20 @@ public class ReturnAfterRepairDTO implements ApprovalBypassRequest {
     private Boolean returnLoaner;
     private String remarks;
 
+    /**
+     * What was done to fix it, and the paperwork for it.
+     *
+     * <p>These close the {@code Repair} that {@code transferForRepair} opened. Returning a repaired
+     * asset <em>is</em> the moment the repair finished, so asking for the completion separately —
+     * as the old assets-page flow did, through a second endpoint nobody reached — left every
+     * maintenance record permanently "Pending".
+     *
+     * <p>Both optional: a repair with no notes is still a repair that happened, and refusing the
+     * return for want of a sentence would strand the asset at Head Office.
+     */
+    private String completionNotes;
+    private java.util.List<String> completionDocuments;
+
     /** Set once the initiator has confirmed they want to proceed with no approver available. */
     private Boolean proceedWithoutApproval;
 

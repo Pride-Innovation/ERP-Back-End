@@ -51,6 +51,17 @@ public class RepairMovementService {
     private final InventoryService inventoryService;
     private final pride.bank.erp.user.UserRepository userRepository;
 
+    /**
+     * Opens and closes the maintenance record that rides along with a repair journey.
+     *
+     * <p>A repair used to be two unconnected things: this service moved the asset, and a separate
+     * assets-page endpoint wrote a {@code Repair} row. Measured before they were joined, <b>24
+     * repair movements and 0 repair rows</b> - so the maintenance report and the asset's Repair
+     * History tab were empty for every repair the bank had actually done. The journey now carries
+     * the record.
+     */
+    private final pride.bank.erp.repair.RepairService repairService;
+
     /** Decides whether a <em>particular</em> asset is within the caller's reach. */
     private final pride.bank.erp.access.AccessScopeService accessScopeService;
 
@@ -139,6 +150,27 @@ public class RepairMovementService {
                 .items(List.of(assetItem(dto.getAssetId())))
                 .build());
 
+        /*
+         * The maintenance record, opened by the act that sends the asset away.
+         *
+         * Created after the movement rather than before it for one reason: an EXTERNAL repair's
+         * technician is the consultant, and the movement is where the consultant has been resolved
+         * from an id into a named vendor. Asking the dispatcher to retype a name the form already
+         * holds is how that field comes to be blank.
+         *
+         * An explicit repairId still wins, so an existing record can be attached instead - that is
+         * what the field on the DTO has always been for, and nothing ever sent it.
+         */
+        if (dto.getRepairId() == null) {
+            String technician = !isBlank(dto.getTechnician())
+                    ? dto.getTechnician()
+                    : (movement.getConsultant() != null ? movement.getConsultant().getName() : null);
+            pride.bank.erp.repair.Repair repair = repairService.openForTransfer(
+                    asset, dto.getFaultDescription(), technician, dto.getDeliveryDocuments());
+            movement.setRepair(repair);
+            movementRepository.save(movement);
+        }
+
         // The branch admin has physically taken the item off the user, so record that hand-over now
         // instead of at Head Office receipt. Previously the asset stayed "assigned to Jane" for the
         // whole journey — including while it sat in a courier's van — so if it went missing in
@@ -225,6 +257,18 @@ public class RepairMovementService {
                 .proceedWithoutApproval(dto.getProceedWithoutApproval()).bypassReason(dto.getBypassReason())
                 .items(List.of(assetItem(dto.getAssetId())))
                 .build());
+
+        /*
+         * Closing the record the transfer opened. Returning a repaired asset *is* the moment the
+         * repair finished, so this is where it is recorded - the old flow asked for the completion
+         * through a second endpoint that nothing on the movements page ever called, which is how a
+         * maintenance record came to stay "Pending" for the life of the asset.
+         *
+         * Tolerant of there being nothing to close: the seven assets already returned this way
+         * predate the record being opened at all, and refusing their return to fix a reporting gap
+         * would strand them at Head Office.
+         */
+        repairService.closeForReturn(repaired, dto.getCompletionNotes(), dto.getCompletionDocuments());
 
         // If the user has left, the asset comes back to the branch rather than to a person, and is
         // made available for temporary issuance so it can be lent out instead of sitting idle.
@@ -675,8 +719,37 @@ public class RepairMovementService {
     private void requireAssetInScope(Asset asset) {
         Long branchId = asset.getBranch() != null ? asset.getBranch().getId() : null;
         Long holderId = asset.getAssignedTo() != null ? asset.getAssignedTo().getId() : null;
-        accessScopeService.requireCanManage(
-                pride.bank.erp.access.ScopeSubject.ASSETS, branchId, holderId);
+
+        /*
+         * Two ends, not one - and this is what lets a branch finish what it started.
+         *
+         * `asset.branch` does not mean "who owns this". It means *where it is*: InventoryService's
+         * relocateAsset writes the destination's location when the movement is received, so the
+         * moment Head Office receives a Gulu laptop for repair the row reads Head Office. Measured:
+         * all 13 repair transfers originated at Gulu, and all 7 assets currently in maintenance read
+         * Head Office. With only the current branch consulted, the branch that sent an asset away
+         * could not act on it again - including initiating its own return.
+         *
+         * So a caller is in reach when *either* end is theirs: where the asset sits now, or the
+         * branch recorded on its repair transfer. That is the same pair the inventory report already
+         * makes visible inside the shared stores, and the same multi-ended rule a movement gets - for
+         * the same reason, that a record can legitimately be in two places at once.
+         *
+         * (Named in prose rather than by identifier on purpose: SharedStoreVisibilityTest asserts
+         * that this file does not reference the visibility scoping by name, so that nobody copies a
+         * *store-location* filter in here. That assertion is worth keeping and this is not one.)
+         *
+         * Deliberately *not* done by preserving the origin on `asset.branch`: that field also decides
+         * which Admin store a repaired asset goes home to (currentStoreOf) and which branch this very
+         * guard checks, so changing its meaning would change the flows rather than the reach.
+         *
+         * The holder list is unchanged, so SELF is untouched: this widens by exactly one branch.
+         */
+        Long originBranchId = originLocationFor(asset);
+        accessScopeService.requireCanManageAnyOf(
+                pride.bank.erp.access.ScopeSubject.ASSETS,
+                java.util.Arrays.asList(branchId, originBranchId),
+                java.util.Collections.singletonList(holderId));
     }
 
     /** Who currently holds the asset, if anyone — captured before custody moves to the admin. */

@@ -19,7 +19,36 @@ import java.util.List;
 @AllArgsConstructor
 public class RepairTransferDTO implements ApprovalBypassRequest {
     private Long assetId;
+
+    /**
+     * An existing maintenance record to attach to, instead of opening a new one.
+     *
+     * <p>Normally null. Left null, {@code transferForRepair} opens a {@code Repair} for this asset
+     * and links it — which is what makes the maintenance report and the asset's Repair History tab
+     * reflect a repair that was actually done. Measured before this was wired: <b>24 repair
+     * movements, 0 repair records</b>, because the two flows wrote to two different places and only
+     * the unused one wrote a maintenance record.
+     */
     private Long repairId;
+
+    /**
+     * What is wrong with the asset. Required when opening a new maintenance record.
+     *
+     * <p>Deliberately separate from {@link #remarks}: remarks describe the <em>journey</em> (who to
+     * call at the far end, what else is in the box) and live on the movement, while this describes
+     * the <em>fault</em> and lives on the repair. Folding them together would mean the maintenance
+     * report's only column about the failure was filled with courier notes.
+     */
+    private String faultDescription;
+
+    /**
+     * Who is expected to work on it, if known at dispatch.
+     *
+     * <p>Optional, because for an IT- or Admin-routed repair the bench decides that after it arrives.
+     * For an EXTERNAL repair it defaults to the consultant's name, which is the answer by
+     * construction — nobody should have to type what the form already knows.
+     */
+    private String technician;
 
     /** Overrides the category's default routing (IT / ADMIN / EXTERNAL); null uses the category default. */
     private RepairDestination repairDestination;

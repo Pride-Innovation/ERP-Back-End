@@ -147,6 +147,7 @@ public class DataInitializer {
     private final UnitRoleSeeder unitRoleSeeder;
     private final AssetTrailPermissionSeeder assetTrailPermissionSeeder;
     private final UserAccessPermissionSeeder userAccessPermissionSeeder;
+    private final RepairPermissionSeeder repairPermissionSeeder;
     private final TitleSeeder titleSeeder;
     private final BranchHeadOfficeSeeder branchHeadOfficeSeeder;
     private final AssetCategoryFeatureSeeder assetCategoryFeatureSeeder;
@@ -218,6 +219,17 @@ public class DataInitializer {
             supplierCommoditySeeder.seedSuppliersAndCommodityLinks();
             roleSeeder.seedRoles();
             rolePermissionSeeder.seedRolePermissions();
+
+            /*
+             * After initializePermissions() and after the roles have their permissions - and that is
+             * the opposite constraint to the two seeders above.
+             *
+             * Those two split a *new* permission out of an old one and read the new row's absence as
+             * their marker, so they must run before it is created. This one hands out REPAIR_ASSET,
+             * which has existed all along, so it needs the row to be there and goes through
+             * OneTimeSeed for its marker instead.
+             */
+            repairPermissionSeeder.seedRepairPermission();
             // After the roles exist and before titles are wired: gives Admin and Infra their
             // standing, and pins every seeded role to an explicit dashboard scope.
             unitRoleSeeder.seedUnitRoles();

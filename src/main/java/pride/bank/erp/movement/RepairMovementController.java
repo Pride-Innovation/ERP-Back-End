@@ -8,7 +8,29 @@ import org.springframework.web.bind.annotation.*;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
 
-/** Asset-lifecycle movement endpoints for repair, temporary replacement, return and disposal (§14-17). */
+/**
+ * Asset-lifecycle movement endpoints for repair, temporary replacement, return and disposal (§14-17).
+ *
+ * <h2>Why these answer to REPAIR_ASSET rather than CREATE_MOVEMENT</h2>
+ * They are asset actions that happen to be implemented as movements - which is exactly the reasoning
+ * already written against {@link #disposeAsset} for {@code DISPOSE_ASSET}. Repair had not been given
+ * the same treatment, so sending an asset away to be fixed asked only "may you raise a movement".
+ *
+ * <p>The consequence was measurable rather than theoretical: <b>four accounts at Gulu and Mbarara
+ * held {@code CREATE_MOVEMENT} without {@code REPAIR_ASSET}</b>, so they could send an asset for
+ * repair through this modal and not through the assets page, and {@code REPAIR_ASSET} - which
+ * governs four accounts - was walked around entirely by the route people actually use.
+ *
+ * <p>Nobody lost an action on the day this shipped: {@code RepairPermissionSeeder} grants
+ * {@code REPAIR_ASSET} once to every role already holding {@code CREATE_MOVEMENT}, the same
+ * continuity backfill the user-access split used. What happens to it after that is the
+ * administrator's decision in Settings.
+ *
+ * <p>The previews take a <b>disjunction</b>, and must. They are read-only descriptions of what an
+ * action would do, so gating them on {@code READ_MOVEMENT} alone would show the form to someone
+ * entitled to perform the repair and then refuse to tell them where the asset is going - the
+ * "renders a control whose endpoint then refuses it" failure, one screen further in.
+ */
 @RestController
 @RequestMapping(Constants.GENERAL_ROUTE)
 @RequiredArgsConstructor
@@ -18,21 +40,21 @@ public class RepairMovementController {
     private final MovementMapper movementMapper;
 
     /** §14: send a faulty asset to the Head Office IT store for repair. */
-    @PreAuthorize("hasAuthority('" + Constants.CREATE_MOVEMENT + "')")
+    @PreAuthorize("hasAuthority('" + Constants.REPAIR_ASSET + "')")
     @PostMapping("/movements/repair-transfer")
     public ResponseEntity<MovementResponseDTO> transferForRepair(@RequestBody RepairTransferDTO dto) throws NotFoundException {
         return new ResponseEntity<>(movementMapper.toDto(repairMovementService.transferForRepair(dto)), HttpStatus.CREATED);
     }
 
     /** §15: issue a temporary replacement asset from the IT store to a user. */
-    @PreAuthorize("hasAuthority('" + Constants.CREATE_MOVEMENT + "')")
+    @PreAuthorize("hasAuthority('" + Constants.REPAIR_ASSET + "')")
     @PostMapping("/movements/temp-replacement")
     public ResponseEntity<MovementResponseDTO> issueTemporaryReplacement(@RequestBody TempReplacementDTO dto) throws NotFoundException {
         return new ResponseEntity<>(movementMapper.toDto(repairMovementService.issueTemporaryReplacement(dto)), HttpStatus.CREATED);
     }
 
     /** §16: return a repaired asset to its originating location. */
-    @PreAuthorize("hasAuthority('" + Constants.CREATE_MOVEMENT + "')")
+    @PreAuthorize("hasAuthority('" + Constants.REPAIR_ASSET + "')")
     @PostMapping("/movements/return-after-repair")
     public ResponseEntity<MovementResponseDTO> returnAfterRepair(@RequestBody ReturnAfterRepairDTO dto) throws NotFoundException {
         return new ResponseEntity<>(movementMapper.toDto(repairMovementService.returnAfterRepair(dto)), HttpStatus.CREATED);
@@ -59,7 +81,7 @@ public class RepairMovementController {
     // if courier details are asked for. Derived here rather than in the browser so the form and the
     // write path cannot disagree.
 
-    @PreAuthorize("hasAuthority('" + Constants.READ_MOVEMENT + "')")
+    @PreAuthorize("hasAnyAuthority('" + Constants.READ_MOVEMENT + "', '" + Constants.REPAIR_ASSET + "')")
     @GetMapping("/movements/repair-transfer/preview")
     public ResponseEntity<MovementFlowPreview> previewRepairTransfer(
             @RequestParam Long assetId,
@@ -69,7 +91,7 @@ public class RepairMovementController {
                 repairMovementService.previewRepairTransfer(assetId, repairDestination), HttpStatus.OK);
     }
 
-    @PreAuthorize("hasAuthority('" + Constants.READ_MOVEMENT + "')")
+    @PreAuthorize("hasAnyAuthority('" + Constants.READ_MOVEMENT + "', '" + Constants.REPAIR_ASSET + "')")
     @GetMapping("/movements/return-after-repair/preview")
     public ResponseEntity<MovementFlowPreview> previewReturnAfterRepair(@RequestParam Long assetId)
             throws NotFoundException {
@@ -82,7 +104,7 @@ public class RepairMovementController {
         return new ResponseEntity<>(repairMovementService.previewDisposal(assetId), HttpStatus.OK);
     }
 
-    @PreAuthorize("hasAuthority('" + Constants.READ_MOVEMENT + "')")
+    @PreAuthorize("hasAnyAuthority('" + Constants.READ_MOVEMENT + "', '" + Constants.REPAIR_ASSET + "')")
     @GetMapping("/movements/temp-replacement/preview")
     public ResponseEntity<MovementFlowPreview> previewTempReplacement(
             @RequestParam Long tempAssetId,

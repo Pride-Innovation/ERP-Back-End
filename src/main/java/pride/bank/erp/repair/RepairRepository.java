@@ -12,6 +12,15 @@ public interface RepairRepository extends JpaRepository<Repair, Long> {
     Page<Repair> findByAssetId(@Param("assetId") Long assetId, Pageable pageable);
 
     /**
+     * The maintenance record still open on this asset, if any.
+     *
+     * <p>Newest first, because an asset repaired twice has two records and the return leg is always
+     * closing the current one. A derived query rather than JPQL deliberately: every path here is
+     * through a non-nullable association, so there is no trap #1 exposure to reason about.
+     */
+    java.util.Optional<Repair> findFirstByAsset_IdAndStatusOrderByIdDesc(Long assetId, String status);
+
+    /**
      * Every repair, optionally narrowed by status, asset category and start date.
      *
      * <p>Added for the maintenance report, which asks "what has been repaired" across the estate.

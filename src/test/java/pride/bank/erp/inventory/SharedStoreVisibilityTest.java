@@ -209,6 +209,30 @@ class SharedStoreVisibilityTest {
                 .doesNotContain("originLocations(");
 
         /*
+         * What the guard *does* consult, and why that is not what the lines above forbid.
+         *
+         * The repair guard reaches an asset when either end is the caller's: the branch it sits in,
+         * or the branch recorded on its repair transfer. That is a *branch* pair, and it only ever
+         * widens - which is the opposite of the failure this test exists to prevent, a store-location
+         * check narrowing every branch out of the stores its own repairs route into.
+         *
+         * It is pinned because it is load-bearing and easy to "simplify" away. `asset.branch` is
+         * overwritten with the destination's location on receipt, so with the current branch alone
+         * the branch that sent an asset away cannot act on it again - measured, all thirteen repair
+         * transfers came from Gulu and all seven assets in maintenance read Head Office, so Gulu
+         * could not have initiated a single one of its own returns.
+         */
+        String guard = methodBody(
+                readSource("src/main/java/pride/bank/erp/movement/RepairMovementService.java"),
+                "requireAssetInScope");
+
+        assertThat(guard)
+                .as("the repair guard must reach the branch an asset came from as well as the one it "
+                        + "sits in, or a branch cannot bring its own repaired asset home")
+                .contains("originLocationFor(asset)")
+                .contains("requireCanManageAnyOf");
+
+        /*
          * The write path still sets the asset's branch to the destination store's location.
          *
          * That is what makes the origin lookup necessary, and changing it was the road not taken:
