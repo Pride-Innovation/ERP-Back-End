@@ -54,7 +54,19 @@ public class RequestController {
             @RequestParam(required = false) String description,
             @RequestParam(required = false) LocalDateTime timeOfSubmissionOfRequest,
             @RequestParam(required = false) List<Long> statusIds,
-            @RequestParam(required = false) String status,
+            /*
+             * There was a `String status` parameter here and it filtered nothing.
+             *
+             * It was declared, accepted, passed down to the service and even written to the debug
+             * log — so it read as a working filter from every angle — but `RequestSearchCriteria`
+             * has no such field and `RequestSearchDao` only ever restricts on `statusIds`. The
+             * reports page wired its Status dropdown to it and the dropdown did nothing at all.
+             *
+             * Sharper than an undeclared parameter, which Spring at least drops silently: this one
+             * advertised a filter the endpoint does not implement. Removed rather than implemented,
+             * because `statusIds` already does the job and a second way to say the same thing is how
+             * the two drift apart. Callers still sending it are unaffected — it never did anything.
+             */
             @RequestParam(required = false) String requestedBy,
             @RequestParam(required = false) String approver,
             /*
@@ -91,7 +103,6 @@ public class RequestController {
                 description,
                 timeOfSubmissionOfRequest,
                 statusIds,
-                status,
                 requestedBy,
                 approver,
                 requesterId,

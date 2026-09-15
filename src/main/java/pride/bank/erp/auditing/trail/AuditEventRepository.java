@@ -15,6 +15,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * Reads over the activity log.
@@ -68,17 +69,53 @@ public interface AuditEventRepository extends JpaRepository<AuditEvent, Long> {
             @Param("to") LocalDateTime to,
             Pageable pageable);
 
-    long countByOccurredAtGreaterThanEqual(LocalDateTime from);
-
-    /** Feeds the "Flagged Events" tile — everything above routine. */
-    long countBySeverityNot(AuditSeverity severity);
-
     /**
-     * Distinct people who have appeared in the log since a date.
+     * The four tiles, counted over <em>the same rows the table is showing</em>.
      *
-     * <p>Counts ids, not rows, so someone doing forty things in a morning is one active user.
+     * <h2>Why the predicate is repeated rather than the counts derived</h2>
+     * The page holds twenty-five rows while the table holds 1,661 and grows on every write in the
+     * application, so nothing above it can be counted from what was sent. Three unfiltered counters
+     * did the job before — so narrowing to "critical events in Movement last week" left the tiles
+     * reading the totals for everything: two kinds of number on one screen, with nothing to say
+     * which was which.
+     *
+     * <p>One query rather than four. These are read together on every load, and four round trips
+     * over the largest table in the database to draw one row of tiles is three too many.
+     *
+     * <p>{@code todayFrom} is passed in rather than computed in SQL so that "today" is one decision,
+     * made in the service — two could disagree by a timezone.
+     *
+     * <p>"Distinct actors" counts ids, so somebody doing forty things in a morning is one person.
      */
-    @Query("SELECT COUNT(DISTINCT e.actorId) FROM AuditEvent e "
-            + "WHERE e.actorId IS NOT NULL AND e.occurredAt >= :from")
-    long countDistinctActorsSince(@Param("from") LocalDateTime from);
+    @Query("""
+            SELECT COUNT(e),
+                   SUM(CASE WHEN e.occurredAt >= :todayFrom THEN 1 ELSE 0 END),
+                   COUNT(DISTINCT e.actorId),
+                   SUM(CASE WHEN e.severity <> :infoSeverity THEN 1 ELSE 0 END)
+            FROM AuditEvent e
+            WHERE (:eventType IS NULL OR e.eventType = :eventType)
+              AND (:module IS NULL OR e.module = :module)
+              AND (:severity IS NULL OR e.severity = :severity)
+              AND (:actorId IS NULL OR e.actorId = :actorId)
+              AND (:entityType IS NULL OR e.entityType = :entityType)
+              AND (:entityId IS NULL OR e.entityId = :entityId)
+              AND (:from IS NULL OR e.occurredAt >= :from)
+              AND (:to IS NULL OR e.occurredAt <= :to)
+              AND (:search IS NULL
+                   OR LOWER(e.description) LIKE LOWER(CONCAT('%', :search, '%'))
+                   OR LOWER(e.actorName)   LIKE LOWER(CONCAT('%', :search, '%'))
+                   OR LOWER(e.action)      LIKE LOWER(CONCAT('%', :search, '%')))
+            """)
+    List<Object[]> summarise(
+            @Param("search") String search,
+            @Param("eventType") AuditEventType eventType,
+            @Param("module") AuditModule module,
+            @Param("severity") AuditSeverity severity,
+            @Param("actorId") Long actorId,
+            @Param("entityType") String entityType,
+            @Param("entityId") Long entityId,
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to,
+            @Param("todayFrom") LocalDateTime todayFrom,
+            @Param("infoSeverity") AuditSeverity infoSeverity);
 }

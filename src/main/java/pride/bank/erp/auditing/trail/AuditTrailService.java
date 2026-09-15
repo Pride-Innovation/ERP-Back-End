@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * Reads the activity log for the Audit Trails page.
@@ -53,14 +54,51 @@ public class AuditTrailService {
                 .map(AuditTrailResponse::from);
     }
 
+    /**
+     * The four tiles, over the same rows the table is showing.
+     *
+     * <p>This took no filters at all, so the figures above a narrowed table described the whole log:
+     * filter to "critical events in Movement last week" and the tiles still read the totals for
+     * everything. Two kinds of number on one screen with nothing to distinguish them — the fault the
+     * movements register had before its tiles were counted over the matching set.
+     *
+     * <p>"Active actors" counts distinct actors <em>in the result</em> rather than "since midnight",
+     * which is what it meant before. Under a date filter the old reading was simply a different
+     * question from the one the filter asked.
+     */
     @Transactional(readOnly = true)
-    public AuditTrailSummary summary() {
+    public AuditTrailSummary summary(String search,
+                                     String eventType,
+                                     String module,
+                                     String severity,
+                                     Long actorId,
+                                     String entityType,
+                                     Long entityId,
+                                     LocalDateTime from,
+                                     LocalDateTime to) {
         LocalDateTime startOfToday = LocalDate.now().atStartOfDay();
+
+        List<Object[]> result = repository.summarise(
+                blankToNull(search),
+                parseEventType(eventType),
+                parseModule(module),
+                parseSeverity(severity),
+                actorId,
+                blankToNull(entityType),
+                entityId,
+                from,
+                to,
+                startOfToday,
+                AuditSeverity.INFO);
+
+        // An aggregate query always returns one row, but SUM over no rows is null rather than zero.
+        Object[] row = result.isEmpty() ? new Object[] { 0L, 0L, 0L, 0L } : result.get(0);
         return new AuditTrailSummary(
-                repository.count(),
-                repository.countByOccurredAtGreaterThanEqual(startOfToday),
-                repository.countDistinctActorsSince(startOfToday),
-                repository.countBySeverityNot(AuditSeverity.INFO));
+                asLong(row[0]), asLong(row[1]), asLong(row[2]), asLong(row[3]));
+    }
+
+    private static long asLong(Object value) {
+        return value instanceof Number number ? number.longValue() : 0L;
     }
 
     /**

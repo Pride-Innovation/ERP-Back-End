@@ -121,11 +121,50 @@ class AuditTrailRecordingTest {
         auditService.record(AuditEventType.DELETED, AuditModule.DISPOSAL, "TEST_SUMMARY",
                 "Disposed something during a test", AuditSeverity.CRITICAL, null, null);
 
-        AuditTrailSummary summary = auditTrailService.summary();
+        AuditTrailSummary summary = unfilteredSummary();
         assertThat(summary.totalEvents()).isPositive();
         assertThat(summary.eventsToday()).isPositive();
         assertThat(summary.flaggedEvents()).isPositive();
         assertThat(summary.activeActors()).isGreaterThanOrEqualTo(0);
+    }
+
+    /**
+     * And they count over the rows the filters describe, not over everything.
+     *
+     * <p>The tiles took no filters at all, so a narrowed table sat under the totals for the whole
+     * log. Both halves are asserted: filtering has to *change* the figures, and it has to change
+     * them downwards — a filtered count larger than the unfiltered one would mean the predicate was
+     * not being applied.
+     */
+    @Test
+    @Transactional
+    void summaryFollowsTheFilters() {
+        auditService.record(AuditEventType.DELETED, AuditModule.DISPOSAL, "TEST_SUMMARY_FILTERED",
+                "Disposed something during a test", AuditSeverity.CRITICAL, null, null);
+
+        AuditTrailSummary all = unfilteredSummary();
+        AuditTrailSummary critical = auditTrailService.summary(
+                null, null, null, "critical", null, null, null, null, null);
+
+        assertThat(critical.totalEvents())
+                .as("a severity filter must narrow the tiles, not leave them describing the whole log")
+                .isPositive()
+                .isLessThanOrEqualTo(all.totalEvents());
+
+        AuditTrailSummary nothing = auditTrailService.summary(
+                "__no_event_will_ever_match_this__", null, null, null, null, null, null, null, null);
+
+        assertThat(nothing.totalEvents())
+                .as("and a filter matching nothing must count nothing — SUM over no rows is null in "
+                        + "SQL, which reaches Java as a null Long rather than a zero")
+                .isZero();
+        assertThat(nothing.eventsToday()).isZero();
+        assertThat(nothing.flaggedEvents()).isZero();
+        assertThat(nothing.activeActors()).isZero();
+    }
+
+    private AuditTrailSummary unfilteredSummary() {
+        return auditTrailService.summary(null, null, null, null, null, null, null, null, null);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

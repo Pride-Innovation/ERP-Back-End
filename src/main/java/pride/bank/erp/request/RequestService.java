@@ -422,7 +422,6 @@ public class RequestService {
             String description,
             LocalDateTime timeOfSubmissionOfRequest,
             List<Long> statusIds,
-            String status,
             String requestedBy,
             String approver,
             Long requesterId,
@@ -433,7 +432,7 @@ public class RequestService {
             Long currentApproverId
     ) {
         try {
-            log.debug("Fetching requests with filters - page: {}, status: {}", pageNumber, status);
+            log.debug("Fetching requests with filters - page: {}, statusIds: {}", pageNumber, statusIds);
 
             RequestPage requestPage = RequestPage.builder()
                     .pageSize(pageSize)

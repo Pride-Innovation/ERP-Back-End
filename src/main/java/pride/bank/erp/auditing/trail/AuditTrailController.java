@@ -77,10 +77,32 @@ public class AuditTrailController {
         return new ResponseEntity<>(results, HttpStatus.OK);
     }
 
-    /** Counts across the whole table, for the four tiles a single page of rows cannot produce. */
+    /**
+     * The four tiles, counted over the rows the current filters describe.
+     *
+     * <p>A page of twenty-five rows cannot produce them, and counting the whole table regardless —
+     * which is what this did — put unfiltered totals above a filtered listing. It takes the same
+     * parameters as the listing so the two cannot describe different things.
+     *
+     * <p>No {@code background} flag: the summary is always fetched beside a listing that carries one,
+     * so recording it separately would double every entry.
+     */
     @GetMapping("/audit/trails/summary")
-    public ResponseEntity<AuditTrailSummary> summary() {
-        return new ResponseEntity<>(auditTrailService.summary(), HttpStatus.OK);
+    public ResponseEntity<AuditTrailSummary> summary(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String eventType,
+            @RequestParam(required = false) String module,
+            @RequestParam(required = false) String severity,
+            @RequestParam(required = false) Long actorId,
+            @RequestParam(required = false) String entityType,
+            @RequestParam(required = false) Long entityId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to
+    ) {
+        return new ResponseEntity<>(
+                auditTrailService.summary(
+                        search, eventType, module, severity, actorId, entityType, entityId, from, to),
+                HttpStatus.OK);
     }
 
     /**
