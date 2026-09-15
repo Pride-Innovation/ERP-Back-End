@@ -80,6 +80,22 @@ public class SecurityConfiguration {
                                 )
                                 .permitAll()
                                 // User Routes
+                                /*
+                                 * These three come BEFORE the generic /users/** POST matcher, and the
+                                 * order is the whole point: the first match wins, which is how a
+                                 * role holding only REJECT_REQUEST once found itself unable to
+                                 * reject. Put after, they would never be consulted.
+                                 */
+                                .requestMatchers(HttpMethod.GET, OWN_PROFILE_ROUTE, STAFF_PICKER_ROUTE)
+                                .authenticated()
+                                .requestMatchers(HttpMethod.POST, CHANGE_PASSWORD_ROUTE).authenticated()
+                                .requestMatchers(HttpMethod.POST,
+                                        USER_ACCESS_ROUTES, USER_ACCESS_ENABLE, USER_ACCESS_BLOCK,
+                                        USER_ACCESS_UNBLOCK, USER_ACCESS_LEAVE)
+                                .hasAuthority(MANAGE_USER_ACCESS)
+                                .requestMatchers(HttpMethod.PUT,
+                                        USER_IMAGE_ROUTE, USER_IMAGE_REMOVE_ROUTE)
+                                .authenticated()
                                 .requestMatchers(HttpMethod.POST, USER_ROUTE).hasAuthority(CREATE_USER)
                                 .requestMatchers(HttpMethod.GET, USER_ROUTE).hasAuthority(READ_USER)
                                 .requestMatchers(HttpMethod.DELETE, USER_ROUTE).hasAuthority(DELETE_USER)

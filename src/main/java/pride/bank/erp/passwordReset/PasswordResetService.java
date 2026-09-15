@@ -17,6 +17,7 @@ import pride.bank.erp.auditing.trail.AuditService;
 import pride.bank.erp.auditing.trail.AuditSeverity;
 import pride.bank.erp.config.JwtService;
 import pride.bank.erp.notification.Email;
+import pride.bank.erp.user.PasswordPolicy;
 import pride.bank.erp.user.User;
 import pride.bank.erp.user.UserRepository;
 
@@ -88,6 +89,16 @@ public class PasswordResetService {
 
     @Transactional
     public Map<String, Object> resetPassword(String token, String newPassword) {
+        /*
+         * Checked before the token, deliberately.
+         *
+         * A rule enforced on one of the two ways to set a password is not a rule, and this path
+         * checked nothing at all — a single character was accepted. Validating first also means a
+         * weak password is refused the same way whether the link was good or not, so the response
+         * cannot be used to tell a valid reset token from an expired one.
+         */
+        PasswordPolicy.validate(newPassword);
+
         String email = jwtService.extractUserEmail(token);
 
         if (email == null || email.isEmpty()) {

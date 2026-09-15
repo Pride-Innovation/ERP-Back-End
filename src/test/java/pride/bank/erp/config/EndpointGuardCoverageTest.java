@@ -85,7 +85,36 @@ class EndpointGuardCoverageTest {
             // the file never arrives, which reads as a broken button rather than a boundary. It
             // discloses nothing either: column names, for tables the caller can already open, whose
             // columns are already on their screen. The write is guarded (UPDATE_EXPORT_COLUMNS).
-            "GET /api/v1/export-columns"
+            "GET /api/v1/export-columns",
+            // Changing your own password. The handler resolves the account from the JWT and can only
+            // ever touch the caller's own record, so authentication is not a weaker guard here — it
+            // is the whole question. It previously sat under the /users/** POST matcher and so
+            // demanded CREATE_USER: measured, 22 of 27 accounts could not change their own password.
+            "POST /api/v1/users/change-password",
+            // Your own profile picture. Both PUTs sit under /users/** and so demanded UPDATE_USER,
+            // which 5 of 27 accounts hold — setting your own photograph is not administering the
+            // staff directory. Still scoped in the service (requireUserInScope), so this is not a
+            // way to change a colleague's.
+            "PUT /api/v1/users/image/{userID}",
+            "PUT /api/v1/users/remove/image/{userID}",
+            // Your own record, resolved from the JWT and taking no id — so it can only ever return
+            // the caller. It exists because reading your own profile through the *directory*
+            // endpoint required READ_USER, which also opened the Users page, which needs READ_ROLE
+            // for one of its filters: a chain of administrative permissions entered through a page
+            // about yourself.
+            "GET /api/v1/users/me",
+            /*
+             * Colleagues at your own branch, for the leave form's acting-person picker. Same
+             * reasoning as /users/me: it takes no parameters and resolves the caller from the JWT,
+             * so it can only ever answer about the branch that caller belongs to.
+             *
+             * Listed even though the prober does not currently flag it. Both of these resolve the
+             * caller from the request and refuse when there is none — which is a *business* refusal,
+             * and `refusedWithNoAuthorities` cannot tell that apart from a filter-chain one. So they
+             * read as guarded to this test while being authenticated-only in fact. Naming them here
+             * keeps the intent visible rather than resting on that accident.
+             */
+            "GET /api/v1/users/picker"
     );
 
     /**

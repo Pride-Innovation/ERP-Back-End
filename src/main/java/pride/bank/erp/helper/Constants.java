@@ -36,6 +36,58 @@ public class Constants {
     public static final String UPDATE_PERMISSION = "UPDATE_PERMISSION";
     public static final String USER_ROUTE = GENERAL_ROUTE + "/users/**";
     public static final String REGISTER_USER_ROUTE = GENERAL_ROUTE + "/auth/register/**";
+    /**
+     * Changing your own password.
+     *
+     * <p>Matched ahead of {@link #USER_ROUTE} because it is a POST under {@code /users/**} and
+     * therefore inherited {@code CREATE_USER} — measured, **22 of 27 accounts could not change their
+     * own password**. The handler resolves the account from the JWT and can only ever touch the
+     * caller's own record, so authentication is not a weaker guard here; it is the whole question.
+     */
+    public static final String CHANGE_PASSWORD_ROUTE = GENERAL_ROUTE + "/users/change-password";
+
+    /**
+     * Enable / disable / block / unblock / return-from-leave.
+     *
+     * <p>Also POSTs under {@code /users/**}, so they answered to {@code CREATE_USER}: blocking
+     * somebody who already exists is not a creation, and the two are not the same decision — one
+     * adds a member of staff, the other takes away their access today.
+     */
+    public static final String USER_ACCESS_ROUTES = GENERAL_ROUTE + "/users/*/disable";
+    public static final String USER_ACCESS_ENABLE = GENERAL_ROUTE + "/users/*/enable";
+    public static final String USER_ACCESS_BLOCK = GENERAL_ROUTE + "/users/*/block";
+    public static final String USER_ACCESS_UNBLOCK = GENERAL_ROUTE + "/users/*/unblock";
+    public static final String USER_ACCESS_LEAVE = GENERAL_ROUTE + "/users/*/return-from-leave";
+
+    /**
+     * Your own profile picture.
+     *
+     * <p>PUTs under {@code /users/**}, so they demanded {@code UPDATE_USER} — which **5 of 27
+     * accounts hold**. Setting your own photograph is not administering the staff directory, and it
+     * is the same accident as the password endpoint: a self-service action inheriting an
+     * administrative permission from where it happens to sit in the URL space.
+     *
+     * <p>Still scoped in the service, so this does not become a way to change a colleague's picture:
+     * {@code requireUserInScope} runs on both, and the page only offers the control on your own
+     * profile.
+     */
+    /**
+     * Your own record. Matched ahead of {@link #USER_ROUTE} so that seeing your own profile does not
+     * require {@code READ_USER} — which pulled the Users page and {@code READ_ROLE} in behind it.
+     */
+    public static final String OWN_PROFILE_ROUTE = GENERAL_ROUTE + "/users/me";
+
+    /**
+     * The staff picker behind every "choose a person" dropdown in the application.
+     *
+     * <p>Matched ahead of {@link #USER_ROUTE} because applying for leave otherwise required
+     * {@code READ_USER} — the form loaded the whole staff directory to fill one dropdown.
+     */
+    public static final String STAFF_PICKER_ROUTE = GENERAL_ROUTE + "/users/picker";
+
+    public static final String USER_IMAGE_ROUTE = GENERAL_ROUTE + "/users/image/*";
+    public static final String USER_IMAGE_REMOVE_ROUTE = GENERAL_ROUTE + "/users/remove/image/*";
+
     public static final String ROLE_ROUTE = GENERAL_ROUTE + "/roles/**";
     public static final String PERMISSION_ROUTE = GENERAL_ROUTE + "/permissions/**";
     public static final String AUTH_ROUTE = GENERAL_ROUTE + "/auth/login";
@@ -157,6 +209,17 @@ public class Constants {
      */
     public static final String UPDATE_EXPORT_COLUMNS = "UPDATE_EXPORT_COLUMNS";
 
+    /**
+     * Enabling, disabling, blocking and unblocking an account, and returning somebody from leave.
+     *
+     * <p>Carved out of {@code CREATE_USER}, which these inherited only because they are POSTs under
+     * {@code /users/**}. Creating a member of staff and suspending one are different decisions — the
+     * second is the one taken in a hurry, at the moment somebody leaves or is suspended, and it
+     * should be grantable to whoever handles that without also handing them the ability to mint
+     * accounts.
+     */
+    public static final String MANAGE_USER_ACCESS = "MANAGE_USER_ACCESS";
+
     public static final String READ_SETTING = "READ_SETTING";
     public static final String CREATE_SETTING = "CREATE_SETTING";
     public static final String DELETE_SETTING = "DELETE_SETTING";
@@ -276,6 +339,24 @@ public class Constants {
 
     public static final String VIEW_ALL_BRANCH_INVENTORY = "VIEW_ALL_BRANCH_INVENTORY";
     public static final String MANAGE_ALL_BRANCH_INVENTORY = "MANAGE_ALL_BRANCH_INVENTORY";
+
+    /**
+     * Cross-branch reach over <b>people</b> — the staff directory, and the records behind it.
+     *
+     * <p>The directory used to borrow {@code VIEW_ALL_BRANCH_ASSETS} to answer this, because there
+     * was no people axis. That conflated two different disclosures: granting somebody cross-branch
+     * reach over the *asset register* silently gave them every member of staff's duty station,
+     * department, title and reporting line as well. The permission model keeps subjects apart
+     * precisely so that one grant cannot quietly imply another.
+     *
+     * <p><b>Migration-safe, by design.</b> Nothing holds these on the day they ship, so the resolver
+     * treats the asset answer as a fallback: PEOPLE at ALL <em>or</em> ASSETS at ALL means ALL. The
+     * new axis therefore only ever widens until somebody grants it, and the fallback can be removed
+     * once it has been. Without that, Head Office would have lost sight of branch staff overnight and
+     * cross-branch asset assignment would have stopped working.
+     */
+    public static final String VIEW_ALL_BRANCH_PEOPLE = "VIEW_ALL_BRANCH_PEOPLE";
+    public static final String MANAGE_ALL_BRANCH_PEOPLE = "MANAGE_ALL_BRANCH_PEOPLE";
 
     /** Role attached to the Admin Unit. Not a title role — see UnitRoleSeeder. */
     public static final String ADMIN_UNIT_ROLE = "ADMIN_UNIT";

@@ -10,6 +10,7 @@ package pride.bank.erp.user;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -81,6 +82,62 @@ public class UserService {
                 action, description, severity, "User", target.getId());
     }
 
+    /**
+     * Refuses the two ways an administrator can lock the bank out of its own user management.
+     *
+     * <h2>Locking yourself out</h2>
+     * Nothing stopped somebody disabling or blocking **their own** account. The next request fails
+     * authentication and there is no way back except editing the database — and the person who could
+     * have helped is the person who just did it.
+     *
+     * <h2>Locking everybody out</h2>
+     * Worse and quieter: disabling the **last** account that can manage access leaves nobody able to
+     * re-enable anyone, including themselves. Measured when this was written, only a handful of
+     * accounts held the permission at all, so the last one is a plausible click rather than a
+     * theoretical one.
+     *
+     * <p>Counted over accounts that are actually usable — an account that is already disabled or
+     * blocked cannot rescue anybody, so including it in the tally would let the real last holder be
+     * switched off while the count still read two.
+     *
+     * @param action what is being attempted, for the refusal message
+     */
+    private void requireNotLastWayIn(User target, String action) {
+        User actor = currentUserService.getCurrentUser();
+        if (actor != null && actor.getId() != null && actor.getId().equals(target.getId())) {
+            throw new BadRequestException(
+                    "You cannot " + action + " your own account. Ask another administrator to do it, "
+                            + "so there is always somebody able to undo it.");
+        }
+
+        boolean targetManagesAccess = holdsUserAccess(target);
+        if (!targetManagesAccess) return;
+
+        long remaining = userRepository.findAll().stream()
+                .filter(u -> !u.getId().equals(target.getId()))
+                .filter(User::isEnabled)
+                .filter(User::isAccountNonLocked)
+                .filter(u -> !u.isBlocked())
+                .filter(this::holdsUserAccess)
+                .count();
+
+        if (remaining == 0) {
+            throw new BadRequestException(
+                    "This is the only active account that can manage user access. " + capitalise(action)
+                            + " it would leave nobody able to enable or unblock anyone — including "
+                            + "themselves. Grant the permission to somebody else first.");
+        }
+    }
+
+    private boolean holdsUserAccess(User user) {
+        return user.getAuthorities().stream()
+                .anyMatch(a -> pride.bank.erp.helper.Constants.MANAGE_USER_ACCESS.equals(a.getAuthority()));
+    }
+
+    private static String capitalise(String value) {
+        return value.isEmpty() ? value : Character.toUpperCase(value.charAt(0)) + value.substring(1);
+    }
+
     private static String describe(User user) {
         String name = ((user.getFirstName() == null ? "" : user.getFirstName()) + " "
                 + (user.getLastName() == null ? "" : user.getLastName())).trim();
@@ -90,6 +147,126 @@ public class UserService {
     public User findUser(Long userId) throws NotFoundException {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new NotFoundException("User with ID " + userId + " not found"));
+    }
+
+    /**
+     * The signed-in user's own record.
+     *
+     * <p>Takes no id and reads none, which is what lets {@code GET /users/me} answer to
+     * authentication alone — there is no argument to point at somebody else.
+     */
+    public User currentUser() {
+        User user = currentUserService.getCurrentUser();
+        if (user == null) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Your account could not be identified from this session.");
+        }
+        return user;
+    }
+
+    /**
+     * People this user may choose between - the one list behind every staff picker in the app.
+     *
+     * <h2>The problem it solves</h2>
+     * A dozen screens offer a person dropdown: Requested By and Approver on the four request tabs,
+     * Assigned To on the assets register and its form, Reassign, Repair, the movement recipient, and
+     * the acting person on the leave form. Every one of them loaded {@code GET /users} - the
+     * <b>staff directory</b> - so every one of them required {@code READ_USER}.
+     *
+     * <p>That is a permission nobody wants to hand an officer, because it also opens the Users page
+     * and drags {@code READ_ROLE} in behind it. So the choice was between granting administrative
+     * rights broadly and leaving ordinary screens broken. Neither is a decision anybody made; it
+     * followed from a picker borrowing a directory.
+     *
+     * <h2>What changes, and what deliberately does not</h2>
+     * <b>The scope is identical.</b> It runs through the same {@link #resolveVisibleBranch} the
+     * directory uses, so a branch user is offered their own duty station and ALL scope is offered
+     * everyone - exactly what these dropdowns return today. Nothing is widened and nothing is
+     * narrowed.
+     *
+     * <p><b>The shape is narrower</b> ({@link StaffOptionDTO}) and <b>the permission is lower</b>
+     * (authentication alone). Those two go together: opening this to every signed-in user is only
+     * defensible because what comes back is a name, a job title and a work email rather than a
+     * personnel record.
+     *
+     * @param excludeSelf for the leave form, where nominating yourself to act in your own absence is
+     *                    not a choice worth offering
+     */
+    public Page<StaffOptionDTO> staffOptions(String name, boolean excludeSelf, Pageable pageable) {
+        Long branchId = resolveVisibleBranch(null);
+
+        User me = currentUserService.getCurrentUser();
+        Long myId = (excludeSelf && me != null) ? me.getId() : null;
+
+        UserSearchCriteria criteria = UserSearchCriteria.builder()
+                .name((name == null || name.isBlank()) ? null : name.trim())
+                .branchId(branchId)
+                .build();
+
+        Page<User> page = userSearchDao.findAllWithFilters(
+                UserPage.builder()
+                        .pageNumber(pageable.getPageNumber())
+                        .pageSize(pageable.getPageSize())
+                        .sortBy("firstName")
+                        .sortDirection(Sort.Direction.ASC)
+                        .build(),
+                criteria);
+
+        List<StaffOptionDTO> options = page.getContent().stream()
+                .filter(u -> myId == null || !myId.equals(u.getId()))
+                .map(StaffOptionDTO::from)
+                .toList();
+
+        /*
+         * The total comes from the query, not from `options.size()`. Dropping yourself removes one
+         * row from this page and does not change how many pages there are - reporting the filtered
+         * size as the total would make the pager disagree with what it can actually reach.
+         */
+        return new PageImpl<>(options, pageable, page.getTotalElements());
+    }
+
+    /**
+     * Refuses a user record outside the caller's reach.
+     *
+     * <h2>The gap this closes</h2>
+     * The **listing** was scoped — {@code resolveVisibleBranch} has narrowed it for some time — and
+     * everything reached **by id** was not. {@code findUser} is a bare {@code findById}, so the
+     * single read, the update, the image actions and all five account actions worked on any account
+     * in the bank for anyone holding the permission. A branch officer could not *find* a Head Office
+     * colleague through the directory, and could block them by knowing their id.
+     *
+     * <p>Exactly the shape assets had before {@code requireAssetInScope} and requests had before
+     * {@code requireRequestReadable}, and closed the same way.
+     *
+     * <p><b>Refuses rather than substituting.</b> The listing silently narrows, because an
+     * unasked-for branch parameter is routine there and a directory is a browsing surface. Naming a
+     * *person* is not browsing — it is a specific claim about a specific record, and quietly acting
+     * on somebody else's would be worse than saying no.
+     */
+    private void requireUserInScope(User target) {
+        if (seesEveryBranchOfPeople()) return;
+
+        Long mine = accessScopeService.currentUserBranchId();
+        Long theirs = target.getBranch() == null ? null : target.getBranch().getId();
+
+        /*
+         * A caller with no branch on record is refused rather than admitted.
+         *
+         * `currentUserBranchId` returns null for two opposite callers — one who may see everything
+         * and one who is simply unconfigured — and downstream a null reads as "no restriction". That
+         * ambiguity handed an unconfigured account the whole movement register once already.
+         */
+        if (mine == null || theirs == null || !mine.equals(theirs)) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "This account belongs to another branch and is not yours to manage.");
+        }
+    }
+
+    /** The scoped read every by-id path goes through. */
+    private User findUserInScope(Long userId) throws NotFoundException {
+        User user = findUser(userId);
+        requireUserInScope(user);
+        return user;
     }
 
     @Transactional
@@ -189,7 +366,7 @@ public class UserService {
     @Transactional
     public User updateUser(@NonNull UserDTO request, Long userId)
             throws NotFoundException {
-        User user = findUser(userId);
+        User user = findUserInScope(userId);
         // Captured before the setters overwrite it — the audit sentence below names the change, and a
         // title change re-routes this person's approval ladder.
         Title previousTitle = user.getTitle();
@@ -251,7 +428,8 @@ public class UserService {
     }
 
     public User deleteUser(Long userId) throws NotFoundException {
-        User user = findUser(userId);
+        User user = findUserInScope(userId);
+        requireNotLastWayIn(user, "disable");
         user.setEnabled(false);
         User saved = userRepository.save(user);
         audit(pride.bank.erp.auditing.trail.AuditEventType.DELETED, "USER_DISABLED", saved,
@@ -261,7 +439,8 @@ public class UserService {
     }
 
     public User blockUser(Long userId) throws NotFoundException {
-        User user = findUser(userId);
+        User user = findUserInScope(userId);
+        requireNotLastWayIn(user, "block");
         user.setBlocked(true);
         user.setAccountNonLocked(false);
         User saved = userRepository.save(user);
@@ -272,7 +451,7 @@ public class UserService {
     }
 
     public User enableUser(Long userId) throws NotFoundException {
-        User user = findUser(userId);
+        User user = findUserInScope(userId);
         user.setEnabled(true);
         user.setAccountNonLocked(true);
         user.setBlocked(false);
@@ -285,7 +464,7 @@ public class UserService {
 
     @Transactional
     public User unblockUser(Long userID) throws NotFoundException {
-        User user = findUser(userID);
+        User user = findUserInScope(userID);
         user.setAccountNonLocked(true);
         user.setBlocked(false);
         user.setFailedLoginAttempts(0);
@@ -299,7 +478,7 @@ public class UserService {
 
     @Transactional
     public User returnUserFromLeave(Long userId) throws NotFoundException {
-        User user = findUser(userId);
+        User user = findUserInScope(userId);
         user.setEnabled(true);
         checkIfUserIsReturningFromLeave(user);
         return userRepository.save(user);
@@ -357,14 +536,39 @@ public class UserService {
      * attack, just as a request that gets the caller's own branch back.
      */
     private Long resolveVisibleBranch(Long requestedBranchId) {
-        boolean seesEveryBranch = accessScopeService.scopeFor(
-                pride.bank.erp.access.ScopeSubject.ASSETS,
-                pride.bank.erp.access.ScopeAction.VIEW) == pride.bank.erp.dashboard.DashboardScope.ALL;
-
-        if (seesEveryBranch) {
+        if (seesEveryBranchOfPeople()) {
             return requestedBranchId;   // null legitimately means every branch
         }
         return accessScopeService.currentUserBranchId();
+    }
+
+    /**
+     * Whether this caller may see staff beyond their own duty station.
+     *
+     * <h2>Two axes, and a fallback that has to stay for now</h2>
+     * This asked {@code ScopeSubject.ASSETS}, because there was no people axis — so granting somebody
+     * cross-branch reach over the *asset register* silently handed them every member of staff's duty
+     * station, department, title and reporting line. Those are different disclosures and the
+     * permission model separates subjects precisely so one grant cannot imply another.
+     *
+     * <p>{@code PEOPLE} exists now, and **nobody holds it on the day it ships**. Asking for it alone
+     * would narrow Head Office and the units to their own branch overnight — breaking every staff
+     * picker and cross-branch asset assignment with it, which would read as a fault rather than a
+     * policy change. So the old signal is kept as a fallback and the two are OR'd: the new axis can
+     * only ever *widen* until somebody grants it.
+     *
+     * <p><b>Remove the fallback once the multipliers are granted</b>, and not before — the whole
+     * point of the separation is lost while ASSETS still answers for PEOPLE.
+     */
+    private boolean seesEveryBranchOfPeople() {
+        return accessScopeService.scopeFor(
+                        pride.bank.erp.access.ScopeSubject.PEOPLE,
+                        pride.bank.erp.access.ScopeAction.VIEW)
+                        == pride.bank.erp.dashboard.DashboardScope.ALL
+                || accessScopeService.scopeFor(
+                        pride.bank.erp.access.ScopeSubject.ASSETS,
+                        pride.bank.erp.access.ScopeAction.VIEW)
+                        == pride.bank.erp.dashboard.DashboardScope.ALL;
     }
 
     public Page<User> fetchUsers(
@@ -408,12 +612,27 @@ public class UserService {
                 ? Sort.Direction.DESC : Sort.Direction.ASC;
     }
 
+    /**
+     * The type-ahead behind the staff pickers, narrowed the same way the directory is.
+     *
+     * <h2>It was the way around the scoping</h2>
+     * `GET /users` has been scoped for some time; this went straight to the repository with no branch
+     * check at all. **24 of 27 accounts hold `READ_USER`**, so anyone who could open the Users page
+     * could retrieve any member of staff in the bank by typing part of a name, an email or a staff
+     * number — the whole of what the listing was narrowed to protect, through the other door.
+     *
+     * <p>Scoping a listing and leaving its search unscoped is the easiest version of this mistake to
+     * make, because the two look like different features and are the same disclosure.
+     */
     public Page<User> searchUserByEmailNameStaffNumber(String text, Pageable pageable) {
-        return userRepository.searchByNameEmailOrStaffNumber(text, pageable);
+        Long branchId = resolveVisibleBranch(null);
+        return branchId == null
+                ? userRepository.searchByNameEmailOrStaffNumber(text, pageable)
+                : userRepository.searchByNameEmailOrStaffNumberInBranch(text, branchId, pageable);
     }
 
     public User uploadUserImage(MultipartFile file, Long userID) throws NotFoundException, IOException {
-        User user = findUser(userID);
+        User user = findUserInScope(userID);
         String filePath = null;
 
         if (file != null && !file.isEmpty()) {
@@ -428,7 +647,7 @@ public class UserService {
     }
 
     public User removeUserImage(Long userID) throws NotFoundException {
-        User user = findUser(userID);
+        User user = findUserInScope(userID);
         user.setProfileImage(null);
         return userRepository.save(user);
     }
@@ -449,11 +668,30 @@ public class UserService {
             throw new IllegalArgumentException("New password must be different from the old password.");
         }
 
+        // The same rule the reset link enforces. Two ways to set a password, one definition of what
+        // a password is — they were separate code with no shared notion of validity, and one of them
+        // had no notion at all.
+        PasswordPolicy.validate(newPassword);
+
         // Set new password
         String encodedNewPassword = passwordEncoder.encode(newPassword);
         user.setPassword(encodedNewPassword);
 
-        return userRepository.save(user);
+        User saved = userRepository.save(user);
+
+        /*
+         * Recorded, where it was not before.
+         *
+         * Block, enable and disable all write a row; a password change — the one event where "who,
+         * and when" is asked most often — wrote none. The trail carries the fact and the timestamp
+         * and nothing else: there is no secret here, and `audit_event` is the right place for it
+         * precisely because it can hold the fact without holding the credential.
+         */
+        audit(pride.bank.erp.auditing.trail.AuditEventType.UPDATED, "PASSWORD_CHANGED", saved,
+                describe(saved) + " changed their own password",
+                pride.bank.erp.auditing.trail.AuditSeverity.CRITICAL);
+
+        return saved;
     }
 
     private static final Pattern EMAIL_PATTERN =

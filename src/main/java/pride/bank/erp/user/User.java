@@ -80,6 +80,15 @@ public class User implements UserDetails {
     @NotBlank(message = Constants.BLANK_FIELD_VALIDATOR)
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String password;
+    /**
+     * Unique, like the email beside it — see V23.
+     *
+     * <p>The service already refused duplicates on create and on update; the database held no
+     * opinion, so two concurrent creations both passed the check and both committed. The column
+     * stays nullable: MySQL treats NULLs as distinct, so an account may arrive before its number is
+     * known without colliding with another.
+     */
+    @Column(unique = true)
     private String staffNumber;
     private String gender;
     private String availability;

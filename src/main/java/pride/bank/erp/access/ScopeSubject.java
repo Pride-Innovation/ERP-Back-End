@@ -26,7 +26,19 @@ public enum ScopeSubject {
     ASSETS(VIEW_ALL_BRANCH_ASSETS, MANAGE_ALL_BRANCH_ASSETS),
     REQUESTS(VIEW_ALL_BRANCH_REQUESTS, MANAGE_ALL_BRANCH_REQUESTS),
     MOVEMENTS(VIEW_ALL_BRANCH_MOVEMENTS, MANAGE_ALL_BRANCH_MOVEMENTS),
-    INVENTORY(VIEW_ALL_BRANCH_INVENTORY, MANAGE_ALL_BRANCH_INVENTORY);
+    INVENTORY(VIEW_ALL_BRANCH_INVENTORY, MANAGE_ALL_BRANCH_INVENTORY),
+
+    /**
+     * People — the staff directory and the user records behind it.
+     *
+     * <p>Added because the directory was answering a people question with the *asset* axis, so
+     * cross-branch reach over equipment silently carried cross-branch reach over colleagues' duty
+     * stations, departments and reporting lines.
+     *
+     * <p>See {@code UserService#seesEveryBranchOfPeople} for the deliberate fallback that keeps
+     * today's reach intact until these multipliers are actually granted.
+     */
+    PEOPLE(VIEW_ALL_BRANCH_PEOPLE, MANAGE_ALL_BRANCH_PEOPLE);
 
     private final String viewMultiplier;
     private final String manageMultiplier;

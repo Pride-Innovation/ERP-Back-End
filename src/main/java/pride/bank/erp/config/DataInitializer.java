@@ -39,6 +39,9 @@ import java.util.Set;
 
 import static pride.bank.erp.helper.Constants.ADMIN;
 import static pride.bank.erp.helper.Constants.UPDATE_EXPORT_COLUMNS;
+import static pride.bank.erp.helper.Constants.MANAGE_USER_ACCESS;
+import static pride.bank.erp.helper.Constants.VIEW_ALL_BRANCH_PEOPLE;
+import static pride.bank.erp.helper.Constants.MANAGE_ALL_BRANCH_PEOPLE;
 import static pride.bank.erp.helper.Constants.VIEW_ALL_BRANCHES;
 import static pride.bank.erp.helper.Constants.READ_ASSIGNMENT_HISTORY;
 import static pride.bank.erp.helper.Constants.READ_REPAIR_HISTORY;
@@ -143,6 +146,7 @@ public class DataInitializer {
     private final RolePermissionSeeder rolePermissionSeeder;
     private final UnitRoleSeeder unitRoleSeeder;
     private final AssetTrailPermissionSeeder assetTrailPermissionSeeder;
+    private final UserAccessPermissionSeeder userAccessPermissionSeeder;
     private final TitleSeeder titleSeeder;
     private final BranchHeadOfficeSeeder branchHeadOfficeSeeder;
     private final AssetCategoryFeatureSeeder assetCategoryFeatureSeeder;
@@ -185,6 +189,16 @@ public class DataInitializer {
              * ever be backfilled — every role would silently lose both tabs.
              */
             assetTrailPermissionSeeder.seedAssetTrailPermissions();
+
+            /*
+             * Before initializePermissions(), for the same reason as the line above it.
+             *
+             * The absence of the MANAGE_USER_ACCESS row is the marker for "this is the startup that
+             * splits the account actions out of CREATE_USER". initializePermissions() creates the
+             * row itself, so running it first would erase the marker, backfill nobody, and leave
+             * enable / disable / block / unblock unavailable to every role at once.
+             */
+            userAccessPermissionSeeder.seedUserAccessPermission();
 
             List<Permission> permissions = initializePermissions();
             Role superAdminRole = initializeSuperAdminRole(permissions);
@@ -264,6 +278,13 @@ public class DataInitializer {
                  * Settings → Roles → Action permissions, so granting it needs no new screen.
                  */
                 ensurePermission(UPDATE_EXPORT_COLUMNS),
+                /*
+                 * Carved out of CREATE_USER, which the account actions inherited only because they
+                 * are POSTs under /users/**. Nothing holds it on the day it ships — the seeder does
+                 * not grant it — so it must be given out in Settings → Roles, deliberately. That is
+                 * the right default for a permission that suspends somebody's access.
+                 */
+                ensurePermission(MANAGE_USER_ACCESS),
                 // Audit Trails
                 ensurePermission(READ_AUDIT),
                 ensurePermission(CREATE_AUDIT),
@@ -329,6 +350,8 @@ public class DataInitializer {
                 ensurePermission(MANAGE_ALL_BRANCH_MOVEMENTS),
                 ensurePermission(VIEW_ALL_BRANCH_INVENTORY),
                 ensurePermission(MANAGE_ALL_BRANCH_INVENTORY),
+                ensurePermission(VIEW_ALL_BRANCH_PEOPLE),
+                ensurePermission(MANAGE_ALL_BRANCH_PEOPLE),
                 // An asset's trail, split out of READ_ASSET. Declared here so the super
                 // administrator reconciles them like everything else; AssetTrailPermissionSeeder
                 // handles the one-time backfill onto existing asset readers.

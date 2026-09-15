@@ -79,4 +79,28 @@ public interface UserRepository extends JpaRepository<User, Long> {
             "   OR LOWER(u.email) LIKE LOWER(CONCAT('%', :text, '%')) " +
             "   OR LOWER(u.staffNumber) LIKE LOWER(CONCAT('%', :text, '%'))")
     Page<User> searchByNameEmailOrStaffNumber(@Param("text") String text, Pageable pageable);
+
+    /**
+     * The same search, narrowed to one duty station.
+     *
+     * <p>The branch predicate is written as an explicit <b>LEFT JOIN</b>, not as {@code u.branch.id}.
+     * A dotted path there would inner-join through a nullable association and drop every branchless
+     * account from the FROM clause before the comparison ran — the trap that has already emptied a
+     * branch-scoped movement listing, an approver inbox and a national roll-up. Those accounts should
+     * not match a branch filter, but they should be excluded *because the branch differs*, not
+     * because the join removed them where nobody could see it happen.
+     *
+     * <p>The text predicate is parenthesised, which the unscoped version above does not need and this
+     * one does: {@code AND} binds tighter than {@code OR}, so without the brackets the branch would
+     * apply to the staff-number clause alone and a search on a first name would return the whole bank.
+     */
+    @Query("SELECT u FROM User u LEFT JOIN u.branch b "
+            + "WHERE b.id = :branchId AND ("
+            + "     LOWER(u.firstName) LIKE LOWER(CONCAT('%', :text, '%')) "
+            + "  OR LOWER(u.lastName) LIKE LOWER(CONCAT('%', :text, '%')) "
+            + "  OR LOWER(u.email) LIKE LOWER(CONCAT('%', :text, '%')) "
+            + "  OR LOWER(u.staffNumber) LIKE LOWER(CONCAT('%', :text, '%')))")
+    Page<User> searchByNameEmailOrStaffNumberInBranch(@Param("text") String text,
+                                                      @Param("branchId") Long branchId,
+                                                      Pageable pageable);
 }
