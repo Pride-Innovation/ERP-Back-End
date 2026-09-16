@@ -36,7 +36,7 @@ import static pride.bank.erp.helper.Constants.*;
 @EnableWebSecurity
 // Without this, every @PreAuthorize in the codebase is silently ignored — the annotation compiles,
 // reads as protection, and enforces nothing. Enabling it activates them; no endpoint changes
-// behaviour except the ones that carry an annotation.
+// behavior except the ones that carry an annotation.
 @EnableMethodSecurity
 @RequiredArgsConstructor
 public class SecurityConfiguration {
@@ -175,7 +175,7 @@ public class SecurityConfiguration {
                                  * Per-category counts feeding the "Assets by Category" and "Asset
                                  * Condition" widgets. Accepts the dashboard authority as well as
                                  * READ_ASSET, matching the two request widgets above: someone
-                                 * granted DASH_VIEW_ASSETS to see the estate summarised should not
+                                 * granted DASH_VIEW_ASSETS to see the estate summarized should not
                                  * also need the permission that opens the full register. Without
                                  * this the GET rule below demanded READ_ASSET and the dashboard
                                  * rendered a widget its own endpoint then refused.
@@ -238,7 +238,7 @@ public class SecurityConfiguration {
                                  * The dashboard subject permissions belong here too.
                                  *
                                  * Granting DASH_VIEW_STOCK is meant to be enough to see stock
-                                 * summarised without also opening the store pages — that separation
+                                 * summarized without also opening the store pages — that separation
                                  * is the whole reason the axis exists. While these named only the
                                  * READ_* permissions, the widget rendered on the subject grant and
                                  * its endpoint refused. ASSET_STATISTICS_ROUTE above already lists
@@ -291,6 +291,33 @@ public class SecurityConfiguration {
                                 .accessDeniedHandler(customBearerTokenAccessDeniedHandler)
                 )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                /*
+                 * The overridden verb is restored here: after CORS, before authorization.
+                 *
+                 * Both halves of that sentence are load-bearing, and getting the first one wrong is
+                 * what broke every write in development.
+                 *
+                 * BEFORE AUTHORIZATION, because authorization is method-specific - 17 rules below
+                 * name HttpMethod.PUT or DELETE, and the same path routinely carries a different
+                 * permission per verb. Judged as the POST it arrived as, a holder of CREATE_ASSET
+                 * would pass the POST rule and land on the @DeleteMapping.
+                 *
+                 * AFTER CORS, because CORS is about what the *browser actually sent*. The filter was
+                 * first registered as a servlet filter at HIGHEST_PRECEDENCE, ahead of the whole
+                 * chain - so DefaultCorsProcessor saw a method of "PUT" on a request the browser had
+                 * sent as POST, found PUT absent from allowedMethods, and answered
+                 * "Reject: HTTP 'PUT' is not allowed" with a 403. The preflight had already
+                 * succeeded, because that one correctly asks about POST; only the real request
+                 * failed, which is why it looked like a server fault rather than a CORS rule.
+                 *
+                 * Widening allowedMethods to include PUT and DELETE would also have silenced it, and
+                 * would have been the wrong fix twice over: it would make the application advertise
+                 * `Access-Control-Allow-Methods: PUT, DELETE` to browsers - verbs the firewall drops -
+                 * and it would leave the CORS layer adjudicating a verb that never crossed the
+                 * network.
+                 */
+                .addFilterBefore(new HttpMethodOverrideFilter(),
+                        org.springframework.security.web.access.intercept.AuthorizationFilter.class)
                 .logout(logout ->
                         logout
                                 .logoutUrl(LOGOUT)
@@ -303,12 +330,72 @@ public class SecurityConfiguration {
         return http.build();
     }
 
+    /**
+     * Cross-origin rules — which matter in development and, in production, must not be needed at all.
+     *
+     * <h2>The production constraint, stated here because this is where someone will look</h2>
+     * The firewall <b>blocks OPTIONS</b>, and a CORS preflight <em>is</em> an OPTIONS request. This
+     * application already forces a preflight on every single call — it sends {@code Authorization}
+     * and {@code application/json}, neither of which is CORS-safe-listed — so behind the firewall a
+     * cross-origin deployment cannot work at all, and could not before this change either.
+     *
+     * <p>The front end must therefore be served from the <b>same origin</b> as the API in production
+     * (one host, one scheme, one port, with a reverse proxy sending {@code /api/v1/**} here). Nothing
+     * below then runs, because same-origin requests are never preflighted. Adding the two headers
+     * costs nothing extra for the same reason.
+     *
+     * <p>This configuration stays for local development, where the front end runs on :3000 against a
+     * backend on :7777 with no firewall in between.
+     */
+    /**
+     * The CSRF header the firewall requires to be present on state-changing requests.
+     *
+     * <h2>What this is, and what it is not</h2>
+     * The firewall rejects a POST that carries no CSRF token, so one has to be sent. It does
+     * <b>not</b> validate the token against a cookie, and neither does this application — CSRF stays
+     * {@code disable()}d below and nothing here reads the value.
+     *
+     * <p>That is not a gap. This API authenticates with a Bearer token held in the browser's
+     * {@code sessionStorage}, never a cookie, so a cross-site request cannot attach credentials in
+     * the first place — the attack the token would defend against is already impossible. Turning on
+     * stateful CSRF validation would add a session to a deliberately {@code STATELESS} service to
+     * protect against something it is not exposed to.
+     *
+     * <p>Named here so the CORS whitelist and the front end cannot drift on the spelling; a mismatch
+     * would surface as a preflight failure naming no header.
+     */
+    public static final String CSRF_TOKEN_HEADER = "X-CSRF-TOKEN";
+
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(List.of(environment));
-        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+        /*
+         * GET and POST, because those are the only two verbs that reach this service.
+         *
+         * The firewall accepts nothing else. PUT and DELETE are gone from this list not because the
+         * server refuses them - it still serves them, and a direct API client inside the firewall may
+         * still use them - but because this list is what a *browser* is told it may send, and a
+         * browser that believes it may send a PUT will send one and have it blocked. Advertising a
+         * verb the network will drop is how a working page becomes an unexplained failure.
+         *
+         * OPTIONS is not listed either, and never needed to be: this list is checked against
+         * `Access-Control-Request-Method`, which names the verb the preflight is *asking about*, not
+         * the preflight's own verb. Listing it only suggested the application expects OPTIONS traffic,
+         * which it must not - see the note above about why preflight cannot happen in production at
+         * all.
+         */
+        configuration.setAllowedMethods(List.of("GET", "POST"));
+        /*
+         * This is a whitelist, not a default-open list: a header absent from it is rejected at
+         * preflight, with a CORS error that says nothing about which header was at fault. Both of
+         * the new ones have to be named or every write fails in development.
+         */
+        configuration.setAllowedHeaders(List.of(
+                "Authorization",
+                "Content-Type",
+                HttpMethodOverrideFilter.HEADER,
+                CSRF_TOKEN_HEADER));
         configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

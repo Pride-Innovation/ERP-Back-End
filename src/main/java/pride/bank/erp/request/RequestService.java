@@ -426,6 +426,7 @@ public class RequestService {
             String approver,
             Long requesterId,
             Long approverId,
+            Long requesterDepartmentId,
             Boolean deleted,
             LocalDateTime startDate,
             LocalDateTime endDate,
@@ -454,6 +455,7 @@ public class RequestService {
                     // deliberately not `currentApproverId`, which would switch that scope off.
                     .raisedByUserId(requesterId)
                     .approverId(approverId)
+                    .requesterDepartmentId(requesterDepartmentId)
                     .deleted(deleted)
                     .timeOfSubmissionOfRequest(timeOfSubmissionOfRequest)
                     .startDate(startDate)

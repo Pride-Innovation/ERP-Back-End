@@ -143,6 +143,21 @@ public class RequestSearchDao {
                     requesterBranch.get("id"), requestSearchCriteria.getRequesterBranchId()));
         }
 
+        /*
+         * The requester's department, through the same reused LEFT joins as the branch above.
+         *
+         * `requester` and `department` are both nullable, so dotted-path navigation would compile to
+         * INNER joins and drop rows in the FROM clause - trap #1. Reusing the joins also keeps the
+         * FROM flat: `From#join` adds a new one on every call, and a duplicated join inflates both
+         * the rows and the count that drives the pager.
+         */
+        if (Objects.nonNull(requestSearchCriteria.getRequesterDepartmentId())) {
+            Join<Object, Object> requesterDepartment =
+                    reuseJoin(reuseJoin(requestRoot, "requester"), "department");
+            predicates.add(criteriaBuilder.equal(
+                    requesterDepartment.get("id"), requestSearchCriteria.getRequesterDepartmentId()));
+        }
+
         if (Objects.nonNull(requestSearchCriteria.getDeleted())) {
             predicates.add(criteriaBuilder.equal(requestRoot.get("deleted"), requestSearchCriteria.getDeleted()));
         }

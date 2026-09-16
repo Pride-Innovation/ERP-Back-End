@@ -145,6 +145,20 @@ public class AssetSearchDao {
             predicates.add(locationPredicate(assetRoot, assetSearchCriteria.getLocation()));
         }
 
+        /*
+         * The holder's department — an asset has none of its own.
+         *
+         * Through the cached LEFT joins rather than a dotted path: `assignedTo` is nullable, and
+         * `assetRoot.get("assignedTo").get("department")` would compile to INNER joins that drop
+         * every unassigned asset in the FROM clause. That is trap #1, and here it would not even be
+         * visible - an unassigned asset has no department either way, so the result would look right
+         * while the query was wrong for the next person to reuse the join.
+         */
+        if (Objects.nonNull(assetSearchCriteria.getDepartmentId())) {
+            predicates.add(criteriaBuilder.equal(
+                    holderDepartment(assetRoot).get("id"), assetSearchCriteria.getDepartmentId()));
+        }
+
         if (Objects.nonNull(assetSearchCriteria.getScopedBranchId())) {
             // Matches the asset's own branch or its holder's, so an item assigned to someone at this
             // branch stays visible even if the asset row still points elsewhere.
@@ -205,17 +219,25 @@ public class AssetSearchDao {
         Expression<String> assetBranchName = criteriaBuilder.lower(assetBranch(assetRoot).get("name"));
         Expression<String> holderBranchName = criteriaBuilder.lower(holderBranch(assetRoot).get("name"));
         Expression<String> holderDepartmentName =
-                criteriaBuilder.lower(reuseJoin(holder, "department").get("name"));
+                criteriaBuilder.lower(holderDepartment(assetRoot).get("name"));
 
         return criteriaBuilder.or(
                 // The asset's own branch.
                 criteriaBuilder.like(assetBranchName, search),
                 // Its holder's branch — an asset follows the person holding it.
                 criteriaBuilder.like(holderBranchName, search),
-                // At Head Office, people search by department rather than by branch, since everyone
-                // shares the one branch name.
+                /*
+                 * At Head Office people search by department, because one branch name covers
+                 * eighteen people across four of them.
+                 *
+                 * Keyed on the branch's own flag rather than on `name = "head office"`, which is what
+                 * stood here. A branch is renamed from Settings, and the day somebody makes it
+                 * "Head Office - Kampala" this clause matches nothing and the department search
+                 * silently stops working — with an empty result that reads as "no such assets".
+                 * The same fault the Stock report had when it matched statuses by display name.
+                 */
                 criteriaBuilder.and(
-                        criteriaBuilder.equal(holderBranchName, "head office"),
+                        criteriaBuilder.isTrue(holderBranch(assetRoot).get("isHeadOffice")),
                         criteriaBuilder.like(holderDepartmentName, search)
                 )
         );
@@ -238,6 +260,11 @@ public class AssetSearchDao {
 
     private Join<Object, Object> assetBranch(Root<Asset> assetRoot) {
         return reuseJoin(assetRoot, "branch");
+    }
+
+    /** The holder's department. Shared with {@code locationPredicate}, so the joins stay flat. */
+    private Join<Object, Object> holderDepartment(Root<Asset> assetRoot) {
+        return reuseJoin(holderJoin(assetRoot), "department");
     }
 
     /**

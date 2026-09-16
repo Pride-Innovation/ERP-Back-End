@@ -18,6 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import pride.bank.erp.advice.AccessDenied;
 
 /**
  * Pins which authority each asset action answers to.
@@ -42,6 +43,15 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 @SpringBootTest
 @AutoConfigureMockMvc
 class AssetRouteAuthorizationTest {
+    /*
+     * The status a refusal arrives under, read from the application rather than written as 403.
+     *
+     * The firewall in front of this service blocks 403, so refusals travel as AccessDenied.STATUS
+     * instead. Hard-coding the number here would mean a firewall rule change breaks nine tests in
+     * four files with no hint that they are all the same fact; reading it from the source keeps the
+     * assertion about *being refused* rather than about a number.
+     */
+
 
     private static final String API = "/api/v1";
 
@@ -65,7 +75,7 @@ class AssetRouteAuthorizationTest {
     private void assertForbidden(org.springframework.test.web.servlet.RequestBuilder request) throws Exception {
         assertThat(mockMvc.perform(request).andReturn().getResponse().getStatus())
                 .as("expected the route to be refused")
-                .isEqualTo(403);
+                .isEqualTo(AccessDenied.STATUS.value());
     }
 
     /**
@@ -87,7 +97,7 @@ class AssetRouteAuthorizationTest {
         }
         assertThat(status)
                 .as("expected authorization to let this through")
-                .isNotEqualTo(403);
+                .isNotEqualTo(AccessDenied.STATUS.value());
     }
 
     // ── Reassign — must not answer to CREATE_ASSET ───────────────────────────

@@ -58,6 +58,10 @@ public class AssetController {
             @RequestParam(required = false) String model,
             @RequestParam(required = false) String assignedTo, // Name of the assigned to user, can first name, last name or other name
             @RequestParam(required = false) String location,
+            // The holder's department. Declared here as well as on the criteria because Spring drops
+            // an undeclared parameter silently, which is how a filter comes to look functional while
+            // returning the unfiltered list.
+            @RequestParam(required = false) Long departmentId,
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
             LocalDateTime startDate,
@@ -92,6 +96,7 @@ public class AssetController {
                 model,
                 assignedTo,
                 location,
+                departmentId,
                 startDate,
                 endDate,
                 dueForDisposal,

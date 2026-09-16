@@ -82,6 +82,10 @@ public class RequestController {
              */
             @RequestParam(required = false) Long requesterId,
             @RequestParam(required = false) Long approverId,
+            // The requester's department. Declared here as well as on the criteria because Spring
+            // drops an undeclared parameter silently - a filter that looks wired and returns the
+            // unfiltered list is trap #2, and this page has been bitten by it before.
+            @RequestParam(required = false) Long requesterDepartmentId,
             @RequestParam(required = false, defaultValue = "false") Boolean deleted,
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
@@ -107,6 +111,7 @@ public class RequestController {
                 approver,
                 requesterId,
                 approverId,
+                requesterDepartmentId,
                 deleted,
                 startDate,
                 endDate,

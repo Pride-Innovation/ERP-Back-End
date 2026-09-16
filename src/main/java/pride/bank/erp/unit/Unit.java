@@ -50,7 +50,7 @@ public class Unit {
      * and nothing else: it was consulted only for {@code GROUP_EMAIL} workflow routing and the
      * resulting inbox, so an Admin Unit officer and a branch officer holding the same title role had
      * identical rights over every action in the application. The seniority the bank actually works
-     * to was modelled on role names — {@code ADMIN_OFFICER}, {@code ADMIN_MANAGER} — that were never
+     * to was modeled on role names — {@code ADMIN_OFFICER}, {@code ADMIN_MANAGER} — that were never
      * seeded, so the code expressing it never ran.
      *
      * <p>Membership now grants: adding someone to Admin Unit confers the unit's roles, removing them

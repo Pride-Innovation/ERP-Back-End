@@ -236,20 +236,40 @@ public class ApplicationExceptionHandler {
         return errorDetail;
     }
 
+    /**
+     * Every authorization refusal in the application arrives here.
+     *
+     * <p>Both kinds: a rule in {@code SecurityConfiguration} or a {@code @PreAuthorize} refusing at
+     * the filter chain — routed in by {@code CustomBearerTokenAccessDeniedHandler} — and a scope
+     * check inside a service refusing a record. That single funnel is why moving off 403 is a change
+     * to two methods rather than to ninety call sites.
+     *
+     * <p>The status comes from {@link AccessDenied#STATUS} because the firewall in front of this
+     * service blocks 403 and replaces it with its own page, so a refusal sent that way never reaches
+     * the caller. The status is transport; {@code errorCode} is the meaning. See {@link AccessDenied}.
+     */
     @ExceptionHandler(AccessDeniedException.class)
-    @ResponseStatus(HttpStatus.FORBIDDEN)
     public ProblemDetail handleAccessDeniedException(AccessDeniedException ex) {
         ProblemDetail errorDetail = ProblemDetail
-                .forStatusAndDetail(HttpStatus.FORBIDDEN, ex.getMessage());
+                .forStatusAndDetail(AccessDenied.STATUS, ex.getMessage());
+        errorDetail.setProperty("errorCode", AccessDenied.ERROR_CODE);
         errorDetail.setProperty("access_denied_reason", "Not Authorized");
         return errorDetail;
     }
 
+    /**
+     * A token that is absent, malformed or expired where one was required.
+     *
+     * <p>Moved off 403 with its neighbour, and deliberately <b>not</b> onto 401: the front end reads
+     * 401 as "the session expired", tries a refresh and then signs the user out. This exception is
+     * also raised for a token that is simply wrong for the route, and logging somebody out for that
+     * would be a worse answer than telling them.
+     */
     @ExceptionHandler(InsufficientAuthenticationException.class)
-    @ResponseStatus(HttpStatus.FORBIDDEN)
     public ProblemDetail handleInsufficientAuthenticationException(InsufficientAuthenticationException ex) {
         ProblemDetail errorDetail = ProblemDetail
-                .forStatusAndDetail(HttpStatus.FORBIDDEN, ex.getMessage());
+                .forStatusAndDetail(AccessDenied.STATUS, ex.getMessage());
+        errorDetail.setProperty("errorCode", AccessDenied.ERROR_CODE);
         errorDetail.setProperty("access_denied_reason", "Invalid or Expired Token");
         return errorDetail;
     }

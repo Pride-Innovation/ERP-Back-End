@@ -10,6 +10,7 @@ import org.springframework.test.web.servlet.RequestBuilder;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import pride.bank.erp.advice.AccessDenied;
 
 /**
  * Every dashboard endpoint must admit everyone the dashboard shows its widget to.
@@ -42,6 +43,15 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 @SpringBootTest
 @AutoConfigureMockMvc
 class DashboardWidgetEndpointTest {
+    /*
+     * The status a refusal arrives under, read from the application rather than written as 403.
+     *
+     * The firewall in front of this service blocks 403, so refusals travel as AccessDenied.STATUS
+     * instead. Hard-coding the number here would mean a firewall rule change breaks nine tests in
+     * four files with no hint that they are all the same fact; reading it from the source keeps the
+     * assertion about *being refused* rather than about a number.
+     */
+
 
     private static final String API = "/api/v1";
 
@@ -58,7 +68,7 @@ class DashboardWidgetEndpointTest {
         assertThat(status)
                 .as("the dashboard renders this widget for this authority, so its endpoint must "
                         + "admit it — otherwise the page shows a card that cannot load")
-                .isNotEqualTo(403);
+                .isNotEqualTo(AccessDenied.STATUS.value());
     }
 
     // ── Assets Across All Branches — qualifies on scope == ALL ──────────────
@@ -130,6 +140,6 @@ class DashboardWidgetEndpointTest {
         assertThat(mockMvc.perform(get(API + "/dashboard-asset-report/by-branch"))
                 .andReturn().getResponse().getStatus())
                 .as("the roll-up covers the whole bank and answers to ALL scope, not to a read")
-                .isEqualTo(403);
+                .isEqualTo(AccessDenied.STATUS.value());
     }
 }

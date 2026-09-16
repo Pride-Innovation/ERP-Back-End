@@ -26,6 +26,7 @@ import java.util.Set;
 import java.util.TreeSet;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import pride.bank.erp.advice.AccessDenied;
 
 /**
  * Fails when an endpoint answers to nothing but "be signed in".
@@ -61,6 +62,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest
 @AutoConfigureMockMvc
 class EndpointGuardCoverageTest {
+    /*
+     * The status a refusal arrives under, read from the application rather than written as 403.
+     *
+     * The firewall in front of this service blocks 403, so refusals travel as AccessDenied.STATUS
+     * instead. Hard-coding the number here would mean a firewall rule change breaks nine tests in
+     * four files with no hint that they are all the same fact; reading it from the source keeps the
+     * assertion about *being refused* rather than about a number.
+     */
+
 
     /**
      * Endpoints that are meant to answer to authentication alone, with the reason.
@@ -322,7 +332,7 @@ class EndpointGuardCoverageTest {
                 default -> null;
             };
             if (request == null) return true; // OPTIONS/HEAD — not an application surface
-            return mockMvc.perform(request).andReturn().getResponse().getStatus() == 403;
+            return mockMvc.perform(request).andReturn().getResponse().getStatus() == AccessDenied.STATUS.value();
         } catch (Exception handlerFailed) {
             // The handler ran and blew up, which means the chain admitted the request.
             return false;

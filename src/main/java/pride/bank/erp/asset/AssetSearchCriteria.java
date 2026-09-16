@@ -27,6 +27,22 @@ public class AssetSearchCriteria {
     private String model;
     private String assignedTo;
     private String location;
+
+    /**
+     * The department of whoever holds the asset.
+     *
+     * <p><b>An asset has no department of its own</b> — only the person holding it does. So this
+     * answers "assets currently held by somebody in that department", which is a narrower question
+     * than the bare label implies and excludes every unassigned item by construction.
+     *
+     * <p>Measured when it was added: of 252 assets, <b>105 are unassigned</b> and only <b>18 are held
+     * by somebody with a department recorded</b> — every one of them at Head Office, because no
+     * branch staff have departments. So this filter can currently match at most 7% of the estate, and
+     * for a branch-scoped viewer it can only ever match nothing. The page says so rather than
+     * rendering an empty table that reads as "there are none of those".
+     */
+    private Long departmentId;
+
     /**
      * Hard branch restriction applied on top of every other filter. Set by the service from the
      * caller's permissions, never from the request — a client cannot widen its own scope.

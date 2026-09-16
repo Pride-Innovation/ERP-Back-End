@@ -20,6 +20,7 @@ import java.util.stream.Collectors;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static pride.bank.erp.helper.Constants.ADMIN_UNIT_ROLE;
+import pride.bank.erp.advice.AccessDenied;
 
 /**
  * Assigning roles to a unit — the screen that can hand a branch officer the whole bank.
@@ -33,6 +34,15 @@ import static pride.bank.erp.helper.Constants.ADMIN_UNIT_ROLE;
 @SpringBootTest
 @AutoConfigureMockMvc
 class UnitRoleAssignmentTest {
+    /*
+     * The status a refusal arrives under, read from the application rather than written as 403.
+     *
+     * The firewall in front of this service blocks 403, so refusals travel as AccessDenied.STATUS
+     * instead. Hard-coding the number here would mean a firewall rule change breaks nine tests in
+     * four files with no hint that they are all the same fact; reading it from the source keeps the
+     * assertion about *being refused* rather than about a number.
+     */
+
 
     private static final String API = "/api/v1";
 
@@ -80,7 +90,7 @@ class UnitRoleAssignmentTest {
 
         assertThat(status)
                 .as("this call grants permissions; it must answer to UPDATE_ROLE")
-                .isEqualTo(403);
+                .isEqualTo(AccessDenied.STATUS.value());
     }
 
     @Test

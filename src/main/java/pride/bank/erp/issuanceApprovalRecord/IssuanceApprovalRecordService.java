@@ -163,7 +163,10 @@ public class IssuanceApprovalRecordService {
         User issuer = issuance.getIssuer();
         Unit issuerUnit = issuer != null ? issuer.getUnit() : null;
         if (issuerUnit == null || !issuerUnit.getId().equals(requiredUnit.getId())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+            // Raised as a ResponseStatusException rather than an AccessDeniedException, so it does
+            // not pass through the handler that maps refusals off 403 - it has to name the status
+            // itself. See AccessDenied for why 403 is unavailable.
+            throw new ResponseStatusException(pride.bank.erp.advice.AccessDenied.STATUS,
                     "This issuance was not made by a member of " + requiredUnit.getName() + "; it cannot be approved.");
         }
     }

@@ -133,6 +133,7 @@ public class AssetService {
             String model,
             String assignedTo,
             String location,
+            Long departmentId,
             LocalDateTime startDate,
             LocalDateTime endDate,
             Boolean dueForDisposal,
@@ -160,6 +161,7 @@ public class AssetService {
                     .endDate(endDate)
                     .assignedTo(assignedTo)
                     .location(location)
+                .departmentId(departmentId)
                     // Applied from the caller's permissions, never from the request, so no filter
                     // the client sends can widen it. AccessScopeService returns null for the branch
                     // at ALL scope (the multiplier a unit confers), the caller's own branch below
@@ -741,6 +743,22 @@ public class AssetService {
                                 .region(asset.getBranch().getRegion())
                                 .telephone(asset.getBranch().getTelephone())
                                 .email(asset.getBranch().getEmail())
+                                /*
+                                 * Dropped until now, and it read as `false` rather than as missing.
+                                 *
+                                 * This DTO is assembled field by field to avoid recursion, and any
+                                 * field left out of a primitive-boolean builder silently becomes
+                                 * false - so `asset.branch.isHeadOffice` was false for every asset in
+                                 * the estate, including the ones at Head Office. Measured: an asset
+                                 * whose branch is named "Head Office" serialised with
+                                 * `isHeadOffice: false`, while the same flag on its *holder's* branch
+                                 * came through correctly, because that one passes the real entity.
+                                 *
+                                 * Nothing read it, so nothing was visibly wrong - which is exactly
+                                 * how it survived. Anything keying on it would have matched nothing
+                                 * and looked implemented.
+                                 */
+                                .isHeadOffice(asset.getBranch().isHeadOffice())
                                 .build() : null)
                 .assetStatus(asset.getAssetStatus() != null ?
                         Status.builder()
