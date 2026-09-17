@@ -30,9 +30,20 @@ spring:
       # trusted; leave as `none` until then.)
       ddl-auto: none
 
-  # Flyway: adopt the current (already-populated) schema as the baseline (V1), then apply V2+ forward.
-  # NOTE: a brand-new/empty DB has no base tables and ddl-auto=none won't create them — bootstrap once
-  # with ddl-auto=update (then switch back to none) or add a V1__baseline.sql full-schema migration.
+  # Flyway owns the schema, from nothing.
+  #
+  # A brand-new/empty database is built by V1__baseline.sql, which creates the full pre-V2 schema;
+  # V2..V25 then apply on top exactly as they did on the databases that pre-date Flyway. So no manual
+  # bootstrap step is needed in a new environment: create an empty database, start the application.
+  # (The note that used to sit here suggested bootstrapping with ddl-auto=update instead. That does
+  # not work — Flyway runs before Hibernate, and the migrations from V12 onward would then collide
+  # with the schema Hibernate had just created.)
+  #
+  # `baseline-version: 1` is what keeps V1 harmless on every database that already exists: Flyway
+  # ignores any migration at or below the baseline version recorded in flyway_schema_history, and
+  # those databases all carry a BASELINE row at version 1. Raising it, or turning off
+  # baseline-on-migrate, would make them try to run V1 over a schema they already have.
+  # BaselineMigrationTest pins both halves.
   flyway:
     enabled: true
     baseline-on-migrate: true
