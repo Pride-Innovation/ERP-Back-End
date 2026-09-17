@@ -9,6 +9,7 @@ package pride.bank.erp.config;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import pride.bank.erp.assetType.AssetType;
@@ -36,24 +37,47 @@ public class AssetCategoryFeatureSeeder {
 
     private final AssetTypeRepository assetTypeRepository;
 
-    /** Category-name → default fulfilment mailbox. Unknown categories fall back to a generic mailbox. */
-    private static final Map<String, String> CATEGORY_OWNER_EMAILS = Map.ofEntries(
-            Map.entry("Computers", "it-infra@bank.example"),
-            Map.entry("Furniture", "admin@bank.example"),
-            Map.entry("Stationery", "admin@bank.example"),
-            Map.entry("Equipment", "facilities@bank.example"),
-            Map.entry("Vehicle/Fleet", "fleet@bank.example"),
-            Map.entry("Security", "security@bank.example"),
-            Map.entry("Cleaning & Hygiene", "facilities@bank.example"),
-            Map.entry("Healthcare", "facilities@bank.example"),
-            Map.entry("Printing & Branding", "marketing@bank.example"),
-            Map.entry("Building & Construction", "facilities@bank.example"),
-            Map.entry("Financial & Banking Equipment", "operations@bank.example"),
-            Map.entry("Kitchen & Groceries", "admin@bank.example")
-    );
-    private static final String DEFAULT_OWNER_EMAIL = "fulfilment-default@bank.example";
+    /*
+     * Instance fields, not static — and that distinction is the whole reason this shape exists.
+     *
+     * `@Value` is applied by Spring when it populates a **bean instance**; a static field belongs to
+     * the class, not to any instance, so Spring never touches it and does not warn that it declined
+     * to. Worse, a `static final` map is built at class-load time, before the container exists, so
+     * even if the injection worked the map would already have been assembled from nulls.
+     *
+     * That combination was tried here and the application stopped starting: `Map.ofEntries` rejects a
+     * null value, so class initialization threw `ExceptionInInitializerError` and the whole context
+     * failed to load. Loud, and therefore the lucky outcome — a `HashMap` tolerates nulls, and every
+     * category would have been seeded with a null fulfilment mailbox instead, surfacing much later as
+     * requests routing nowhere.
+     *
+     * `BranchHeadOfficeSeeder` has the working shape for the same kind of value, and this now matches
+     * it. `StaticValueInjectionTest` fails the build if `@Value` ever lands on a static field again.
+     */
+    @Value("${application.head.office.infra-email}")
+    private String infraEmail;
 
-    /** Category-name → default custom attributes (only seeded when the category currently has none). */
+    @Value("${application.head.office.admin-email}")
+    private String adminEmail;
+
+    /**
+     * The categories Infra fulfils. Everything else goes to Admin.
+     *
+     * <h2>Why a set and a fallback rather than the twelve-entry map this replaced</h2>
+     * That map sent <b>one</b> category to Infra and the other eleven to Admin, and then fell back to
+     * Admin for anything unlisted — so it spelled out eleven identical answers plus a default that
+     * repeated them. Stating the exception instead is the same behavior for every category the map
+     * named, the same behavior for every category it did not, and it means a category added in
+     * Settings tomorrow is routed rather than quietly missing an entry.
+     *
+     * <p>Kept static because it is a fact about the bank, not about the environment. The addresses are
+     * the part that changes per environment, and those are the injected fields above.
+     */
+    private static final Set<String> INFRA_FULFILLED_CATEGORIES = Set.of("Computers");
+
+    /**
+     * Category-name → default custom attributes (only seeded when the category currently has none).
+     */
     private static final Map<String, List<AttributeSeed>> CATEGORY_ATTRIBUTES = Map.of(
             "Computers", List.of(
                     new AttributeSeed("warranty_months", "Warranty (months)", AttributeDataType.NUMBER, null,
@@ -89,7 +113,13 @@ public class AssetCategoryFeatureSeeder {
         if (assetType.getOwnerGroupEmail() != null && !assetType.getOwnerGroupEmail().isBlank()) {
             return;
         }
-        String email = CATEGORY_OWNER_EMAILS.getOrDefault(assetType.getName(), DEFAULT_OWNER_EMAIL);
+        String email = ownerEmailFor(assetType.getName());
+        if (email == null) {
+            // Left unset rather than written blank. The seeder only fills fields that are empty, so
+            // an unset one is picked up on the next startup once the address is configured; a blank
+            // one would read as "already seeded" and never be revisited.
+            return;
+        }
         assetType.setOwnerGroupEmail(email);
     }
 
@@ -133,5 +163,25 @@ public class AssetCategoryFeatureSeeder {
             List<String> options,
             boolean required,
             String helperText
-    ) {}
+    ) {
+    }
+
+    /**
+     * Which mailbox fulfils a category, from the environment's configured addresses.
+     *
+     * <p>Returns null when the address is not configured, and the caller skips the field rather than
+     * writing a blank one — an empty {@code ownerGroupEmail} is worse than an absent one, because the
+     * seeder only fills fields that are unset and would therefore never revisit it. Same defensive
+     * shape as {@code BranchHeadOfficeSeeder}, which logs and skips rather than seeding an empty name.
+     */
+    private String ownerEmailFor(String categoryName) {
+        String email = INFRA_FULFILLED_CATEGORIES.contains(categoryName) ? infraEmail : adminEmail;
+
+        if (email == null || email.isBlank()) {
+            log.warn("No fulfilment mailbox configured for category '{}' — set INFRA_EMAIL and "
+                    + "ADMIN_EMAIL. Leaving its owner group email unset.", categoryName);
+            return null;
+        }
+        return email.trim();
+    }
 }

@@ -12,6 +12,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
+import org.springframework.security.authentication.InsufficientAuthenticationException;
 import org.springframework.security.authentication.*;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -234,19 +235,45 @@ public class AuthenticationService {
             HttpServletRequest request,
             HttpServletResponse response
     ) throws IOException {
+        /*
+         * Every failure here used to be a silent 200 with an empty body.
+         *
+         * No Authorization header returned early; an expired or malformed refresh token left
+         * `userEmail` null; an invalid one failed the check — and all three fell out of the method
+         * having written nothing, so the response was `200 OK` with zero bytes. Measured: a refresh
+         * with no header and a refresh with an expired token both answered 200.
+         *
+         * The browser then read `data.accessToken` off an empty body, got `undefined`, and stored the
+         * string "undefined" as the access token before deciding the refresh had failed. A response
+         * that says "fine" while handing back nothing is the worst shape a failure can take: every
+         * caller has to know that success is not success.
+         *
+         * It refuses properly now, which is also what lets the front end tell "your session ended"
+         * apart from "the refresh endpoint is down".
+         */
         final String authHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
-        final String refreshToken;
-        final String userEmail;
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            return;
+            throw new InsufficientAuthenticationException(
+                    "A refresh token is required to renew this session.");
         }
 
-        refreshToken = authHeader.substring(7);
-        userEmail = jwtService.extractUserEmail(refreshToken);
+        final String refreshToken = authHeader.substring(7);
+        final String userEmail = jwtService.extractUserEmail(refreshToken);
 
-        if (userEmail != null) {
-            var user = userRepository.findByEmail(userEmail).orElseThrow();
-            if (jwtService.isTokenValid(refreshToken, user)) {
+        if (userEmail == null) {
+            throw new InsufficientAuthenticationException(
+                    "This session has ended. Please sign in again.");
+        }
+
+        {
+            var user = userRepository.findByEmail(userEmail)
+                    .orElseThrow(() -> new InsufficientAuthenticationException(
+                            "This session has ended. Please sign in again."));
+            if (!jwtService.isTokenValid(refreshToken, user)) {
+                throw new InsufficientAuthenticationException(
+                        "This session has ended. Please sign in again.");
+            }
+            {
                 var accessToken = jwtService.generateToken(user);
                 revokeAllUserTokens(user);
                 saveUserToken(user, accessToken);

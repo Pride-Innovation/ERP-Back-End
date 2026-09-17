@@ -134,7 +134,49 @@ public interface AssetRepository extends JpaRepository<Asset, Long> {
 
     Optional<Asset> findByTagName(@Param("tagName") String tagName);
 
-    Optional<Asset> findByEngravedNumber(@Param("tagName") String tagName);
+    /**
+     * Every live asset carrying this engraved number.
+     *
+     * <h2>Why a List where an Optional stood</h2>
+     * {@code Optional<Asset>} does not mean "at most one" to Spring Data — it means "throw if there
+     * is more than one". Three engraved numbers were carried by two assets each, so the navigation
+     * bar's search answered {@code IncorrectResultSizeDataAccessException} — a 500 — for six assets.
+     * V25 de-duplicates and adds a unique index, so a second match should now be impossible; this
+     * still returns a list because <b>the search must degrade into telling the truth rather than
+     * falling over</b> if one ever appears again.
+     *
+     * <p>Soft-deleted rows are excluded, joining the other sites that write that exclusion out by
+     * hand — there is deliberately no global {@code @SQLRestriction} on this entity. Measured: no
+     * asset is soft-deleted today, so this is defensive rather than a repair.
+     *
+     * <p>Matching is case- and accent-insensitive because the column is {@code utf8mb4_0900_ai_ci},
+     * not because of anything written here. An engraved number is transcribed by hand off a physical
+     * label, so that is the behaviour wanted, and it is what the bulk import has always applied.
+     */
+    @org.springframework.data.jpa.repository.Query("""
+            SELECT a FROM Asset a
+            WHERE a.engravedNumber = :tagName
+              AND (a.deleted = false OR a.deleted IS NULL)
+            ORDER BY a.id
+            """)
+    java.util.List<Asset> findLiveByEngravedNumber(@Param("tagName") String tagName);
+
+    /**
+     * Is this engraved number already recorded against a different asset?
+     *
+     * <p>{@code excludingId} is what makes it usable on an update: re-saving an asset without
+     * touching its number must not collide with itself. Passing a null id checks against the whole
+     * estate, which is the create case.
+     */
+    @org.springframework.data.jpa.repository.Query("""
+            SELECT a FROM Asset a
+            WHERE a.engravedNumber = :engravedNumber
+              AND (:excludingId IS NULL OR a.id <> :excludingId)
+            ORDER BY a.id
+            """)
+    java.util.List<Asset> findOthersByEngravedNumber(
+            @Param("engravedNumber") String engravedNumber,
+            @Param("excludingId") Long excludingId);
 
     /*
      * Duplicate guards for the bulk import.

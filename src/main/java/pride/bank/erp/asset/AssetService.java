@@ -115,6 +115,9 @@ public class AssetService {
     /** Decides whether a <em>particular</em> asset is within the caller's reach. */
     private final pride.bank.erp.access.AccessScopeService accessScopeService;
 
+    /** What the stocking flow leaves behind; see requireEngravedNumberBeforeLeavingStocking. */
+    private static final String CODE_REQUIRE_UPDATE = "requireUpdate";
+
     /** Upper bound on assets scanned in-memory when computing the derived "due for disposal" list. */
     private static final int DISPOSAL_SCAN_LIMIT = 10_000;
 
@@ -223,6 +226,11 @@ public class AssetService {
         Stock stock = findStockByLPONumber(request.getLpoNumber());
         assert commodity != null;
         checkIfStockContainsCommodityNotYetRegistered(stock, commodity);
+
+        // Optional here, unique when given. Stocking deliberately creates assets with no engraved
+        // number — 33 currently sit at `requireUpdate` waiting for somebody to read the label off the
+        // item — so requiring one would break receiving stock. See requireEngravedNumberAvailable.
+        requireEngravedNumberAvailable(request.getEngravedNumber(), null);
 
         Asset asset = Asset.builder()
                 .assetDepreciationRate(request.getAssetDepreciationRate())
@@ -438,6 +446,22 @@ public class AssetService {
         asset.setImage(request.getImage());
         asset.setHostname(request.getHostname());
         asset.setMake(request.getMake());
+        /*
+         * The uniqueness check the form never had, and the one place "required" belongs.
+         *
+         * Excluding this asset's own id, or re-saving a record without touching its number would
+         * collide with itself.
+         *
+         * The second rule is what "required at completion rather than at creation" means in practice.
+         * There is no separate Complete endpoint - `crudStates.complete` exists as a constant with a
+         * comment and nothing dispatches it - so **this form is the completion**: an asset leaves
+         * `requireUpdate` by being edited here, and issuance refuses anything still in that status
+         * ("not yet completed after stocking"). So the number is demanded exactly when the asset
+         * stops being a half-finished stock line and becomes a real, issuable item, and never before.
+         */
+        requireEngravedNumberAvailable(request.getEngravedNumber(), asset.getId());
+        requireEngravedNumberBeforeLeavingStocking(asset, status, request.getEngravedNumber());
+
         asset.setEngravedNumber(request.getEngravedNumber());
         asset.setInterfaceType(request.getInterfaceType());
         asset.setModel(request.getModel());
@@ -866,12 +890,133 @@ public class AssetService {
                 .collect(Collectors.toList());
     }
 
-    public Asset findAssetByTagName(String tagName) throws NotFoundException {
-        return assetRepository.findByEngravedNumber(tagName)
-                .orElseThrow(
-                        () -> new NotFoundException(String
-                                .format("Asset with Tag Number: %s is not found", tagName))
-                );
+    /**
+     * The navigation bar's search: find an asset by the number engraved on it.
+     *
+     * <h2>Scoped, and multi-ended on purpose</h2>
+     * This had no scope of any kind — it went straight to the repository, so anybody holding
+     * {@code READ_ASSET} could find any asset in the bank by tag and be sent to a detail page that
+     * then refused them. A control that lands on a refusal reads as a broken screen rather than a
+     * boundary.
+     *
+     * <p>The reach is the <b>same multi-ended rule the repair guard uses</b>: in range when either
+     * the asset's current branch or the branch recorded on its repair transfer is the caller's. A
+     * plain branch equality is the obvious rule and would be wrong in both directions, because
+     * {@code asset.branch} means <em>where the asset is</em> rather than whose it is: a Gulu laptop
+     * on the Head Office bench reads Head Office once received and Gulu before that. Scan the label
+     * on the bench with a strict rule and it is unfindable by whichever side is holding it.
+     *
+     * <p>Out-of-reach matches are <b>omitted rather than refused</b>, so the answer is the same
+     * "nothing here" a non-existent tag gets. Refusing would confirm that the number exists
+     * somewhere, which is the one thing a search must not leak to somebody who may not see it.
+     *
+     * @return every match the caller may see — normally one, empty when there is none, and more than
+     *         one only if the unique index added in V25 is ever lost
+     */
+    @Transactional(readOnly = true)
+    public List<AssetTagMatch> findAssetsByTagName(String tagName) {
+        String tag = tagName == null ? null : tagName.trim();
+        if (tag == null || tag.isEmpty()) {
+            return List.of();
+        }
+
+        return assetRepository.findLiveByEngravedNumber(tag).stream()
+                .filter(this::withinTagSearchReach)
+                .map(asset -> AssetTagMatch.builder()
+                        .id(asset.getId())
+                        // The detail route is /assets/general/:typeId/view/:id — the id alone cannot
+                        // open the page.
+                        .assetTypeId(asset.getAssetType() != null ? asset.getAssetType().getId() : null)
+                        .engravedNumber(asset.getEngravedNumber())
+                        .assetName(asset.getAssetName())
+                        .serialNumber(asset.getSerialNumber())
+                        .branchName(asset.getBranch() != null ? asset.getBranch().getName() : null)
+                        .status(asset.getAssetStatus() != null ? asset.getAssetStatus().getStatus() : null)
+                        .build())
+                .toList();
+    }
+
+    /**
+     * An asset may not leave {@code requireUpdate} without the number engraved on it.
+     *
+     * <p>{@code requireUpdate} is what the stocking flow leaves behind — the issuance service calls
+     * it "not yet completed after stocking" and refuses to issue anything in it. So the status is
+     * the application's own marker for "this record is half-finished", and the engraved number is
+     * the half that is missing. Letting an asset out of that state without one produces exactly the
+     * rows this rule exists to stop: issuable, assignable items that the tag search can never find.
+     *
+     * <p>Deliberately <b>not</b> a check on every update. An asset already in {@code requireUpdate}
+     * can be edited freely while it stays there — a receiving officer correcting a supplier or a cost
+     * before the label has been read should not be blocked — and one that already has a number is
+     * unaffected either way.
+     */
+    private void requireEngravedNumberBeforeLeavingStocking(
+            Asset asset, Status newStatus, String engravedNumber) {
+
+        boolean wasStocking = asset.getAssetStatus() != null
+                && CODE_REQUIRE_UPDATE.equals(asset.getAssetStatus().getStatus());
+        boolean staysStocking = newStatus == null
+                || CODE_REQUIRE_UPDATE.equals(newStatus.getStatus());
+
+        if (!wasStocking || staysStocking) {
+            return;
+        }
+
+        if (engravedNumber == null || engravedNumber.isBlank()) {
+            throw new pride.bank.erp.exception.BadRequestException(
+                    "This asset is still awaiting completion after stocking. Record the number "
+                            + "engraved on it before moving it out of that state \u2014 without one it "
+                            + "cannot be found by the tag search.");
+        }
+    }
+
+    /** Where the asset sits, or the branch it was sent for repair from. See the note above. */
+    private boolean withinTagSearchReach(Asset asset) {
+        Long branchId = asset.getBranch() != null ? asset.getBranch().getId() : null;
+        Long holderId = asset.getAssignedTo() != null ? asset.getAssignedTo().getId() : null;
+        Long originBranchId = movementService.repairOriginBranchId(asset.getId());
+
+        return accessScopeService.canViewAnyOf(
+                pride.bank.erp.access.ScopeSubject.ASSETS,
+                java.util.Arrays.asList(branchId, originBranchId),
+                java.util.Collections.singletonList(holderId));
+    }
+
+    /**
+     * Refuses an engraved number already recorded against another asset.
+     *
+     * <h2>One rule, three write paths</h2>
+     * The bulk import has always checked this. {@code createAsset} and {@code updateAsset} never did
+     * — they set the field straight from the request — so the import refused a duplicate politely
+     * while the form beside it created one silently. That is how the three collisions V25 had to
+     * repair came to exist.
+     *
+     * <p>Kept alongside the database constraint rather than replaced by it: the index is what makes
+     * uniqueness true when two people save at once, and this is what produces a message naming the
+     * asset already holding the number. A constraint on its own surfaces as a stack trace.
+     *
+     * @param excludingAssetId the asset being edited, so re-saving it does not collide with itself;
+     *                         null when creating
+     */
+    void requireEngravedNumberAvailable(String engravedNumber, Long excludingAssetId) {
+        if (engravedNumber == null || engravedNumber.isBlank()) {
+            // Absent is allowed: stocking creates assets without one, to be filled in on completion.
+            return;
+        }
+
+        List<Asset> clashes =
+                assetRepository.findOthersByEngravedNumber(engravedNumber.trim(), excludingAssetId);
+        if (clashes.isEmpty()) {
+            return;
+        }
+
+        Asset held = clashes.get(0);
+        throw new pride.bank.erp.exception.BadRequestException(String.format(
+                "Engraved number '%s' is already recorded against %s (asset #%d). "
+                        + "An engraved number identifies one item, so it cannot be reused.",
+                engravedNumber.trim(),
+                held.getAssetName() == null ? "another asset" : held.getAssetName(),
+                held.getId()));
     }
 
     /**
@@ -1265,10 +1410,10 @@ public class AssetService {
             throw new BadRequestException("Engraved Number '" + engravedNumber
                     + "' appears more than once in this file.");
         }
-        if (assetRepository.existsByEngravedNumberIgnoreCase(engravedNumber)) {
-            throw new BadRequestException("Engraved Number '" + engravedNumber
-                    + "' is already recorded against another asset.");
-        }
+        // The same rule the form now uses, rather than a second spelling of it. The message it
+        // raises names the asset already holding the number, which a bulk import is the place that
+        // most needs - a row number and "already recorded" leaves the operator to go and find it.
+        requireEngravedNumberAvailable(engravedNumber, null);
         if (serialNumber != null) {
             if (!serialsInBatch.add(serialNumber.toLowerCase())) {
                 throw new BadRequestException("Serial Number '" + serialNumber

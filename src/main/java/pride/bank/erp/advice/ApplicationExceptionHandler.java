@@ -258,18 +258,41 @@ public class ApplicationExceptionHandler {
     }
 
     /**
-     * A token that is absent, malformed or expired where one was required.
+     * A token that is absent, malformed or expired where one was required — <b>401</b>.
      *
-     * <p>Moved off 403 with its neighbour, and deliberately <b>not</b> onto 401: the front end reads
-     * 401 as "the session expired", tries a refresh and then signs the user out. This exception is
-     * also raised for a token that is simply wrong for the route, and logging somebody out for that
-     * would be a worse answer than telling them.
+     * <h2>This was 422 for a week, and it broke session expiry</h2>
+     * When refusals moved off 403, this exception moved with its neighbour, on the reasoning that
+     * "the front end reads 401 as the session expired, tries a refresh and then signs the user out,
+     * and this is also raised for a token that is simply wrong for the route". That reasoning was
+     * wrong, and it was wrong about the case that matters most.
+     *
+     * <p>Spring Security raises this through the {@code authenticationEntryPoint} when the request is
+     * <b>anonymous</b> — which is precisely what an expired token produces here, because
+     * {@code JwtService.extractUserEmail} returns null for one and {@code JwtAuthenticationFilter}
+     * then sets no authentication. So every expiry arrived as a 422, the interceptor's refresh path
+     * (which keys on 401) never fired, nobody was signed out, and the error surfaced in the browser
+     * as an uncaught {@code AxiosError: Full authentication is required to access this resource}.
+     *
+     * <p>Measured before the fix: a request with no header, one with a garbage token and one with a
+     * correctly-signed expired token <b>all returned 422</b>.
+     *
+     * <h2>The distinction that actually matters</h2>
+     * <ul>
+     *   <li><b>401</b> — I do not know who you are. Re-authenticate: refresh, or sign in again.</li>
+     *   <li><b>{@link AccessDenied#STATUS}</b> — I know who you are and the answer is no. Refreshing
+     *       changes nothing, and signing the user out for it would be wrong.</li>
+     * </ul>
+     *
+     * <p>Splitting them on the exception is what makes that legible, and it is what the front end
+     * needs in order to do two different things. 401 is passed by the firewall — only 403 is blocked —
+     * so there is nothing forcing them together.
      */
     @ExceptionHandler(InsufficientAuthenticationException.class)
+    @ResponseStatus(HttpStatus.UNAUTHORIZED)
     public ProblemDetail handleInsufficientAuthenticationException(InsufficientAuthenticationException ex) {
         ProblemDetail errorDetail = ProblemDetail
-                .forStatusAndDetail(AccessDenied.STATUS, ex.getMessage());
-        errorDetail.setProperty("errorCode", AccessDenied.ERROR_CODE);
+                .forStatusAndDetail(HttpStatus.UNAUTHORIZED, ex.getMessage());
+        errorDetail.setProperty("errorCode", "SESSION_EXPIRED");
         errorDetail.setProperty("access_denied_reason", "Invalid or Expired Token");
         return errorDetail;
     }

@@ -202,10 +202,45 @@ public class AssetController {
         return assetService.getAssetsGroupedByType();
     }
 
+    /**
+     * The navigation bar's search, by the number engraved on an asset.
+     *
+     * <h2>One object, because an engraved number identifies one asset</h2>
+     * This briefly returned a list. That was defensible while three engraved numbers were carried by
+     * two assets each — the {@code Optional} finder threw on a second row, a 500 for six real
+     * assets — but V25 de-duplicated the estate and put a unique index on the column, so the array
+     * was carrying a case the database now prevents and making every caller branch on a length that
+     * can only be 0 or 1.
+     *
+     * <p>The service still reads a list internally, so a lost index degrades into <em>answering</em>
+     * rather than throwing; this takes the first match. The guarantee is the constraint, and the list
+     * is the seatbelt behind it.
+     *
+     * <h2>204 when there is nothing to show, not 404 and not an error</h2>
+     * A search that finds nothing has <b>succeeded</b>. It is not a fault, and dressing it as one
+     * makes every caller handle an exception for the ordinary case — which on this front end means
+     * the axios interceptor toasting "Request failed with status code 404" over the top of whatever
+     * the search box wanted to say.
+     *
+     * <p>404 was the first attempt and was worse than it looked: this application's
+     * {@code NotFoundException} handler carries <b>no {@code @ResponseStatus}</b> and returns a bare
+     * {@code {"message": …}} map — so it answers <b>200</b>, and the browser would have read that map
+     * as a match with no id. A 204 cannot be mistaken for anything.
+     *
+     * <p>"No such tag" and "that tag belongs to an asset outside your branch" deliberately produce
+     * the <b>same</b> 204 — the service omits out-of-reach matches rather than refusing them —
+     * because distinguishing them would let a search confirm that a number exists somewhere the
+     * caller may not look.
+     *
+     * <p>The path keeps its {@code /tag-name} spelling because the front end uses it. The field being
+     * searched is {@code engravedNumber}; see V25 for why the two names differ.
+     */
     @GetMapping("/assets/tag-name")
-    public ResponseEntity<Asset> findAssetByTagName(@RequestParam String tagName)
-            throws NotFoundException {
-        return ResponseEntity.ok(assetService.findAssetByTagName(tagName));
+    public ResponseEntity<AssetTagMatch> findAssetByTagName(@RequestParam String tagName) {
+        return assetService.findAssetsByTagName(tagName).stream()
+                .findFirst()
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.noContent().build());
     }
 
     /*

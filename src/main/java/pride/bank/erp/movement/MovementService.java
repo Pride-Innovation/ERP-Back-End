@@ -907,4 +907,29 @@ public class MovementService {
         }
         return items;
     }
+
+    /**
+     * The branch an asset was sent for repair from, if it has been.
+     *
+     * <p>Exposed because {@code asset.branch} means <em>where the asset is</em>, not whose it is:
+     * {@code InventoryService.relocateAsset} overwrites it with the destination's location on
+     * receipt, so a Gulu laptop on the Head Office bench reads Head Office. Anything asking "may this
+     * caller reach this asset" therefore has to consult both ends, and this is the second one — the
+     * {@code originLocation} captured on the repair transfer before the assignment was closed.
+     *
+     * <p>Newest transfer wins, so an asset repaired twice is not claimed by whoever held it two
+     * repairs ago — the same rule the inventory report's origin lookup applies.
+     *
+     * @return the origin branch id, or null when the asset has never been sent for repair
+     */
+    @Transactional(readOnly = true)
+    public Long repairOriginBranchId(Long assetId) {
+        if (assetId == null) return null;
+
+        return movementRepository
+                .findFirstByItems_Asset_IdAndMovementTypeOrderByIdDesc(assetId, MovementType.REPAIR_TRANSFER)
+                .map(Movement::getOriginLocation)
+                .map(pride.bank.erp.branch.Branch::getId)
+                .orElse(null);
+    }
 }

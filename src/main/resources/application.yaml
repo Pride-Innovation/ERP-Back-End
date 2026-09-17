@@ -120,6 +120,14 @@ application:
       name: Head Office
       email: ${HEAD_OFFICE_EMAIL}
       telephone: ${HEAD_OFFICE_TELEPHONE}
+      # Fulfilment mailboxes for the two Head Office departments that own asset categories.
+      #
+      # Named HEAD_OFFICE_* rather than reusing ADMIN_EMAIL, which is already taken: that one is
+      # `application.admin.email`, the *application administrator*, read by the workflow engine as the
+      # ADMIN approver and by the report service as a recipient. Pointing both at one variable made
+      # two unrelated concepts move together, and setting one of them broke the other.
+      infra-email: ${HEAD_OFFICE_INFRA_EMAIL}
+      admin-email: ${HEAD_OFFICE_ADMIN_EMAIL}
 
 # Gmail rewrites the From: header to the authenticated account anyway, so keeping
 # this bound to the SMTP username avoids confusing mismatches.
