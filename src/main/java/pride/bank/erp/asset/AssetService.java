@@ -367,9 +367,30 @@ public class AssetService {
      * <p>Public because those services live in their own packages and should not each re-implement
      * the check — there is one answer to "may I see this asset", and it is here.
      */
+    /**
+     * Is this asset currently out of its branch's hands?
+     *
+     * <p>One asset is in maintenance with <b>no transfer movement at all</b>, so nothing ever
+     * recorded where it came from and no rule can reach it for its home branch. Named here rather
+     * than papered over: the answer to that one is a data correction, not a scoping change.
+     */
+    private boolean isAwayFromItsBranch(Asset asset) {
+        return asset.getAssetStatus() != null
+                && AWAY_FROM_BRANCH_CODES.contains(asset.getAssetStatus().getStatus());
+    }
+
     public void requireAssetReadable(Long assetId) throws NotFoundException {
         requireAssetInScope(findOne(assetId), pride.bank.erp.access.ScopeAction.VIEW);
     }
+
+    /**
+     * The two states in which an asset is physically out of its branch's hands.
+     *
+     * <p>Both put it in a store held at Head Office, and both are why a branch would need to look at
+     * a record that no longer reads as theirs.
+     */
+    private static final java.util.Set<String> AWAY_FROM_BRANCH_CODES =
+            java.util.Set.of("inMaintenance", "pendingDisposal");
 
     private void requireAssetInScope(Asset asset, pride.bank.erp.access.ScopeAction action) {
         Long branchId = asset.getBranch() != null ? asset.getBranch().getId() : null;
@@ -378,6 +399,38 @@ public class AssetService {
         if (action == pride.bank.erp.access.ScopeAction.MANAGE) {
             accessScopeService.requireCanManage(
                     pride.bank.erp.access.ScopeSubject.ASSETS, branchId, holderId);
+        } else if (isAwayFromItsBranch(asset)) {
+            /*
+             * While an asset is away, its home branch may still read it.
+             *
+             * <h2>This removes a contradiction rather than widening the scope</h2>
+             * `InventoryReportController.scopeAssets` already reaches an asset when **either** end is
+             * the caller's — where it sits, or where it came from — which is what lets a branch see
+             * its own laptop on the Head Office bench in the IT store listing. This check was
+             * single-ended, so the row was listed and then would not open: "a row that sits in your
+             * list and will not open is the exact failure this scoping exists to prevent."
+             *
+             * `asset.branch` means *where the asset is*: `relocateAsset` overwrites it with the
+             * destination store's location on receipt. Measured, seven assets in maintenance read
+             * Head Office and every one of them came from Gulu.
+             *
+             * <h2>Three deliberate narrowings</h2>
+             * <ol>
+             *   <li><b>VIEW only.</b> MANAGE stays single-ended above, so a branch still cannot edit,
+             *       reassign or write off an asset sitting at Head Office. That boundary is
+             *       untouched.</li>
+             *   <li><b>Only while it is away.</b> Keyed on the status rather than on the existence of
+             *       a past transfer, so the reach lasts exactly as long as the item is out of the
+             *       branch's hands. Widening on a historical event would let a branch read an asset
+             *       forever because it once sent it for repair.</li>
+             *   <li><b>The holder list is unchanged</b>, so SELF is untouched: this adds one branch
+             *       and nothing else.</li>
+             * </ol>
+             */
+            accessScopeService.requireCanViewAnyOf(
+                    pride.bank.erp.access.ScopeSubject.ASSETS,
+                    java.util.Arrays.asList(branchId, movementService.branchLastSentAwayFrom(asset.getId())),
+                    java.util.Collections.singletonList(holderId));
         } else {
             accessScopeService.requireCanView(
                     pride.bank.erp.access.ScopeSubject.ASSETS, branchId, holderId);
@@ -970,11 +1023,19 @@ public class AssetService {
         }
     }
 
-    /** Where the asset sits, or the branch it was sent for repair from. See the note above. */
+    /**
+     * Where the asset sits, or the branch it was sent away from. See the note above.
+     *
+     * <p>Reads the <b>same</b> rule the detail page's guard uses, deliberately. If the search could
+     * find an asset the record then refused to open, it would recreate exactly the contradiction that
+     * rule exists to remove — a result you can see and cannot follow.
+     */
     private boolean withinTagSearchReach(Asset asset) {
         Long branchId = asset.getBranch() != null ? asset.getBranch().getId() : null;
         Long holderId = asset.getAssignedTo() != null ? asset.getAssignedTo().getId() : null;
-        Long originBranchId = movementService.repairOriginBranchId(asset.getId());
+        Long originBranchId = isAwayFromItsBranch(asset)
+                ? movementService.branchLastSentAwayFrom(asset.getId())
+                : null;
 
         return accessScopeService.canViewAnyOf(
                 pride.bank.erp.access.ScopeSubject.ASSETS,

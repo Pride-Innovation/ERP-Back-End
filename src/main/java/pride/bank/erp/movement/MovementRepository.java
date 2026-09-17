@@ -68,6 +68,17 @@ public interface MovementRepository extends JpaRepository<Movement, Long> {
      * The most recent movement of a given type carrying this asset. Used to recover where a repaired
      * asset must go back to, from the repair transfer that took it away.
      */
+    /**
+     * The most recent movement of any of these types carrying this asset.
+     *
+     * <p>Repair and disposal both take an asset away from the branch that owns it, and both need the
+     * same question answered — "where did this come from" — so they are asked together rather than
+     * once per type. Newest wins, so an asset repaired twice is not claimed by whoever held it two
+     * repairs ago.
+     */
+    java.util.Optional<Movement> findFirstByItems_Asset_IdAndMovementTypeInOrderByIdDesc(
+            Long assetId, java.util.Collection<MovementType> movementTypes);
+
     java.util.Optional<Movement> findFirstByItems_Asset_IdAndMovementTypeOrderByIdDesc(
             Long assetId, MovementType movementType);
 

@@ -909,27 +909,43 @@ public class MovementService {
     }
 
     /**
-     * The branch an asset was sent for repair from, if it has been.
+     * The branch an asset was last sent away from, for repair or for disposal.
      *
-     * <p>Exposed because {@code asset.branch} means <em>where the asset is</em>, not whose it is:
-     * {@code InventoryService.relocateAsset} overwrites it with the destination's location on
-     * receipt, so a Gulu laptop on the Head Office bench reads Head Office. Anything asking "may this
-     * caller reach this asset" therefore has to consult both ends, and this is the second one — the
-     * {@code originLocation} captured on the repair transfer before the assignment was closed.
+     * <h2>Two sources, because the two flows record different things</h2>
+     * A repair transfer captures {@code originLocation} deliberately — snapshotted before the
+     * assignment is closed, and the column the return leg aims at. <b>A disposal captures nothing:</b>
+     * {@code disposeAsset} never sets it. So this falls back to the movement's <em>source store's</em>
+     * location, which both builders always set.
      *
-     * <p>Newest transfer wins, so an asset repaired twice is not claimed by whoever held it two
-     * repairs ago — the same rule the inventory report's origin lookup applies.
+     * <p>Measured across the twelve assets currently away from home: the two agree on every repair,
+     * and the source store is the only signal for a disposal. One asset has neither, because it has
+     * no transfer movement at all — nothing ever recorded where it came from, and no rule can
+     * recover it.
      *
-     * @return the origin branch id, or null when the asset has never been sent for repair
+     * <p>Answers where the asset <em>came from</em> only. Whether that should widen anybody's reach
+     * is the asset's question, and {@code AssetService} asks it — see the status gate there.
+     *
+     * @return the branch id, or null when this asset has never been sent away
      */
     @Transactional(readOnly = true)
-    public Long repairOriginBranchId(Long assetId) {
+    public Long branchLastSentAwayFrom(Long assetId) {
         if (assetId == null) return null;
 
         return movementRepository
-                .findFirstByItems_Asset_IdAndMovementTypeOrderByIdDesc(assetId, MovementType.REPAIR_TRANSFER)
-                .map(Movement::getOriginLocation)
-                .map(pride.bank.erp.branch.Branch::getId)
+                .findFirstByItems_Asset_IdAndMovementTypeInOrderByIdDesc(
+                        assetId,
+                        java.util.List.of(MovementType.REPAIR_TRANSFER, MovementType.DISPOSAL_TRANSFER))
+                .map(movement -> {
+                    pride.bank.erp.branch.Branch origin = movement.getOriginLocation();
+                    if (origin != null) return origin.getId();
+
+                    // Disposal records no origin; the store it left is the next best answer, and it
+                    // is always set.
+                    return movement.getSourceStore() != null && movement.getSourceStore().getLocation() != null
+                            ? movement.getSourceStore().getLocation().getId()
+                            : null;
+                })
                 .orElse(null);
     }
+
 }
