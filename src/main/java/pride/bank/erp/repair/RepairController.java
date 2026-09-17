@@ -9,7 +9,6 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import pride.bank.erp.asset.AssetDAO;
 import pride.bank.erp.helper.Constants;
 
 import java.time.LocalDateTime;
@@ -21,28 +20,47 @@ public class RepairController {
 
     private final RepairService repairService;
 
-    @PostMapping(value = "/assets/repairs/{assetId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<?> createRepair(
-            @PathVariable Long assetId,
-            @RequestParam("repairStartDate") LocalDateTime repairStartDate,
-            @RequestParam(value = "repairEndDate", required = false) LocalDateTime repairEndDate,
-            @RequestParam("technician") String technician,
-            @RequestParam("repairReason") String repairReason,
-            @RequestParam(value = "documents", required = false) MultipartFile[] files
+    /*
+     * There is deliberately no POST here any more.
+     *
+     * `POST /assets/repairs/{assetId}` used to book an asset in for repair from the assets page's
+     * row menu. It set a status and wrote a maintenance record, and did nothing else: no movement,
+     * so the asset never went anywhere; no custody hand-over, so the trail still said its user held
+     * it; no approval; and no branch scope, so any holder of REPAIR_ASSET could book any asset in
+     * the bank by id. Both the status ids it used were hardcoded and both named the wrong status.
+     *
+     * Sending an asset for repair is now `POST /movements/repair-transfer`, which moves it, takes
+     * custody at the right moment, requires approval, scopes to the asset's branch - and opens the
+     * maintenance record this endpoint used to write, so nothing is lost by its absence. It was
+     * never used in anger: the table held 0 repair rows against 24 repair movements.
+     *
+     * The reads below and the PUT stay. Reading the history and closing a repair on the bench are
+     * real and separate duties.
+     */
+
+    /**
+     * Every repair across the estate — the maintenance report's source.
+     *
+     * <p>Distinct from {@code /assets/repairs/{assetId}} below, which answers only for one asset and
+     * so could never support a report asking what has been repaired bank-wide.
+     */
+    @GetMapping(value = "/assets/repairs")
+    public ResponseEntity<Page<RepairDTO>> listAllRepairs(
+            @RequestParam(required = false, defaultValue = "50") int pageSize,
+            @RequestParam(required = false, defaultValue = "0") int pageNumber,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) Long assetTypeId,
+            @RequestParam(required = false)
+            @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME)
+            java.time.LocalDateTime startDate,
+            @RequestParam(required = false)
+            @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME)
+            java.time.LocalDateTime endDate
     ) {
-        try {
-            AssetDAO response = repairService.createRepair(
-                    assetId,
-                    repairStartDate,
-                    repairEndDate,
-                    technician,
-                    repairReason,
-                    files);
-            return ResponseEntity.status(HttpStatus.CREATED).body(response);
-        } catch (Exception ex) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Error creating repair: " + ex.getMessage());
-        }
+        Pageable pageable = PageRequest.of(pageNumber, pageSize,
+                org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "repairStartDate"));
+        return new ResponseEntity<>(
+                repairService.listAllRepairs(status, assetTypeId, startDate, endDate, pageable), HttpStatus.OK);
     }
 
     @GetMapping(value = "/assets/repairs/{assetId}")

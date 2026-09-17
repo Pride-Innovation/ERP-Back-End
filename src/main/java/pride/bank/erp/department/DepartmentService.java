@@ -23,17 +23,29 @@ public class DepartmentService {
     private final UserService userService;
     private final BranchService branchService;
 
-    public Page<Department> fetchAllDepartments(DepartmentQueryParams params) {
+    public Page<DepartmentResponse> fetchAllDepartments(DepartmentQueryParams params) {
         Sort sort = Sort.by(
                 Constants.ASCENDING_SORT_DIRECTION.equalsIgnoreCase(params.getSortDirection())
                         ? Sort.Direction.ASC : Sort.Direction.DESC,
                 params.getSortBy()
         );
         var pageable = PageRequest.of(params.getPageNumber(), params.getPageSize(), sort);
-        if (params.getName() != null && !params.getName().isBlank()) {
-            return departmentRepository.findAllByNameContainingIgnoreCase(params.getName(), pageable);
+
+        boolean hasName = params.getName() != null && !params.getName().isBlank();
+        boolean hasBranch = params.getBranchId() != null;
+
+        Page<Department> page;
+        if (hasName && hasBranch) {
+            page = departmentRepository.findAllByNameContainingIgnoreCaseAndBranch_Id(
+                    params.getName(), params.getBranchId(), pageable);
+        } else if (hasBranch) {
+            page = departmentRepository.findAllByBranch_Id(params.getBranchId(), pageable);
+        } else if (hasName) {
+            page = departmentRepository.findAllByNameContainingIgnoreCase(params.getName(), pageable);
+        } else {
+            page = departmentRepository.findAll(pageable);
         }
-        return departmentRepository.findAll(pageable);
+        return page.map(DepartmentResponse::from);
     }
 
     public Department findOneDepartment(Long id) throws NotFoundException {
@@ -41,8 +53,12 @@ public class DepartmentService {
                 .orElseThrow(() -> new NotFoundException(String.format("Department with Id %s is not found", id)));
     }
 
+    public DepartmentResponse findOneDepartmentResponse(Long id) throws NotFoundException {
+        return DepartmentResponse.from(findOneDepartment(id));
+    }
+
     @Transactional
-    public Department createDepartment(DepartmentDTO request) throws NotFoundException {
+    public DepartmentResponse createDepartment(DepartmentDTO request) throws NotFoundException {
         ensureNoDuplicateDepartmentName(request.getName(), null);
         User headOfDepartment = userService.findUser(request.getHeadOfDepartment());
         Branch branch = branchService.findBranch(request.getBranch());
@@ -53,11 +69,11 @@ public class DepartmentService {
                 .branch(branch)
                 .managersGroupEmail(request.getManagersGroupEmail())
                 .build();
-        return departmentRepository.save(department);
+        return DepartmentResponse.from(departmentRepository.save(department));
     }
 
     @Transactional
-    public Department updateDepartment(DepartmentDTO request, Long id) throws NotFoundException {
+    public DepartmentResponse updateDepartment(DepartmentDTO request, Long id) throws NotFoundException {
         Department department = findOneDepartment(id);
         ensureNoDuplicateDepartmentName(request.getName(), id);
         User headOfDepartment = userService.findUser(request.getHeadOfDepartment());
@@ -67,7 +83,7 @@ public class DepartmentService {
         department.setHeadOfDepartment(headOfDepartment);
         department.setBranch(branch);
         department.setManagersGroupEmail(request.getManagersGroupEmail());
-        return departmentRepository.save(department);
+        return DepartmentResponse.from(departmentRepository.save(department));
     }
 
     @Transactional

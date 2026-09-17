@@ -17,9 +17,18 @@ public class StockCommodityController {
 
     private final StockCommodityService stockCommodityService;
 
+    /**
+     * Six months of stocking volume, scoped to the viewer.
+     *
+     * @param branchId the branch the dashboard's selector is focused on; only meaningful at ALL
+     *                 scope. This endpoint previously had no branch predicate whatsoever, so every
+     *                 user in the bank saw the same national figure under a widget labelled with
+     *                 their own branch.
+     */
     @GetMapping("/monthly-asset-stock")
-    public ResponseEntity<?> getMonthlyAssetStockSummary() {
-        return ResponseEntity.ok(stockCommodityService.getStockSummaryLastSixMonths());
+    public ResponseEntity<?> getMonthlyAssetStockSummary(
+            @org.springframework.web.bind.annotation.RequestParam(required = false) Long branchId) {
+        return ResponseEntity.ok(stockCommodityService.getStockSummaryLastSixMonths(branchId));
     }
 
 

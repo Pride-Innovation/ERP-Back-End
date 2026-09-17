@@ -27,6 +27,11 @@ public class UserSearchCriteria {
     private String name;
     private String staffNumber;
     private String title;
+    private String gender;
+    private Long titleId;
+    private Long branchId;
+    private Long departmentId;
+    private Long roleId;
     /** Inclusive lower bound on createDate */
     private LocalDateTime createdAtFrom;
     /** Inclusive upper bound on createDate */

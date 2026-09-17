@@ -24,9 +24,11 @@ import pride.bank.erp.branch.Branch;
 import pride.bank.erp.commodity.Commodity;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.stock.Stock;
+import pride.bank.erp.store.Store;
 import pride.bank.erp.supplier.Supplier;
 import pride.bank.erp.user.User;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
@@ -47,8 +49,16 @@ public class Asset {
     private String dateReceipt;
     private String make;
     private String unitOfMeasure;
-    private String purchaseCost;
-    private String costOfTheAsset;
+    /**
+     * Purchase cost and book cost in UGX. Previously stored as free-text {@code String}, so no
+     * arithmetic was possible without parsing, and nothing prevented a non-numeric value being
+     * saved — untenable for depreciation, which has to multiply and divide these.
+     */
+    @Column(precision = 19, scale = 4)
+    private BigDecimal purchaseCost;
+
+    @Column(precision = 19, scale = 4)
+    private BigDecimal costOfTheAsset;
     private String netValueB;
     private String model;
     private String serialNumber;
@@ -61,9 +71,34 @@ public class Asset {
     private String assetDepreciationRate;
     private String description;
     private String image;
+    @Builder.Default
     private Boolean disposed = false;
     private LocalDateTime disposalDate;
+
+    /**
+     * Soft delete: the record is hidden from every listing but kept in the database.
+     *
+     * <p>Deliberately separate from {@link #disposed}, which is a business event — an asset reaching
+     * the end of its life, written off through a movement, still part of the register and counted as
+     * disposed. This says something narrower and more administrative: the record should not have
+     * existed. A duplicate, a mis-keyed import row. An asset can legitimately be both.
+     *
+     * <p>Kept rather than deleted so its assignment history and repair history still point at
+     * something real, and so the audit trail can be read back. That is the whole reason for the
+     * flag; a hard delete would leave both trails referring to a row that is gone.
+     */
+    @Builder.Default
+    private Boolean deleted = false;
     private String lastRepairedBy;
+
+    /**
+     * True when this asset is pool stock kept aside for temporary replacement loans while another
+     * asset of the same category is under repair (see {@code RepairMovementService}), rather than an
+     * operational asset assigned to a specific person/desk.
+     */
+    @Column(name = "temporary_pool", columnDefinition = "BIT NOT NULL DEFAULT 0")
+    @Builder.Default
+    private boolean temporaryPool = false;
 
     @Column(unique = true)
     private String tagName;
@@ -82,6 +117,15 @@ public class Asset {
     @JoinColumn(name = "branch_id")
     @NotAudited
     private Branch branch;
+
+    /**
+     * The store currently holding this asset when it is not assigned to a user (e.g. an Admin store,
+     * the IT store while under repair, or the Disposal store). Null while assigned to a user.
+     */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "current_store_id")
+    @NotAudited
+    private Store currentStore;
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "status_id")

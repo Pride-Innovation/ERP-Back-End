@@ -94,8 +94,68 @@ public class RequestSearchDao {
             predicates.add(requestRoot.get("status").get("id").in(requestSearchCriteria.getStatusIds()));
         }
 
-        if (Objects.nonNull(requestSearchCriteria.getRequesterIds()) && !requestSearchCriteria.getRequesterIds().isEmpty()) {
+        // The role-based subordinate restriction (requesterIds) is for the general
+        // listings. When an explicit approver is targeted — the approval inbox passes
+        // currentApproverId — visibility must be governed solely by "are you the
+        // assigned approver?", because the workflow engine already decided who must act.
+        // Layering the subordinate restriction on top would hide a request from an
+        // approver who sits more than one title-level above the requester (e.g. a HoD,
+        // or a manager above a supervisor), so skip it whenever currentApproverId is set.
+        if (Objects.isNull(requestSearchCriteria.getCurrentApproverId())
+                && Objects.nonNull(requestSearchCriteria.getRequesterIds())
+                && !requestSearchCriteria.getRequesterIds().isEmpty()) {
             predicates.add(requestRoot.get("requester").get("id").in(requestSearchCriteria.getRequesterIds()));
+        }
+
+        if (Objects.nonNull(requestSearchCriteria.getExcludedStatusIds())
+                && !requestSearchCriteria.getExcludedStatusIds().isEmpty()) {
+            // "Still open" — see RequestSearchCriteria on why this is expressed as an exclusion.
+            predicates.add(criteriaBuilder.not(
+                    requestRoot.get("status").get("id").in(requestSearchCriteria.getExcludedStatusIds())));
+        }
+
+        /*
+         * Approver, chosen from the directory rather than typed.
+         *
+         * Narrows *within* the caller's scope — unlike currentApproverId, which suppresses the
+         * requester restriction because it means "this is my inbox". Same LEFT join as the name
+         * match below it, reused rather than created again.
+         */
+        if (Objects.nonNull(requestSearchCriteria.getApproverId())) {
+            predicates.add(criteriaBuilder.equal(
+                    reuseJoin(requestRoot, "currentApprover").get("id"),
+                    requestSearchCriteria.getApproverId()));
+        }
+
+        if (Objects.nonNull(requestSearchCriteria.getRaisedByUserId())) {
+            predicates.add(criteriaBuilder.equal(
+                    reuseJoin(requestRoot, "requester").get("id"),
+                    requestSearchCriteria.getRaisedByUserId()));
+        }
+
+        if (Objects.nonNull(requestSearchCriteria.getRequesterBranchId())) {
+            // Through the requester's branch: a request has no branch of its own, it belongs to
+            // wherever the person who raised it works. LEFT joined so a requester with no duty
+            // station does not silently disappear from a national count.
+            Join<Object, Object> requesterBranch =
+                    reuseJoin(reuseJoin(requestRoot, "requester"), "branch");
+            predicates.add(criteriaBuilder.equal(
+                    requesterBranch.get("id"), requestSearchCriteria.getRequesterBranchId()));
+        }
+
+        /*
+         * The requester's department, through the same reused LEFT joins as the branch above.
+         *
+         * `requester` and `department` are both nullable, so dotted-path navigation would compile to
+         * INNER joins and drop rows in the FROM clause - trap #1. Reusing the joins also keeps the
+         * FROM flat: `From#join` adds a new one on every call, and a duplicated join inflates both
+         * the rows and the count that drives the pager.
+         */
+        if (Objects.nonNull(requestSearchCriteria.getRequesterDepartmentId())) {
+            Join<Object, Object> requesterDepartment =
+                    reuseJoin(reuseJoin(requestRoot, "requester"), "department");
+            predicates.add(criteriaBuilder.equal(
+                    requesterDepartment.get("id"), requestSearchCriteria.getRequesterDepartmentId()));
         }
 
         if (Objects.nonNull(requestSearchCriteria.getDeleted())) {
@@ -108,38 +168,6 @@ public class RequestSearchDao {
 
         if (Objects.nonNull(requestSearchCriteria.getEndDate())) {
             predicates.add(criteriaBuilder.lessThanOrEqualTo(requestRoot.get("createDate"), requestSearchCriteria.getEndDate()));
-        }
-
-        // Ensure that Admin can review non stationery requests of branches
-        if (Objects.nonNull(requestSearchCriteria.getIsBranchNonStationery())) {
-            Expression<Long> branchIdPath = requestRoot.get("requester").get("branch").get("id");
-
-            Predicate isHeadOffice = criteriaBuilder.equal(branchIdPath, 1L);
-
-            Predicate isBranchNonStationery = criteriaBuilder.equal(
-                    requestRoot.get("isBranchNonStationery"),
-                    requestSearchCriteria.getIsBranchNonStationery()
-            );
-
-            predicates.add(criteriaBuilder.or(isHeadOffice, isBranchNonStationery));
-        }
-
-        // Ensure that BOM can review stationery requests of their branches
-        if (Objects.nonNull(requestSearchCriteria.getIsBranchStationery())) {
-            Expression<Long> branchIdPath = requestRoot.get("requester").get("branch").get("id");
-
-            Predicate isHeadOffice = criteriaBuilder.equal(branchIdPath, 1L);
-
-            Predicate isBranchStationery = criteriaBuilder.equal(
-                    requestRoot.get("isBranchStationery"),
-                    requestSearchCriteria.getIsBranchStationery()
-            );
-
-
-            // If it's Head Office, ignore the filter by always returning true (i.e., include it)
-            // If it's not Head Office, apply the filter
-            predicates.add(criteriaBuilder.or(isHeadOffice, isBranchStationery)
-            );
         }
 
         if (Objects.nonNull(requestSearchCriteria.getRequestedBy())) {
@@ -163,46 +191,49 @@ public class RequestSearchDao {
         if (Objects.nonNull(requestSearchCriteria.getApprover())) {
             String searchName = "%" + requestSearchCriteria.getApprover().toLowerCase() + "%";
 
-            Predicate firstNameMatch = criteriaBuilder.like(
-                    criteriaBuilder.lower(requestRoot.get("currentApprover").get("firstName")), searchName
-            );
+            /*
+             * An explicit LEFT join, not path navigation.
+             *
+             * `currentApprover` is nullable — a request that has finished its ladder, or been
+             * rejected, has none. Reaching through it with requestRoot.get("currentApprover") builds
+             * an INNER join, which filters those rows out in the FROM clause before the name
+             * comparison is even reached. That is invisible here, but it means the result set is
+             * quietly narrower than the filter describes.
+             */
+            Join<Object, Object> approver = reuseJoin(requestRoot, "currentApprover");
 
-            Predicate lastNameMatch = criteriaBuilder.like(
-                    criteriaBuilder.lower(requestRoot.get("currentApprover").get("lastName")), searchName
-            );
-
-            Predicate otherNameMatch = criteriaBuilder.like(
-                    criteriaBuilder.lower(requestRoot.get("currentApprover").get("otherName")), searchName
-            );
-
-            predicates.add(criteriaBuilder.or(firstNameMatch, lastNameMatch, otherNameMatch));
+            predicates.add(criteriaBuilder.or(
+                    criteriaBuilder.like(criteriaBuilder.lower(approver.get("firstName")), searchName),
+                    criteriaBuilder.like(criteriaBuilder.lower(approver.get("lastName")), searchName),
+                    criteriaBuilder.like(criteriaBuilder.lower(approver.get("otherName")), searchName)
+            ));
         }
 
-        // Filter Admin data for the requests listing
+        if (Objects.nonNull(requestSearchCriteria.getCurrentApproverId())) {
+            /*
+             * The approval inbox: what is assigned to me personally, OR routed to a unit I belong to
+             * (group-email steps set currentUnit instead of an individual).
+             *
+             * Both sides go through explicit LEFT joins. They were dotted paths, which JPA turns
+             * into INNER joins that sit in the FROM clause and filter before the OR is ever
+             * evaluated — so asking for "assigned to me or to my unit" silently required a request
+             * to have BOTH a current approver and a current unit. A request routed to one named
+             * approver, which is the ordinary case, has no currentUnit and was therefore excluded
+             * from the very inbox built to show it.
+             */
+            Join<Object, Object> approver = reuseJoin(requestRoot, "currentApprover");
+            Predicate byApprover = criteriaBuilder.equal(
+                    approver.get("id"), requestSearchCriteria.getCurrentApproverId());
 
-        if (Boolean.TRUE.equals(requestSearchCriteria.getIsAdmin()) &&
-                Objects.nonNull(requestSearchCriteria.getCurrentUserId())) {
-
-            Path<Long> requesterIdPath = requestRoot.get("requester").get("id");
-            Path<String> statusNamePath = requestRoot.get("status").get("status"); // Adjust if field is different
-
-            Predicate ownRequests = criteriaBuilder.equal(requesterIdPath, requestSearchCriteria.getCurrentUserId());
-
-            // Exclude specific statuses for other users
-            Predicate notOwnRequests = criteriaBuilder.notEqual(requesterIdPath, requestSearchCriteria.getCurrentUserId());
-            Predicate statusNotRequestCreated = criteriaBuilder.notEqual(statusNamePath, "requestCreated");
-            Predicate statusNotRequestRejected = criteriaBuilder.notEqual(statusNamePath, "requestRejected");
-
-            Predicate otherUsersValidStatuses = criteriaBuilder.and(
-                    notOwnRequests,
-                    statusNotRequestCreated,
-                    statusNotRequestRejected
-            );
-
-            // Combine own requests and filtered other users' requests
-            predicates.add(criteriaBuilder.or(ownRequests, otherUsersValidStatuses));
+            if (Objects.nonNull(requestSearchCriteria.getCurrentUnitId())) {
+                Join<Object, Object> unit = reuseJoin(requestRoot, "currentUnit");
+                Predicate byUnit = criteriaBuilder.equal(
+                        unit.get("id"), requestSearchCriteria.getCurrentUnitId());
+                predicates.add(criteriaBuilder.or(byApprover, byUnit));
+            } else {
+                predicates.add(byApprover);
+            }
         }
-
 
         return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
     }
@@ -215,13 +246,45 @@ public class RequestSearchDao {
      * @param requestRoot   the root entity in the criteria query.
      */
     private void setOrder(RequestPage requestPage, CriteriaQuery<Request> criteriaQuery, Root<Request> requestRoot) {
-        Sort.Direction sortDirection = sortDirection(requestPage) != null ? sortDirection(requestPage)
-                : Sort.Direction.ASC;
-        if (sortDirection.equals(Sort.Direction.ASC)) {
-            criteriaQuery.orderBy(criteriaBuilder.asc(requestRoot.get(sortBy(requestPage))));
-        } else {
-            criteriaQuery.orderBy(criteriaBuilder.desc(requestRoot.get(sortBy(requestPage))));
+        String field = sortBy(requestPage);
+        boolean ascending = sortDirection(requestPage).equals(Sort.Direction.ASC);
+
+        Order primary = ascending
+                ? criteriaBuilder.asc(requestRoot.get(field))
+                : criteriaBuilder.desc(requestRoot.get(field));
+
+        /*
+         * A tie-break on the primary key, always.
+         *
+         * Ordering on a single non-unique column leaves ties, and MySQL may return tied rows in a
+         * different order on each query. With OFFSET/LIMIT paging that means the same request can
+         * appear on two pages while another appears on none — the list looks like it is losing
+         * records. Sorting by priority, where there are three distinct values across the whole
+         * table, makes it near-certain.
+         */
+        if (DEFAULT_SORT_FIELD.equals(field)) {
+            criteriaQuery.orderBy(primary);
+            return;
         }
+        Order tieBreak = ascending
+                ? criteriaBuilder.asc(requestRoot.get(DEFAULT_SORT_FIELD))
+                : criteriaBuilder.desc(requestRoot.get(DEFAULT_SORT_FIELD));
+        criteriaQuery.orderBy(primary, tieBreak);
+    }
+
+    /**
+     * The existing LEFT join for an attribute, or a new one.
+     *
+     * <p>{@code From#join} adds a join every time it is called, so two predicates asking for the
+     * same association would put it in the FROM clause twice and multiply the rows — and with them
+     * the count.
+     */
+    @SuppressWarnings("unchecked")
+    private Join<Object, Object> reuseJoin(From<?, ?> from, String attribute) {
+        return (Join<Object, Object>) from.getJoins().stream()
+                .filter(j -> attribute.equals(j.getAttribute().getName()))
+                .findFirst()
+                .orElseGet(() -> (Join) from.join(attribute, JoinType.LEFT));
     }
 
     /**
@@ -231,7 +294,9 @@ public class RequestSearchDao {
      * @return a Pageable instance with pagination and optional sorting settings.
      */
     private Pageable getPageable(RequestPage requestPage) {
-        Sort sort = Sort.by(requestPage.getSortDirection(), sortBy(requestPage));
+        // Through the helper, not the raw getter: Sort.by(null, ...) throws, so an unspecified
+        // direction would have taken the whole listing down rather than defaulting.
+        Sort sort = Sort.by(sortDirection(requestPage), sortBy(requestPage));
         return PageRequest.of(pageNumber(requestPage), pageSize(requestPage), sort);
     }
 
@@ -258,8 +323,15 @@ public class RequestSearchDao {
      * @param requestPage the criteria to determine the sort direction.
      * @return the sort direction.
      */
+    /**
+     * Newest-first when nothing is asked for, matching the controller's own default.
+     *
+     * <p>This fell back to ASC while {@code RequestController} defaults to DESC, so the DAO and the
+     * endpoint in front of it disagreed on what "unspecified" meant — harmless only because the
+     * controller always sends a value, and a trap for any caller that did not.
+     */
     private Sort.Direction sortDirection(RequestPage requestPage) {
-        return requestPage.getSortDirection() != null ? requestPage.getSortDirection() : Sort.Direction.ASC;
+        return requestPage.getSortDirection() != null ? requestPage.getSortDirection() : Sort.Direction.DESC;
     }
 
     /**
@@ -268,8 +340,23 @@ public class RequestSearchDao {
      * @param requestPage the criteria to determine the sorting criteria.
      * @return the field to sort, page size or page number of the record.
      */
+    /**
+     * Columns a caller may sort on.
+     *
+     * <p>Whitelisted because the value goes straight into {@code requestRoot.get(...)}: anything
+     * that is not a mapped attribute throws {@link IllegalArgumentException} and the request becomes
+     * a 500. Associations are excluded — sorting by one would need a join this method cannot add.
+     */
+    private static final java.util.Set<String> SORTABLE = java.util.Set.of(
+            "id", "name", "priority", "description", "createDate", "lastModified",
+            "timeOfSubmissionOfRequest"
+    );
+
     private String sortBy(RequestPage requestPage) {
-        return requestPage.getSortBy() != null ? requestPage.getSortBy() : DEFAULT_SORT_FIELD;
+        String requested = requestPage.getSortBy();
+        // An unrecognised column falls back rather than failing: a stale bookmark or a renamed field
+        // should still show the list, in a defined order, instead of an error page.
+        return (requested != null && SORTABLE.contains(requested)) ? requested : DEFAULT_SORT_FIELD;
     }
 
     private Integer pageSize(RequestPage requestPage) {

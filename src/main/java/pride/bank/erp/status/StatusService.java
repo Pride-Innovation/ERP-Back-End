@@ -47,6 +47,11 @@ public class StatusService {
                 .orElseThrow(() -> new NotFoundException("Status with ID " + statusId + " is not found"));
     }
 
+    public Status findByStatusCode(String statusCode) throws NotFoundException {
+        return statusRepository.findByStatus(statusCode)
+                .orElseThrow(() -> new NotFoundException("Status '" + statusCode + "' not found"));
+    }
+
     public DeleteResponse deleteStatus(Long statusId) {
         if (statusRepository.existsById(statusId)) {
             statusRepository.deleteById(statusId);

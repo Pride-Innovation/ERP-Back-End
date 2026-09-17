@@ -61,10 +61,10 @@ public class BranchService {
     @Transactional
     public Branch createBranch(BranchDTO request)
             throws NotFoundException {
-        User branchManager = userService.findUser(request.getBranchManager());
-        User branchOperationsManager = userService.findUser(request.getBranchOperationsManager());
-        User creditAdministrator = userService.findUser(request.getCreditAdministrator());
-        User relationshipManager = userService.findUser(request.getRelationshipManager());
+        User branchManager = request.getBranchManager() != null ? userService.findUser(request.getBranchManager()) : null;
+        User branchOperationsManager = request.getBranchOperationsManager() != null ? userService.findUser(request.getBranchOperationsManager()) : null;
+        User creditAdministrator = request.getCreditAdministrator() != null ? userService.findUser(request.getCreditAdministrator()) : null;
+        User relationshipManager = request.getRelationshipManager() != null ? userService.findUser(request.getRelationshipManager()) : null;
         District district = districtService.findDistrict(request.getDistrict());
         Region region = regionService.findRegion(request.getRegion());
 
@@ -72,6 +72,7 @@ public class BranchService {
                 .name(request.getName())
                 .telephone(request.getTelephone())
                 .email(request.getEmail())
+                .managersGroupEmail(request.getManagersGroupEmail())
                 .branchManager(branchManager)
                 .branchOperationsManager(branchOperationsManager)
                 .creditAdministrator(creditAdministrator)
@@ -85,15 +86,16 @@ public class BranchService {
     @Transactional
     public Branch updateBranch(BranchDTO request, Long id) throws NotFoundException {
         Branch branch = findBranch(id);
-        User branchManager = userService.findUser(request.getBranchManager());
-        User branchOperationsManager = userService.findUser(request.getBranchOperationsManager());
-        User creditAdministrator = userService.findUser(request.getCreditAdministrator());
-        User relationshipManager = userService.findUser(request.getRelationshipManager());
+        User branchManager = request.getBranchManager() != null ? userService.findUser(request.getBranchManager()) : null;
+        User branchOperationsManager = request.getBranchOperationsManager() != null ? userService.findUser(request.getBranchOperationsManager()) : null;
+        User creditAdministrator = request.getCreditAdministrator() != null ? userService.findUser(request.getCreditAdministrator()) : null;
+        User relationshipManager = request.getRelationshipManager() != null ? userService.findUser(request.getRelationshipManager()) : null;
         District district = districtService.findDistrict(request.getDistrict());
         Region region = regionService.findRegion(request.getRegion());
         branch.setName(request.getName());
         branch.setTelephone(request.getTelephone());
         branch.setEmail(request.getEmail());
+        branch.setManagersGroupEmail(request.getManagersGroupEmail());
         branch.setBranchManager(branchManager);
         branch.setBranchOperationsManager(branchOperationsManager);
         branch.setCreditAdministrator(creditAdministrator);
@@ -118,6 +120,8 @@ public class BranchService {
             .name(branch.getName())
             .email(branch.getEmail())
             .telephone(branch.getTelephone())
+            .managersGroupEmail(branch.getManagersGroupEmail())
+            .isHeadOffice(branch.getHeadOffice())
             .branchManager(mapUser(
                 branch.getBranchManagerId(),
                 branch.getBranchManagerFirstName(),
@@ -165,6 +169,8 @@ public class BranchService {
                 .name(branch.getName())
                 .email(branch.getEmail())
                 .telephone(branch.getTelephone())
+                .managersGroupEmail(branch.getManagersGroupEmail())
+                .isHeadOffice(branch.isHeadOffice())
                 .branchManager(mapUser(branch.getBranchManager()))
                 .branchOperationsManager(mapUser(branch.getBranchOperationsManager()))
                 .relationshipManager(mapUser(branch.getRelationshipManager()))

@@ -4,7 +4,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pride.bank.erp.exception.NotFoundException;
-import pride.bank.erp.helper.ExtractNumberFromEmailAddress;
 import pride.bank.erp.notification.Email;
 import pride.bank.erp.user.User;
 import pride.bank.erp.user.UserRepository;
@@ -123,7 +122,7 @@ public class LeaveService {
      * Sends a notification email to the acting user.
      */
     private void notifyActingUser(User actingUser, User leavingUser, LeaveDTO request) {
-        String toEmail = new ExtractNumberFromEmailAddress(actingUser.getEmail()).getCleanedEmail();
+        String toEmail = actingUser.getEmail();
         String formattedStartDate = formatDate(request.getStartDate());
         String formattedEndDate = formatDate(request.getEndDate());
 

@@ -27,6 +27,13 @@ public class UserQueryParams {
     private String name;
     private String staffNumber;
     private String title;
+    private String gender;
+
+    /** Foreign-key filters — preferred over name-based filters when the UI has the ID handy. */
+    private Long titleId;
+    private Long branchId;
+    private Long departmentId;
+    private Long roleId;
 
     /** ISO-8601 lower bound for the user's createDate (e.g. 2024-01-01T00:00:00Z) */
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)

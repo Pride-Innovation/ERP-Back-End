@@ -20,4 +20,6 @@ public class RequestReportDTO {
     private Long approverId;
     private Long statusId;
     private String comment;
+    /** Explicit workflow action: "APPROVED" | "REJECTED". When present takes priority over statusId. */
+    private String workflowAction;
 }

@@ -10,11 +10,15 @@ package pride.bank.erp.helper;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.UrlResource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.MalformedURLException;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.UUID;
 
@@ -74,5 +78,32 @@ public class FileUpload {
         }
 
         return Paths.get(uploadDir, newFilename).toFile();
+    }
+
+    /**
+     * Loads a previously-stored file as a readable {@link Resource} for authenticated download.
+     * Only the basename of {@code storedPath} is used (path-traversal safe) and resolved against
+     * the configured upload directory — so callers can pass the stored documentPath as-is even if
+     * it was written with a different upload-dir value in another environment.
+     *
+     * @param storedPath the value persisted in an entity's documentPath (may include a dir prefix)
+     * @return a readable file Resource
+     * @throws IOException if the file is missing or unreadable
+     */
+    public Resource loadFileAsResource(String storedPath) throws IOException {
+        if (storedPath == null || storedPath.isBlank()) {
+            throw new IOException("No document path provided.");
+        }
+        String filename = Paths.get(storedPath).getFileName().toString();
+        Path file = Paths.get(uploadDir).resolve(filename).normalize();
+        try {
+            Resource resource = new UrlResource(file.toUri());
+            if (!resource.exists() || !resource.isReadable()) {
+                throw new IOException("File not found or not readable: " + filename);
+            }
+            return resource;
+        } catch (MalformedURLException e) {
+            throw new IOException("Invalid file path: " + filename, e);
+        }
     }
 }

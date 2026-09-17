@@ -16,24 +16,31 @@ import java.util.stream.Collectors;
 public class StockCommodityService {
     private final StockCommodityRepository stockCommodityRepository;
     private final CurrentUserService currentUserService;
+    private final pride.bank.erp.dashboard.DashboardScopeService dashboardScopeService;
 
-    private static final List<String> ASSET_TYPE_KEYS = Arrays.asList(
-            "itEquipment", "officeEquipment", "stationery", "fleet"
-    );
-
-    private static final Map<String, String> ASSET_TYPE_NAME_MAP = Map.of(
-            "it equipment", "itEquipment",
-            "office equipment", "officeEquipment",
-            "stationery", "stationery",
-            "fleet", "fleet"
-    );
+    /*
+     * There is deliberately no hardcoded category list here any more.
+     *
+     * There used to be two: a four-entry key list that padded every month, and a four-entry name
+     * map used to translate a category name into a key. Three of those four categories no longer
+     * exist — the seed now defines twelve, with Computers, Furniture and Vehicle/Fleet among them —
+     * so every real category fell through the map to "unknown" and collapsed into one bucket, while
+     * the response advertised four obsolete names with zeros against them. The dashboard rendered
+     * exactly that: a filter listing categories the bank no longer has.
+     *
+     * Categories are configuration, not code. Both the keys and the padding are now derived from
+     * what the query actually returns, so adding a category in Settings is the only step needed for
+     * it to appear here.
+     */
 
     /**
      * Returns a list of monthly stock summaries for the last 6 months,
      * including months with no data (with zeros for all asset types).
      */
-    public List<Map<String, Object>> getStockSummaryLastSixMonths() {
-        List<MonthlyStockSummaryDTO> raw = stockCommodityRepository.getMonthlyStockSummaryForLastSixMonths();
+    public List<Map<String, Object>> getStockSummaryLastSixMonths(Long requestedBranchId) {
+        Long branchId = dashboardScopeService.resolveBranch(requestedBranchId);
+        List<MonthlyStockSummaryDTO> raw =
+                stockCommodityRepository.getMonthlyStockSummaryForLastSixMonthsScoped(branchId);
 
         Map<String, Map<String, Object>> grouped = new LinkedHashMap<>();
 
@@ -50,13 +57,22 @@ public class StockCommodityService {
 
         List<String> lastSixMonths = getLastSixMonths();
 
+        // Pad from the categories actually present across the window, so every month carries the
+        // same keys and a month with no stocking reads as zero rather than as a missing series.
+        Set<String> presentKeys = new LinkedHashSet<>();
+        for (Map<String, Object> monthlyData : grouped.values()) {
+            for (String key : monthlyData.keySet()) {
+                if (!"month".equals(key)) presentKeys.add(key);
+            }
+        }
+
         for (String month : lastSixMonths) {
             grouped.putIfAbsent(month, new LinkedHashMap<>());
             Map<String, Object> monthlyData = grouped.get(month);
 
             monthlyData.put("month", month);
 
-            for (String assetType : ASSET_TYPE_KEYS) {
+            for (String assetType : presentKeys) {
                 monthlyData.putIfAbsent(assetType, 0);
             }
         }
@@ -89,9 +105,23 @@ public class StockCommodityService {
      * Returns "unknown" if the asset type name is null or unrecognized.
      */
     private String formatAssetTypeKey(String name) {
-        if (name == null) return "unknown";
-        String normalized = name.trim().toLowerCase();
-        return ASSET_TYPE_NAME_MAP.getOrDefault(normalized, "unknown");
+        if (name == null || name.isBlank()) return "unknown";
+
+        // Camel-cases whatever the category is actually called: "IT Equipment" becomes itEquipment,
+        // "Vehicle/Fleet" becomes vehicleFleet. The browser normalises both sides by stripping
+        // non-alphanumerics and lower-casing, so this only has to be stable — not to match a list.
+        String[] words = name.trim().split("[^A-Za-z0-9]+");
+        StringBuilder key = new StringBuilder();
+        for (String word : words) {
+            if (word.isEmpty()) continue;
+            if (key.isEmpty()) {
+                key.append(word.toLowerCase());
+            } else {
+                key.append(Character.toUpperCase(word.charAt(0)))
+                        .append(word.substring(1).toLowerCase());
+            }
+        }
+        return key.isEmpty() ? "unknown" : key.toString();
     }
 
 

@@ -13,4 +13,6 @@ public class DepartmentQueryParams {
     private String sortBy = "id";
     private String sortDirection = ASCENDING_SORT_DIRECTION;
     private String name;
+    /** Optional — restrict the result set to a single branch. Required for the Head Office department picker. */
+    private Long branchId;
 }

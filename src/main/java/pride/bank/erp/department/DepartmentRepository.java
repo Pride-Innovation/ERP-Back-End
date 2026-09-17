@@ -14,4 +14,8 @@ public interface DepartmentRepository extends JpaRepository<Department, Long> {
     Optional<Department> findByShortCode(String shortCode);
 
     Page<Department> findAllByNameContainingIgnoreCase(String name, Pageable pageable);
+
+    Page<Department> findAllByBranch_Id(Long branchId, Pageable pageable);
+
+    Page<Department> findAllByNameContainingIgnoreCaseAndBranch_Id(String name, Long branchId, Pageable pageable);
 }

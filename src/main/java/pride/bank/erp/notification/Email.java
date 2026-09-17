@@ -7,22 +7,17 @@ Managing Director
 
 package pride.bank.erp.notification;
 
-import jakarta.mail.internet.MimeMessage;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.FileSystemResource;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import pride.bank.erp.helper.ExtractNumberFromEmailAddress;
 import pride.bank.erp.request.CommodityWithQuantityDTO;
 import pride.bank.erp.request.Request;
 import pride.bank.erp.stock.Stock;
 
-import java.io.File;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -36,10 +31,9 @@ import static java.lang.String.format;
 public class Email {
 
     private static final Logger logger = LoggerFactory.getLogger(Email.class);
-    private final JavaMailSender mailSender;
+    private final MailDispatcher mailDispatcher;
 
-    @Value("${mail.sender.from}")
-    private String fromEmail;
+    // The From address now belongs to MailDispatcher, which builds the message.
 
     @Value("${application.verification.url}")
     private String verificationUrl;
@@ -56,8 +50,13 @@ public class Email {
 
     /**
      * Sends an email with an optional password.
+     *
+     * <p>Deliberately <b>not</b> {@code @Async}: the templates below read JPA entities
+     * ({@code request.getRequester().getBranch()}, {@code stock.getSupplier()}), which is only safe
+     * while the caller's persistence context is still open. Rendering therefore happens here, on the
+     * caller's thread, and only the finished HTML is handed to {@link MailDispatcher} to transmit
+     * off-thread — so the SMTP round-trip still doesn't block the request.
      */
-    @Async
     public boolean sendEmailVerification(
             String email,
             String subject,
@@ -94,24 +93,145 @@ public class Email {
                 return false;
             }
 
-            MimeMessage mimeMessage = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "utf-8");
-            helper.setTo(email);
-            helper.setSubject(subject);
-            helper.setFrom(fromEmail);
-            helper.setText(htmlContent, true);
-
-            String pathToAttachment = "src/main/resources/static/images/logo.png";
-            FileSystemResource image = new FileSystemResource(new File(pathToAttachment));
-            helper.addInline("logoImage", image);
-
-            mailSender.send(mimeMessage);
-            logger.info("Email sent to {}", email);
+            // Rendering is done; from here nothing touches an entity, so the send can go off-thread.
+            mailDispatcher.send(cleanRecipient(email), subject, htmlContent, type);
             return true;
         } catch (Exception e) {
-            logger.error("Failed to send email to {}", email, e);
+            logger.error("Failed to build email for {}", email, e);
             return false;
         }
+    }
+
+    /**
+     * Movement mail — an approval request, or the outcome once the ladder has finished.
+     *
+     * <p>Takes only primitives, deliberately. Every other template here reads JPA entities while
+     * rendering, which is why {@link Email} cannot be {@code @Async} as a whole; this one has
+     * nothing lazy to touch, so a caller can hand it values pulled inside its own transaction and
+     * stop worrying about the session boundary.
+     *
+     * <p>Never throws. A movement must not fail to be created, approved or rejected because an SMTP
+     * host is unreachable — the in-app notification has already been written by then, and mail is
+     * the redundant channel, not the authoritative one.
+     *
+     * @param outcome  null for "needs your approval"; otherwise the decision reached
+     *                 ({@code APPROVED} / {@code REJECTED}), which flips the accent and the wording
+     * @param comment  the approver's note, when there is one
+     */
+    public boolean sendMovementEmail(
+            String recipientEmail,
+            String recipientName,
+            Long movementId,
+            String movementType,
+            String route,
+            String link,
+            String outcome,
+            String comment
+    ) {
+        if (recipientEmail == null || recipientEmail.isBlank()) {
+            logger.warn("No email address for movement {} notification — skipping mail", movementId);
+            return false;
+        }
+        try {
+            boolean rejected = "REJECTED".equalsIgnoreCase(outcome);
+            boolean decided = outcome != null && !outcome.isBlank();
+
+            String headline = decided
+                    ? (rejected ? "Movement rejected" : "Movement approved")
+                    : "A movement needs your approval";
+            String subject = decided
+                    ? format("Movement #%d %s", movementId, rejected ? "rejected" : "approved")
+                    : format("Approval needed — Movement #%d", movementId);
+            String accent = rejected ? "#B91C1C" : TEAL_PRIMARY;
+            String accentSoft = rejected ? "#d33b3b" : TEAL_SECONDARY;
+            String buttonText = decided ? "View movement" : "Review and approve";
+
+            String body = decided
+                    ? (rejected
+                    ? format("Movement <strong>#%d</strong> was rejected and will not proceed.", movementId)
+                    : format("Movement <strong>#%d</strong> has cleared its approval ladder and is ready to "
+                            + "be dispatched.", movementId))
+                    : format("Movement <strong>#%d</strong> is waiting on your decision. Nothing moves — and no "
+                            + "stock leaves its store — until it is approved.", movementId);
+
+            String htmlContent = getMovementEmailContent(
+                    headline, recipientName, body, movementType, route, link, buttonText,
+                    accent, accentSoft, comment);
+
+            mailDispatcher.send(cleanRecipient(recipientEmail), subject, htmlContent, "movement");
+            return true;
+        } catch (Exception e) {
+            logger.error("Failed to build movement email for {} (movement {})", recipientEmail, movementId, e);
+            return false;
+        }
+    }
+
+    /** Body for {@link #sendMovementEmail} — same brand furniture as the other templates. */
+    private String getMovementEmailContent(
+            String headline,
+            String recipientName,
+            String body,
+            String movementType,
+            String route,
+            String link,
+            String buttonText,
+            String accent,
+            String accentSoft,
+            String comment
+    ) {
+        String greetingName = (recipientName == null || recipientName.isBlank()) ? "there" : recipientName;
+
+        String detailRows = ""
+                + rowIfPresent("Type", movementType)
+                + rowIfPresent("Route", route)
+                + rowIfPresent("Comment", comment);
+
+        return format(
+                "<!DOCTYPE html>"
+                        + "<html lang='en'><head><meta charset='UTF-8'>"
+                        + "<meta name='viewport' content='width=device-width, initial-scale=1.0'>"
+                        + "<title>%s</title></head>"
+                        + "<body style='margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,Arial,sans-serif;background-color:#f0f4f8;'>"
+                        + "<div style='padding:40px 20px;'>"
+                        + "<div style='max-width:620px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 18px 40px rgba(0,0,0,0.08);'>"
+
+                        // Header
+                        + "<div style='background:linear-gradient(135deg,%s 0%%,%s 100%%);padding:36px 30px;text-align:center;'>"
+                        + "<img src='cid:logoImage' alt='Pride Bank' style='max-width:220px;height:auto;filter:brightness(0) invert(1);margin-bottom:14px;' />"
+                        + "<h1 style='color:#ffffff;margin:0;font-size:21px;font-weight:500;'>%s</h1>"
+                        + "</div>"
+
+                        // Body
+                        + "<div style='padding:36px 34px;'>"
+                        + "<p style='color:#2d3748;font-size:16px;margin:0 0 18px;'>Dear <strong>%s</strong>,</p>"
+                        + "<p style='color:#4a5568;font-size:15px;line-height:1.7;margin:0 0 24px;'>%s</p>"
+                        + "<table style='width:100%%;border-collapse:collapse;background:#f7fafc;border-radius:10px;overflow:hidden;'>%s</table>"
+                        + "<div style='text-align:center;margin:32px 0 8px;'>"
+                        + "<a href='%s' style='display:inline-block;background:%s;color:#ffffff;text-decoration:none;padding:13px 32px;border-radius:8px;font-weight:600;font-size:15px;'>%s</a>"
+                        + "</div>"
+                        + "<p style='color:#94a3b8;font-size:12px;text-align:center;margin:18px 0 0;'>"
+                        + "If the button does not work, copy this link into your browser:<br/>%s</p>"
+                        + "</div>"
+
+                        // Footer
+                        + "<div style='background:#f7fafc;padding:18px 30px;text-align:center;border-top:1px solid #e2e8f0;'>"
+                        + "<p style='color:#94a3b8;font-size:12px;margin:0;'>Pride Bank Limited — automated message, please do not reply.</p>"
+                        + "</div>"
+                        + "</div></div></body></html>",
+                headline, accent, accentSoft, headline, greetingName, body, detailRows,
+                link, accent, buttonText, link);
+    }
+
+    /** One label/value row in the movement detail table; omitted entirely when there is no value. */
+    private String rowIfPresent(String label, String value) {
+        if (value == null || value.isBlank()) return "";
+        return format(
+                "<tr>"
+                        + "<td style='padding:11px 16px;color:#718096;font-size:12px;font-weight:700;"
+                        + "text-transform:uppercase;letter-spacing:0.05em;width:110px;'>%s</td>"
+                        + "<td style='padding:11px 16px;color:#2d3748;font-size:14px;font-weight:600;'>%s</td>"
+                        + "</tr>",
+                label, value);
     }
 
     /**
@@ -782,5 +902,189 @@ public class Email {
                 TEAL_PRIMARY,
                 GOLD_PRIMARY
         );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Workflow step email
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Sends a professional workflow step notification email.
+     *
+     * @param email        Recipient email address
+     * @param subject      Email subject
+     * @param greeting     Recipient's first name or "Team"
+     * @param stepTitle    The step name e.g. "Manager Approval Required"
+     * @param instructions Step-specific instruction text
+     * @param request      The request entity
+     * @param step         The current approval step (may be null for rejection)
+     * @param stepStatus   "PENDING", "REJECTED", "CC"
+     */
+    public boolean sendWorkflowEmail(
+            String email,
+            String subject,
+            String greeting,
+            String stepTitle,
+            String instructions,
+            Request request,
+            Object step,
+            String stepStatus
+    ) {
+        if (email == null || email.isBlank()) return false;
+        try {
+            // Reads the request graph — must stay on the caller's thread (see sendEmailVerification).
+            String htmlContent = getWorkflowEmailContent(greeting, stepTitle, instructions, request, stepStatus);
+
+            mailDispatcher.send(cleanRecipient(email), subject, htmlContent, "workflow");
+            return true;
+        } catch (Exception e) {
+            logger.error("Failed to build workflow email for {}", email, e);
+            return false;
+        }
+    }
+
+    /**
+     * The single place recipient addresses are cleaned before SMTP send. Trailing
+     * digits in the local part are stripped (see {@link ExtractNumberFromEmailAddress}),
+     * so addresses stored as sodong1@…, sodong2@… — kept distinct to satisfy the
+     * email-unique constraint — all resolve to the single real mailbox sodong@….
+     * Both {@code sendEmailVerification} and {@code sendWorkflowEmail} route through
+     * here, so callers pass the raw stored address and never clean it themselves.
+     */
+    private String cleanRecipient(String email) {
+        String cleaned = new ExtractNumberFromEmailAddress(email).getCleanedEmail();
+        if (!Objects.equals(email, cleaned)) {
+            logger.debug("Recipient rewritten for SMTP: {} -> {}", email, cleaned);
+        }
+        return cleaned;
+    }
+
+    private String getWorkflowEmailContent(
+            String greeting,
+            String stepTitle,
+            String instructions,
+            Request request,
+            String stepStatus
+    ) {
+        String statusColor;
+        String statusLabel;
+        String statusIcon;
+        switch (stepStatus != null ? stepStatus.toUpperCase() : "PENDING") {
+            case "REJECTED" -> { statusColor = "#C53030"; statusLabel = "REJECTED"; statusIcon = "✗"; }
+            case "CC"       -> { statusColor = TEAL_PRIMARY; statusLabel = "FOR YOUR INFORMATION"; statusIcon = "ℹ"; }
+            default         -> { statusColor = GOLD_PRIMARY; statusLabel = "ACTION REQUIRED"; statusIcon = "⚡"; }
+        }
+
+        String commodityRows = buildCommodityRows(request);
+        String requesterName = (request.getRequester() != null)
+                ? request.getRequester().getFirstName() + " " + request.getRequester().getLastName()
+                : "N/A";
+        String requesterBranch = (request.getRequester() != null && request.getRequester().getBranch() != null)
+                ? request.getRequester().getBranch().getName() : "N/A";
+        String viewLink = format("%s/assets-mgt/asset-request/view?id=%d", verificationUrl, request.getId());
+
+        return format(
+                "<!DOCTYPE html><html lang='en'><head>" +
+                "<meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'>" +
+                "<title>%s — Pride Bank</title></head>" +
+                "<body style='margin:0; padding:0; font-family:-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif; background-color:#f0f4f8;'>" +
+                "<div style='background: linear-gradient(135deg, #e8f5f3 0%%, #f0f7ff 100%%); min-height:100vh; padding:40px 16px;'>" +
+                "<div style='max-width:620px; margin:0 auto; background:#ffffff; border-radius:20px; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,0.10);'>" +
+
+                // Header
+                "<div style='background-color:%s; background-image:linear-gradient(135deg,%s 0%%,%s 100%%); padding:40px 32px; text-align:center;'>" +
+                "<img src='cid:logoImage' alt='Pride Bank Limited' style='max-width:240px; height:auto; filter:brightness(0) invert(1); margin-bottom:20px;'/>" +
+                "<div style='display:inline-block; background:rgba(255,255,255,0.18); border:1px solid rgba(255,255,255,0.4); border-radius:50px; padding:6px 20px; margin-top:8px;'>" +
+                "<p style='margin:0; color:#ffffff; font-size:12px; font-weight:700; letter-spacing:2px; text-transform:uppercase;'>%s %s</p>" +
+                "</div>" +
+                "</div>" +
+
+                // Body
+                "<div style='padding:36px 32px;'>" +
+                "<p style='color:#2d3748; font-size:16px; font-weight:600; margin:0 0 6px 0;'>Dear %s,</p>" +
+                "<p style='color:#4a5568; font-size:15px; line-height:1.7; margin:0 0 24px 0;'>%s</p>" +
+
+                // Request card
+                "<div style='background:#f7fafc; border:1px solid #e2e8f0; border-radius:14px; overflow:hidden; margin:24px 0;'>" +
+                "<div style='background:%s; padding:14px 20px;'><p style='margin:0; color:#ffffff; font-size:13px; font-weight:700; letter-spacing:1px; text-transform:uppercase;'>📋 Request Details</p></div>" +
+                "<div style='padding:20px 24px;'>" +
+                "<table style='width:100%%; border-collapse:collapse;'>" +
+                "<tr><td style='padding:8px 0; color:#718096; font-size:13px; width:40%%;'>Request ID</td><td style='padding:8px 0; color:#2d3748; font-size:14px; font-weight:600;'>#%d</td></tr>" +
+                "<tr style='border-top:1px solid #e2e8f0;'><td style='padding:8px 0; color:#718096; font-size:13px;'>Request Name</td><td style='padding:8px 0; color:#2d3748; font-size:14px; font-weight:600;'>%s</td></tr>" +
+                "<tr style='border-top:1px solid #e2e8f0;'><td style='padding:8px 0; color:#718096; font-size:13px;'>Requested By</td><td style='padding:8px 0; color:#2d3748; font-size:14px;'>%s</td></tr>" +
+                "<tr style='border-top:1px solid #e2e8f0;'><td style='padding:8px 0; color:#718096; font-size:13px;'>Branch</td><td style='padding:8px 0; color:#2d3748; font-size:14px;'>%s</td></tr>" +
+                "<tr style='border-top:1px solid #e2e8f0;'><td style='padding:8px 0; color:#718096; font-size:13px;'>Priority</td><td style='padding:8px 0; color:#2d3748; font-size:14px;'>%s</td></tr>" +
+                "</table></div></div>" +
+
+                // Items
+                "%s" +
+
+                // CTA (hide for CC)
+                "%s" +
+
+                // Step title
+                "<p style='color:#718096; font-size:12px; margin:24px 0 0 0;'>This is an automated notification from the Pride Bank ERP system. Please do not reply to this email.</p>" +
+                "</div>" +
+
+                "%s" + // footer
+                "</div></div></body></html>",
+
+                // title
+                stepTitle,
+
+                // header bg
+                TEAL_PRIMARY, TEAL_PRIMARY, TEAL_SECONDARY,
+
+                // badge
+                statusIcon, statusLabel,
+
+                // greeting
+                greeting, instructions,
+
+                // request card header
+                TEAL_PRIMARY,
+
+                // request details
+                request.getId(),
+                request.getName() != null ? request.getName() : "N/A",
+                requesterName,
+                requesterBranch,
+                request.getPriority() != null ? request.getPriority() : "Normal",
+
+                // commodity rows
+                commodityRows,
+
+                // CTA button
+                ("CC".equalsIgnoreCase(stepStatus)) ? "" :
+                        format("<div style='text-align:center; margin:28px 0;'>" +
+                               "<a href='%s' style='display:inline-block; background:%s; color:#ffffff; text-decoration:none; " +
+                               "padding:14px 36px; border-radius:50px; font-size:14px; font-weight:700; letter-spacing:0.5px;'>View Request</a>" +
+                               "</div>", viewLink, TEAL_PRIMARY),
+
+                // footer
+                getEmailFooter()
+        );
+    }
+
+    private String buildCommodityRows(Request request) {
+        if (request.getCommodities() == null || request.getCommodities().isEmpty()) return "";
+
+        StringBuilder rows = new StringBuilder();
+        rows.append("<div style='background:#f7fafc; border:1px solid #e2e8f0; border-radius:14px; overflow:hidden; margin:16px 0;'>")
+            .append("<div style='background:" + GOLD_PRIMARY + "; padding:14px 20px;'><p style='margin:0; color:#ffffff; font-size:13px; font-weight:700; letter-spacing:1px; text-transform:uppercase;'>📦 Requested Items</p></div>")
+            .append("<div style='padding:0 24px;'><table style='width:100%%; border-collapse:collapse;'>")
+            .append("<tr style='background:#edf2f7;'><th style='padding:10px 8px; text-align:left; color:#4a5568; font-size:12px; text-transform:uppercase;'>Item</th>" +
+                    "<th style='padding:10px 8px; text-align:right; color:#4a5568; font-size:12px; text-transform:uppercase;'>Qty</th></tr>");
+
+        for (var c : request.getCommodities()) {
+            String itemName = (c.getCommodity() != null && c.getCommodity().getName() != null)
+                    ? c.getCommodity().getName() : "Item";
+            rows.append(format("<tr style='border-top:1px solid #e2e8f0;'>" +
+                    "<td style='padding:10px 8px; color:#2d3748; font-size:14px;'>%s</td>" +
+                    "<td style='padding:10px 8px; color:#2d3748; font-size:14px; text-align:right; font-weight:600;'>%d</td></tr>",
+                    itemName, c.getQuantity()));
+        }
+        rows.append("</table></div></div>");
+        return rows.toString();
     }
 }

@@ -31,6 +31,10 @@ public class AssetAssignmentHistory {
     private LocalDateTime startDate;
     private LocalDateTime endDate;
 
+    /** True for a temporary replacement assignment issued while the user's asset is under repair (§15). */
+    @Builder.Default
+    private boolean temporary = false;
+
     @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(name = "user_id", nullable = false)
     @NotAudited

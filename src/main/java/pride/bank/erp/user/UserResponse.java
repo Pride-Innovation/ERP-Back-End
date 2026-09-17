@@ -11,6 +11,6 @@ import pride.bank.erp.apiResponse.Response;
 @NoArgsConstructor
 @Builder
 public class UserResponse {
-    private User user;
+    private UserResponseDTO user;
     private Response response;
 }

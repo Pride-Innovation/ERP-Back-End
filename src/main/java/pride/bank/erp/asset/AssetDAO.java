@@ -43,6 +43,14 @@ public class AssetDAO {
     private String ipAddress;
     private String interfaceType;
     private String assetDepreciationRate;
+    /** Derived: total depreciation to date (gross cost − current net book value). Read-only. */
+    private String accumulatedDepreciation;
+    /** Derived: depreciation charge for the current year at the current value. Read-only. */
+    private String annualDepreciation;
+    /** Derived: monthly depreciation charge (current year's charge ÷ 12). Read-only. */
+    private String monthlyDepreciation;
+    /** Derived: "In service" or "Ready for disposal" once the asset's age reaches its useful life. */
+    private String disposalStatus;
     private String description;
     private String image;
 
@@ -59,4 +67,6 @@ public class AssetDAO {
     private Long createdBy;
     private Long lastModifiedBy;
     private String lastRepairedBy;
+    /** Pool stock for temporary replacement loans (see {@code Asset#isTemporaryPool()}). */
+    private boolean temporaryPool;
 }

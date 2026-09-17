@@ -11,11 +11,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import pride.bank.erp.acknowledgeIssuanceReceipt.AcknowledgeIssuanceReceiptService;
 import pride.bank.erp.exception.NotFoundException;
-import pride.bank.erp.helper.ExtractNumberFromEmailAddress;
 import pride.bank.erp.issuance.UserBuilder;
 import pride.bank.erp.notification.Email;
+import org.springframework.security.access.AccessDeniedException;
 import pride.bank.erp.request.Request;
 import pride.bank.erp.request.RequestDTO;
 import pride.bank.erp.request.RequestRepository;
@@ -29,8 +28,10 @@ import pride.bank.erp.user.User;
 import pride.bank.erp.user.UserRepository;
 import pride.bank.erp.user.UserService;
 
+import pride.bank.erp.exception.BusinessRuleException;
+import pride.bank.erp.workflowinstance.WorkflowEngineService;
+
 import java.util.List;
-import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -44,28 +45,94 @@ public class RequestReportService {
     private final UserRepository userRepository;
     private final UserBuilder userBuilder;
     private final RequestCommodityRepository requestCommodityRepository;
+    private final WorkflowEngineService workflowEngineService;
+    private final pride.bank.erp.config.CurrentUserService currentUserService;
 
     @Value("${application.admin.email}")
     private String adminEmailAddress;
 
     @Transactional
     public RequestDTO approveRequest(RequestReportDTO body)
-            throws NotFoundException {
+            throws NotFoundException, BusinessRuleException {
         Request request = requestService.findRequest(body.getRequestId());
+
+        /*
+         * The decision is attributed to whoever the body names, and the body comes from the client.
+         * Naming someone else would file the approval under their name in the step log and the audit
+         * trail — a signature nobody checked. The frontend already sends the signed-in user's own id,
+         * so pinning it here costs nothing and closes the gap.
+         *
+         * Null is left alone: the workflow engine treats a null actor as a system-driven step and
+         * has its own handling for it.
+         */
+        User signedIn = currentUserService.getCurrentUser();
+        if (body.getApproverId() != null && signedIn != null
+                && !body.getApproverId().equals(signedIn.getId())) {
+            throw new AccessDeniedException("You can only approve or reject as yourself.");
+        }
+
+        // Guard: an officer must not approve or reject their own request.
+        if (body.getApproverId() != null
+                && request.getRequester() != null
+                && body.getApproverId().equals(request.getRequester().getId())) {
+            throw new BusinessRuleException("You cannot approve or reject your own request.");
+        }
+
         User approver = userService.findUser(body.getApproverId());
-        Status status = statusService.findOneStatus(body.getStatusId());
 
-        String message = handleStatusUpdate(request, status, body.getComment());
+        // Resolve workflow action — prefer explicit string to legacy statusId lookup.
+        // This avoids failures when auto-generated IDs differ between environments.
+        String workflowAction;
+        Status status;
+        if (body.getWorkflowAction() != null && !body.getWorkflowAction().isBlank()) {
+            workflowAction = body.getWorkflowAction().toUpperCase();
+            String statusCode = "REJECTED".equals(workflowAction) ? "requestRejected" : "requestApproved";
+            status = statusService.findByStatusCode(statusCode);
+        } else {
+            status = statusService.findOneStatus(body.getStatusId());
+            workflowAction = resolveWorkflowAction(status.getStatus());
+        }
 
+        // The stage this service is for. A request at the issuance step still carries an
+        // approval-flavoured status, so without this an approval arriving late would advance
+        // the *issuance* step and record the request as issued.
+        workflowEngineService.requireCurrentStepIs(
+                body.getRequestId(), pride.bank.erp.workflow.StepType.REQUEST_APPROVAL);
+
+        // And an approval step is not always *this* stage. The issuance sign-off is stored as one,
+        // so approving it here would advance the workflow without creating the fulfilment movement
+        // that /approve-issuance exists to create. Rejection stays open — it is the only way to
+        // refuse an issuance.
+        if (!"REJECTED".equals(workflowAction)) {
+            workflowEngineService.requireNotIssuanceApprovalStage(body.getRequestId());
+        }
+
+        if (workflowEngineService.hasActiveInstance(body.getRequestId())) {
+            // Workflow mode: engine handles status update, next-approver assignment, and notifications
+            workflowEngineService.processStepAction(
+                    body.getRequestId(),
+                    body.getApproverId(),
+                    workflowAction,
+                    body.getComment()
+            );
+        } else {
+            // Legacy mode: update status directly and route notifications
+            handleStatusUpdate(request, status, body.getComment());
+        }
+
+        // Persist the approval report record for audit purposes
         RequestReport requestReport = RequestReport.builder()
                 .approver(approver)
                 .request(request)
                 .status(status)
                 .comment(body.getComment())
                 .build();
-
         RequestReport response = requestReportRepository.save(requestReport);
-        response.setMessage(message);
+
+        // Reload request to pick up any status changes
+        request = requestService.findRequest(body.getRequestId());
+        response.setMessage("Workflow step processed: " + workflowAction);
+
         return RequestDTO
                 .builder()
                 .id(request.getId())
@@ -94,13 +161,23 @@ public class RequestReportService {
                 .build();
     }
 
+    private String resolveWorkflowAction(String statusCode) {
+        if (statusCode == null) return "APPROVED";
+        return switch (statusCode.toLowerCase()) {
+            case "requestrejected" -> "REJECTED";
+            case "issued" -> "ISSUED";
+            case "receiptacknowledged" -> "ACKNOWLEDGED";
+            default -> "APPROVED";
+        };
+    }
+
     /**
      * Updates the request status and handles notifications.
      * If the request is rejected, only the requester is notified.
      * If the request is approved, both the requester and the admin are notified.
      */
     @Transactional
-    private String handleStatusUpdate(
+    protected String handleStatusUpdate(
             Request request,
             Status status,
             String comment
@@ -205,10 +282,8 @@ public class RequestReportService {
             Request request,
             String requesterName
     ) {
-        ExtractNumberFromEmailAddress cleanedEmail = new ExtractNumberFromEmailAddress(email);
-
         boolean emailStatus = emailService.sendEmailVerification(
-                cleanedEmail.getCleanedEmail(),
+                email,
                 String.format("Action Required – Approved Request Pending Processing (Request ID# %s )", request.getId()),
                 null,
                 requesterName,

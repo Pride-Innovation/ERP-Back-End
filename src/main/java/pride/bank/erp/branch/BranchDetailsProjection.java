@@ -12,6 +12,10 @@ public interface BranchDetailsProjection {
 
     String getTelephone();
 
+    String getManagersGroupEmail();
+
+    boolean getHeadOffice();
+
     Region getRegion();
 
     District getDistrict();

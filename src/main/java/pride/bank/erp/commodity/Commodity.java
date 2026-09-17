@@ -41,11 +41,13 @@ public class Commodity {
     // This is optional but can be useful to easily access commodities associated with a request
     @OneToMany(mappedBy = "commodity", cascade = CascadeType.ALL, orphanRemoval = true)
     @JsonIgnore
+    @Builder.Default
     private Set<RequestCommodity> requestCommodities = new HashSet<>();
 
     // This is optional but can be useful to easily access commodities associated with a stock
     @OneToMany(mappedBy = "commodity", cascade = CascadeType.ALL, orphanRemoval = true)
     @JsonIgnore
+    @Builder.Default
     private Set<StockCommodity> stockCommodities = new HashSet<>();
 
     @ManyToOne(fetch = FetchType.EAGER)

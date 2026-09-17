@@ -15,6 +15,8 @@ import lombok.NoArgsConstructor;
 import pride.bank.erp.commodity.Commodity;
 import pride.bank.erp.stock.Stock;
 
+import java.math.BigDecimal;
+
 @Entity
 @Data
 @NoArgsConstructor
@@ -26,9 +28,27 @@ public class StockCommodity {
     private Long id;
     private int orderedQuantity;
     private int deliveredQuantity;
-    private int costPrice;
-    private int purchasePrice;
+    /**
+     * Unit prices, in UGX. {@link BigDecimal} rather than {@code int}: an int capped a single value
+     * near 2.1bn and could not hold a fraction at all, which made depreciation arithmetic — a rate
+     * applied to a cost, then divided by twelve — impossible to express without losing money to
+     * rounding on every line.
+     */
+    @Column(precision = 19, scale = 4)
+    private BigDecimal costPrice;
+
+    @Column(precision = 19, scale = 4)
+    private BigDecimal purchasePrice;
     private int registeredNumber;
+
+    /**
+     * Optimistic lock. Receiving is a read-modify-write on {@code deliveredQuantity} and
+     * {@code registeredNumber}; without this, two storekeepers receiving the same order at the same
+     * moment silently lose one of the batches (last write wins) while both GRNs still print.
+     */
+    @Version
+    @Column(nullable = false, columnDefinition = "BIGINT NOT NULL DEFAULT 0")
+    private Long version;
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "stock_id", nullable = false)

@@ -88,9 +88,27 @@ public class AssetTypeCommoditySeeder {
                         .name(node.getName())
                         .description(node.getDescription())
                         .shortCode(node.getShortCode())
+                        // Durable-category default, applied ONLY when the row is first created so
+                        // an admin's later toggle (Settings → Asset Categories) survives restarts.
+                        .tracksAssets(ASSET_TRACKING_CATEGORIES.contains(node.getName()))
                         .build()
         );
     }
+
+    /**
+     * Durable categories whose stocked items should auto-create trackable assets on a
+     * brand-new database. Consumables (Stationery, Cleaning, Healthcare, Kitchen, etc.)
+     * are intentionally excluded. After creation the flag is owned by the admin UI and
+     * is never touched by seeding again.
+     */
+    private static final java.util.Set<String> ASSET_TRACKING_CATEGORIES = java.util.Set.of(
+            "Computers",
+            "Equipment",
+            "Furniture",
+            "Vehicle/Fleet",
+            "Security",
+            "Financial & Banking Equipment"
+    );
 
     private Optional<AssetType> findExistingAssetType(AssetTypeSeedNode node) {
         if (node.getShortCode() != null && !node.getShortCode().isBlank()) {

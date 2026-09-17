@@ -45,4 +45,6 @@ public class AssetDTO {
     private Long assetType;
     private Long category;
     private String lpoNumber;
+    /** Pool stock for temporary replacement loans (see {@link Asset#isTemporaryPool()}). */
+    private Boolean temporaryPool;
 }

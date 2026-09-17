@@ -42,10 +42,10 @@ public class DepartmentController {
                     content = @Content)
     })
     @GetMapping("/departments")
-    public ResponseEntity<Page<Department>> fetchAllDepartments(
+    public ResponseEntity<Page<DepartmentResponse>> fetchAllDepartments(
             @Parameter(description = "Filter and pagination parameters")
             @ModelAttribute DepartmentQueryParams params) {
-        Page<Department> response = departmentService.fetchAllDepartments(params);
+        Page<DepartmentResponse> response = departmentService.fetchAllDepartments(params);
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
 
@@ -64,10 +64,10 @@ public class DepartmentController {
                     content = @Content)
     })
     @PostMapping("/departments")
-    public ResponseEntity<Department> createDepartment(
+    public ResponseEntity<DepartmentResponse> createDepartment(
             @Valid @RequestBody DepartmentDTO request)
             throws NotFoundException {
-        Department response = departmentService.createDepartment(request);
+        DepartmentResponse response = departmentService.createDepartment(request);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 
@@ -85,12 +85,12 @@ public class DepartmentController {
                     content = @Content)
     })
     @PutMapping("/departments/{id}")
-    public ResponseEntity<Department> updateDepartment(
+    public ResponseEntity<DepartmentResponse> updateDepartment(
             @Parameter(description = "ID of the department to update", required = true)
             @PathVariable Long id,
             @Valid @RequestBody DepartmentDTO request)
             throws NotFoundException {
-        Department response = departmentService.updateDepartment(request, id);
+        DepartmentResponse response = departmentService.updateDepartment(request, id);
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
 
@@ -106,11 +106,11 @@ public class DepartmentController {
                     content = @Content)
     })
     @GetMapping("/departments/{id}")
-    public ResponseEntity<Department> getDepartment(
+    public ResponseEntity<DepartmentResponse> getDepartment(
             @Parameter(description = "ID of the department", required = true)
             @PathVariable Long id)
             throws NotFoundException {
-        return new ResponseEntity<>(departmentService.findOneDepartment(id), HttpStatus.OK);
+        return new ResponseEntity<>(departmentService.findOneDepartmentResponse(id), HttpStatus.OK);
     }
 
     @Operation(

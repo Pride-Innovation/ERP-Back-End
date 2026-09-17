@@ -18,5 +18,7 @@ import java.util.Optional;
 public interface StockRepository extends JpaRepository<Stock, Long> {
     Optional<Stock> findByLpoNumber(String lpoNumber);
 
+    Optional<Stock> findByIdempotencyKey(String idempotencyKey);
+
     List<Stock> findByCreateDateBetween(LocalDateTime startDate, LocalDateTime endDate);
 }

@@ -18,6 +18,7 @@ public class UserBuilder {
                 .staffNumber(user.getStaffNumber())
                 .title(user.getTitle())
                 .department(user.getDepartment())
+                .unit(user.getUnit())
                 .isEnabled(user.isEnabled())
                 .isAccountNonLocked(user.isAccountNonLocked())
                 .blocked(user.isBlocked())

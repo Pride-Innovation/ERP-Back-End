@@ -88,6 +88,44 @@ public class AssetAssignmentHistorySearchDao {
             );
         }
 
+        /*
+         * Branch scope, via explicit LEFT JOINs.
+         *
+         * Written as `root.get("asset").get("branch").get("id")` this would compile to two INNER
+         * joins sitting in the FROM clause, and they filter before the OR below is evaluated — so a
+         * history row whose asset has no branch, or whose holder has none, would vanish from every
+         * scoped listing rather than being matched by the other side of the OR. That is trap #1 in
+         * CLAUDE.md and it has caused four separate bugs in this codebase already.
+         *
+         * Matches the asset's own branch or its holder's, the same pair AssetSearchDao uses, so an
+         * item assigned to someone at this branch stays visible even when the asset row still points
+         * elsewhere.
+         */
+        if (Objects.nonNull(assetAssignmentHistorySearchCriteria.getScopedBranchId())) {
+            Long scoped = assetAssignmentHistorySearchCriteria.getScopedBranchId();
+
+            jakarta.persistence.criteria.Join<Object, Object> asset =
+                    assetAssignmentHistoryRoot.join("asset", jakarta.persistence.criteria.JoinType.LEFT);
+            jakarta.persistence.criteria.Join<Object, Object> assetBranch =
+                    asset.join("branch", jakarta.persistence.criteria.JoinType.LEFT);
+            jakarta.persistence.criteria.Join<Object, Object> holderBranch =
+                    assetAssignmentHistoryRoot
+                            .join("user", jakarta.persistence.criteria.JoinType.LEFT)
+                            .join("branch", jakarta.persistence.criteria.JoinType.LEFT);
+
+            predicates.add(criteriaBuilder.or(
+                    criteriaBuilder.equal(assetBranch.get("id"), scoped),
+                    criteriaBuilder.equal(holderBranch.get("id"), scoped)
+            ));
+        }
+
+        // SELF scope: the trail of what this person has personally held.
+        if (Objects.nonNull(assetAssignmentHistorySearchCriteria.getScopedOwnerId())) {
+            predicates.add(criteriaBuilder.equal(
+                    assetAssignmentHistoryRoot.join("user", jakarta.persistence.criteria.JoinType.LEFT).get("id"),
+                    assetAssignmentHistorySearchCriteria.getScopedOwnerId()));
+        }
+
         return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
     }
 

@@ -1,0 +1,166 @@
+# 13.9 Pride's Standard Copyright Notice:
+# Copyright ©20XX. Management of Pride Bank Limited (PBL). All Rights Reserved. Permission to use, copy, modify,
+# and distribute this software and its documentation for any purpose is prohibited unless authorized in writing by the
+# Managing Director
+# suppress inspection "UnusedProperty" for whole file
+
+spring:
+  datasource:
+    url: ${MYSQL_DB_URL}
+    username: ${MYSQL_DB_USER}
+    password: ${MYSQL_DB_PASSWORD}
+    # driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
+
+  jpa:
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+        # dialect: org.hibernate.dialect.SQLServerDialect
+    hibernate:
+      # Schema is owned by Flyway (src/main/resources/db/migration), not Hibernate.
+      # `none` stops Hibernate from touching the schema; ALL structural changes — new tables/columns
+      # and especially unique constraints/indexes — go through versioned migrations. This replaces the
+      # old `ddl-auto=update`, which added missing columns but did NOT reliably create/alter constraints
+      # across vendors (e.g. Store's uk_store_location_type_department_courier). Such constraints are now
+      # guaranteed by migrations (see V3__ensure_named_unique_constraints.sql), so the previous "verify
+      # the constraint on the dev/prod DB by hand after deploying" step is no longer needed.
+      #
+      # Adding a new @UniqueConstraint / column now? Write a Vn__*.sql migration for it — do not rely on
+      # Hibernate. (To also enable Hibernate's drift check, switch to `validate` once the baseline is
+      # trusted; leave as `none` until then.)
+      ddl-auto: none
+
+  # Flyway: adopt the current (already-populated) schema as the baseline (V1), then apply V2+ forward.
+  # NOTE: a brand-new/empty DB has no base tables and ddl-auto=none won't create them — bootstrap once
+  # with ddl-auto=update (then switch back to none) or add a V1__baseline.sql full-schema migration.
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 1
+    baseline-description: existing schema baseline
+    # Data seeding stays in Java (e.g. StatusSeeder); Flyway owns schema only.
+
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 2MB
+      max-request-size: 2MB
+
+  # SMTP transport. Defaults below target Gmail (smtp.gmail.com:587, STARTTLS) so
+  # the app starts cleanly even when the SMTP env vars are unset. Override any
+  # value in .env to point at a different provider (e.g. corporate mail server).
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USER_NAME}
+    # For Gmail this MUST be an App Password (16 chars, no spaces), not the account
+    # password. Generate one at https://myaccount.google.com/apppasswords with 2FA enabled.
+    password: ${MAIL_PASSWORD}
+    # Nested here purely for readability — Spring flattens this back into the
+    # `mail.smtp.*` keys JavaMail expects.
+    properties:
+      mail:
+        smtp:
+          auth: ${MAIL_SMTP_AUTH:true}
+          starttls:
+            enable: ${MAIL_SMTP_STARTTLS_ENABLE:true}
+            required: ${MAIL_SMTP_STARTTLS_REQUIRED:true}
+          # Avoids "Failed to close server connection after message sending" on some providers.
+          quitwait: ${MAIL_SMTP_STARTTLS_QUIT_WAIT:false}
+          ssl:
+            # Trust the SMTP host's TLS cert. Defaults to Gmail; change with MAIL_SMTP_SSL_TRUST.
+            trust: ${MAIL_SMTP_SSL_TRUST:smtp.gmail.com}
+          # Fail fast on a dead SMTP host instead of letting a thread hang for minutes.
+          connectiontimeout: ${MAIL_SMTP_CONNECTION_TIMEOUT:10000}
+          timeout: ${MAIL_SMTP_TIMEOUT:10000}
+          writetimeout: ${MAIL_SMTP_WRITE_TIMEOUT:10000}
+
+server:
+  port: ${APPLICATION_PORT}
+
+application:
+  security:
+    jwt:
+      secret-key: ${JWT_SECRET_KEY}
+      # In milliseconds (10 Minute)
+      expiration: 3600000
+      refresh-token:
+        # In milliseconds (20 Minutes)
+        expiration: 1200000
+
+  verification:
+    url: ${ACCOUNT_VERIFICATION_URL}
+
+  # Super admin information
+  super:
+    admin:
+      email: ${SUPER_ADMIN_EMAIL}
+      password: ${SUPER_ADMIN_PASSWORD}
+      first:
+        name: ${SUPER_ADMIN_FIRST_NAME}
+      last:
+        name: ${SUPER_ADMIN_LAST_NAME}
+      duty:
+        station: ${SUPER_ADMIN_DUTY_STATION}
+
+  # Admin information
+  admin:
+    email: ${ADMIN_EMAIL}
+    password: ${ADMIN_PASSWORD}
+    first:
+      name: ${ADMIN_FIRST_NAME}
+    last:
+      name: ${ADMIN_LAST_NAME}
+    reporting:
+      office: ${SUPER_ADMIN_REPORTING_OFFICE}
+
+  # Head Office Information
+  head:
+    office:
+      name: Head Office
+      email: ${HEAD_OFFICE_EMAIL}
+      telephone: ${HEAD_OFFICE_TELEPHONE}
+      # Fulfilment mailboxes for the two Head Office departments that own asset categories.
+      #
+      # Named HEAD_OFFICE_* rather than reusing ADMIN_EMAIL, which is already taken: that one is
+      # `application.admin.email`, the *application administrator*, read by the workflow engine as the
+      # ADMIN approver and by the report service as a recipient. Pointing both at one variable made
+      # two unrelated concepts move together, and setting one of them broke the other.
+      infra-email: ${HEAD_OFFICE_INFRA_EMAIL}
+      admin-email: ${HEAD_OFFICE_ADMIN_EMAIL}
+
+# Gmail rewrites the From: header to the authenticated account anyway, so keeping
+# this bound to the SMTP username avoids confusing mismatches.
+mail:
+  sender:
+    from: ${MAIL_USER_NAME}
+
+images:
+  upload-dir: ${UPLOAD_DIR}
+
+front-end:
+  environment: ${FRONT_END_URL}
+
+it-team:
+  email:
+    address: ${IT_TEAM_EMAIL_ADDRESS}
+
+admin-team:
+  email:
+    address: ${ADMIN_TEAM_EMAIL_ADDRESS}
+
+logging:
+  level:
+    # Log everything under your app's base package (adjust this if needed)
+    pride.bank.erp.stock: DEBUG
+    # Optional: Show all logs from your entire app (can be noisy)
+    # pride.bank.erp: DEBUG
+    # Set the root logger level
+    root: INFO
+    # Optional: Enable Spring Web logs (not needed if only focusing on your controller)
+    org.springframework.web: DEBUG
+    org.springframework.web.servlet.mvc.method.annotation.ExceptionHandlerExceptionResolver: DEBUG
+    org.springframework.boot.autoconfigure.web: DEBUG
+  pattern:
+    # Quoted: a plain YAML scalar may not begin with `%`, which is a reserved directive indicator.
+    console: '%d{yyyy-MM-dd HH:mm:ss} - %logger{36} - %msg%n'

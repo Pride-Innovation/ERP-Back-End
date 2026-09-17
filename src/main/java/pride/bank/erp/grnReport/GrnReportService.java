@@ -1,6 +1,7 @@
 package pride.bank.erp.grnReport;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import pride.bank.erp.exception.NotFoundException;
@@ -35,5 +36,17 @@ public class GrnReportService {
         GrnReport report = findOneGRNReport(grnReportId);
         report.setGrnDownloaded(true);
         return grnReportRepository.save(report);
+    }
+
+    /**
+     * Loads the uploaded (signed) GRN document for authenticated streaming. Replaces the previous
+     * scheme where documents were served as public static assets from the web root.
+     */
+    public Resource loadDocument(Long grnReportId) throws NotFoundException, IOException {
+        GrnReport report = findOneGRNReport(grnReportId);
+        if (report.getDocumentPath() == null || report.getDocumentPath().isBlank()) {
+            throw new NotFoundException("No signed GRN document has been uploaded for report " + grnReportId);
+        }
+        return fileUpload.loadFileAsResource(report.getDocumentPath());
     }
 }

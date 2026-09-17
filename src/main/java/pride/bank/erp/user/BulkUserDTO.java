@@ -9,10 +9,17 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public class BulkUserDTO {
     private Long no;
-    private String name;
-    private String staffNumber;
+    private String firstName;
+    private String lastName;
+    /** Optional middle / other name. */
+    private String otherName;
     private String email;
-    private String title;
-    private String dutyStation;
+    private String staffNumber;
     private String gender;
+    private String title;
+    /** Additional role attached to the user. Optional. */
+    private String role;
+    private String dutyStation;
+    /** Department name. Only meaningful when dutyStation resolves to Head Office. */
+    private String department;
 }

@@ -35,6 +35,9 @@ public class AssetAssignmentHistoryService {
     private final StatusService statusService;
     private final AssetAssignmentHistorySearchDao assetAssignmentHistorySearchDao;
 
+    /** The one resolver for how far a person may see — see AccessScopeService. */
+    private final pride.bank.erp.access.AccessScopeService accessScopeService;
+
     public Page<AssetAssignmentHistoryDAO> findAllAssetAssignmentHistory(
             int pageSize,
             String sortDirection,
@@ -43,6 +46,21 @@ public class AssetAssignmentHistoryService {
             Long assetId
     ) {
         try {
+            /*
+             * Scoped to the asset, not just to READ_ASSET.
+             *
+             * Assignment history is the chain of custody: every holder, every date, every status
+             * change. Guarding the asset's detail page while leaving this open lets a branch officer
+             * read another branch's custody trail by calling this with the id they were just refused.
+             *
+             * Thrown out of the try below rather than inside it, because that catch swallows
+             * everything into a null page — a refusal must reach the caller as a refusal, not as an
+             * empty table that looks like "this asset has no history".
+             */
+            if (assetId != null) {
+                assetService.requireAssetReadable(assetId);
+            }
+
             AssetAssignmentHistoryPage assetAssignmentHistoryPage = AssetAssignmentHistoryPage.builder()
                     .pageSize(pageSize)
                     .sortDirection(determineSortDirection(sortDirection))
@@ -53,6 +71,17 @@ public class AssetAssignmentHistoryService {
                     = AssetAssignmentHistorySearchCriteria
                     .builder()
                     .assetId(assetId)
+                    /*
+                     * Applied from the caller's permissions, never from the request.
+                     *
+                     * With no asset id this endpoint returned every assignment row in the bank —
+                     * the whole estate's chain of custody, page by page. The asset id check above
+                     * covers the tab; this covers the endpoint called without one.
+                     */
+                    .scopedBranchId(accessScopeService.resolveBranch(
+                            pride.bank.erp.access.ScopeSubject.ASSETS, null))
+                    .scopedOwnerId(accessScopeService.resolveOwner(
+                            pride.bank.erp.access.ScopeSubject.ASSETS))
                     .build();
 
             Page<AssetAssignmentHistory> assetAssignmentHistoryPageResult = assetAssignmentHistorySearchDao.findAllWithFilters(
@@ -65,6 +94,8 @@ public class AssetAssignmentHistoryService {
                     assetAssignmentHistoryPageResult.getPageable(),
                     assetAssignmentHistoryPageResult.getTotalElements()
             );
+        } catch (org.springframework.security.access.AccessDeniedException denied) {
+            throw denied;   // see the note above: a refusal must not become an empty page
         } catch (Exception e) {
             return null;
         }

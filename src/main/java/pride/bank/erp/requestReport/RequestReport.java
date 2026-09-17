@@ -7,6 +7,7 @@ Managing Director
 
 package pride.bank.erp.requestReport;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -40,6 +41,7 @@ public class RequestReport {
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "request_id", nullable = false)
     @NotAudited
+    @JsonIgnore
     private Request request;
 
     @ManyToOne(fetch = FetchType.EAGER)

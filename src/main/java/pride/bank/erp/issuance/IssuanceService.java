@@ -20,8 +20,10 @@ import pride.bank.erp.assetAssignmentHostory.AssetAssignmentHistoryRepository;
 import pride.bank.erp.commodity.Commodity;
 import pride.bank.erp.commodity.CommodityService;
 import pride.bank.erp.config.CurrentUserService;
+import pride.bank.erp.exception.BadRequestException;
 import pride.bank.erp.exception.NotFoundException;
-import pride.bank.erp.helper.ExtractNumberFromEmailAddress;
+import pride.bank.erp.issuedAsset.IssuedAsset;
+import pride.bank.erp.issuedAsset.IssuedAssetRepository;
 import pride.bank.erp.issuedCommodity.IssuedCommodity;
 import pride.bank.erp.issuedCommodity.IssuedCommodityRepository;
 import pride.bank.erp.notification.Email;
@@ -31,18 +33,26 @@ import pride.bank.erp.request.RequestService;
 import pride.bank.erp.role.Role;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
+import pride.bank.erp.inventory.InventoryService;
+import pride.bank.erp.inventory.ledger.LedgerContext;
+import pride.bank.erp.inventory.ledger.StockLedgerReason;
 import pride.bank.erp.stock.CommodityWithDetailsDao;
 import pride.bank.erp.store.Store;
-import pride.bank.erp.store.StoreRepository;
+import pride.bank.erp.store.StoreBalance;
+import pride.bank.erp.store.StoreBalanceRepository;
 import pride.bank.erp.store.StoreService;
+import pride.bank.erp.store.StoreType;
 import pride.bank.erp.user.User;
 import pride.bank.erp.user.UserRepository;
 import pride.bank.erp.user.UserService;
+import pride.bank.erp.workflowinstance.WorkflowEngineService;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.logging.Logger;
 
 import static java.lang.String.format;
@@ -53,12 +63,26 @@ import static java.lang.String.format;
 public class IssuanceService {
     private static final Logger logger = Logger.getLogger(IssuanceService.class.getName());
     private static final Long HEAD_OFFICE_ID = 1L;
+    // Status codes (stable across environments/re-seeds — never reference by id).
+    /** Newly-stocked assets that still need their details filled in. */
+    private static final String CODE_REQUIRE_UPDATE = "requireUpdate";
+    /** An asset that has been issued and assigned to its requester. */
+    private static final String CODE_ASSET_ASSIGNED = "assetAssigned";
+    /** A request whose items have been issued (pending issuance approval). */
+    private static final String CODE_ISSUED = "issued";
+    /** Available for issuance — the only state from which an asset may be issued. */
+    private static final String CODE_ISSUANCE_AVAILABLE = "issuanceAvailable";
+    /** In transit with a courier (cross-location leg). */
+    private static final String CODE_IN_TRANSIT = "inTransit";
+    /** Asset-level "issued, awaiting delivery/acknowledgement" — keeps it out of the issuable pool. */
+    private static final String CODE_ASSET_ISSUED = "assetIssued";
 
     private final UserService userService;
     private final IssuanceRepository issuanceRepository;
     private final StatusService statusService;
     private final CommodityService commodityService;
     private final IssuedCommodityRepository issuedCommodityRepository;
+    private final IssuedAssetRepository issuedAssetRepository;
     private final StoreService storeService;
     private final AssetService assetService;
     private final AssetRepository assetRepository;
@@ -69,12 +93,14 @@ public class IssuanceService {
     private final Email emailService;
     private final UserRepository userRepository;
     private final UserBuilder userBuilder;
-    private final StoreRepository storeRepository;
+    private final StoreBalanceRepository storeBalanceRepository;
+    private final WorkflowEngineService workflowEngineService;
+    private final InventoryService inventoryService;
 
     @Transactional
     public IssuanceDAO issueCommodities(IssuanceDTO request) throws NotFoundException {
         User requester = userService.findUser(request.getRequester());
-        Status status = statusService.findOneStatus(5L);
+        Status status = statusService.findByStatusCode(CODE_ISSUED);
         Request requestDetails = requestService.findRequest(request.getRequestId());
         User currentUser = currentUserService.getCurrentUser();
         Long issuerBranchId = currentUser.getBranch().getId();
@@ -83,9 +109,13 @@ public class IssuanceService {
         logger.info("Processing issuance request from branch " + issuerBranchId +
                 " for user in branch " + requesterBranchId);
 
-        // Handle asset assignments if present
+        boolean sameLocationAssets = Objects.equals(issuerBranchId, requesterBranchId);
+
+        // Handle asset assignments if present — validate up front (fail fast, before the
+        // Issuance record exists); the actual assignment/link is applied after the Issuance
+        // is saved (see below), same ordering as commodities.
         if (request.getAssets() != null && !request.getAssets().isEmpty()) {
-            updateAssetAssignedToStatusAndStatus(request.getAssets(), requester);
+            validateAssetsReadyForIssuance(request.getAssets());
         }
 
         // Process commodities if present
@@ -94,7 +124,7 @@ public class IssuanceService {
             // Check if the request contains mixed item types and validate according to business rules
             validateRequestItemTypes(request.getCommodities(), requesterBranchId);
 
-            // CASE 1: Branch issuing to regular users (only stationery allowed)
+            // CASE 1: Branch issuing to its own users (stationery only) — same location, direct issuance.
             if (!Objects.equals(issuerBranchId, HEAD_OFFICE_ID)) {
                 logger.info("Branch issuing items to user - branch ID: " + issuerBranchId);
 
@@ -104,42 +134,26 @@ public class IssuanceService {
                 // Validate that items are in branch store
                 validateCommoditiesInStore(request.getCommodities(), issuerBranchId);
 
-                // Reduce items from branch store
-                reduceCommoditiesFromStore(request.getCommodities(), issuerBranchId);
+                // Direct issuance: debit the branch's ADMIN store through the inventory ledger.
+                debitFromAdminStore(request.getCommodities(), issuerBranchId);
             }
             // CASE 2: Head Office issuing items
             else {
-                logger.info("Head office issuing items - requester is BOM: " +
-                        isBranchOperationManager(requester));
+                boolean crossLocation = !Objects.equals(requesterBranchId, HEAD_OFFICE_ID);
+                logger.info("Head office issuing items - crossLocation: " + crossLocation
+                        + ", requester is BOM: " + isBranchOperationManager(requester));
 
-                // If head office is issuing to a BOM, add to branch stock
-                if (isBranchOperationManager(requester) && !Objects.equals(requesterBranchId, HEAD_OFFICE_ID)) {
-                    logger.info("Processing BOM request for branch: " + requesterBranchId);
+                // Validate availability at head office regardless of destination.
+                validateCommoditiesInStore(request.getCommodities(), HEAD_OFFICE_ID);
 
-                    // First validate items are available at head office
-                    validateCommoditiesInStore(request.getCommodities(), HEAD_OFFICE_ID);
-
-                    // Convert DTOs to the format needed by store service
-                    List<CommodityWithDetailsDao> commoditiesWithDetails =
-                            commodityWithDetailsDao(request.getCommodities());
-
-                    // Add to requester's branch (for BOM)
-                    storeService.addCommoditiesToStore(commoditiesWithDetails, requesterBranchId);
-
-                    // Reduce from head office
-                    storeService.reduceCommoditiesFromStore(commoditiesWithDetails, HEAD_OFFICE_ID);
-                }
-                // Head office issuing directly to users (any type of item)
-                else {
-                    logger.info("Head office issuing directly to user");
-
-                    // Validate items are available at head office
-                    validateCommoditiesInStore(request.getCommodities(), HEAD_OFFICE_ID);
-
-                    // Reduce from head office
-                    List<CommodityWithDetailsDao> commoditiesWithDetails =
-                            commodityWithDetailsDao(request.getCommodities());
-                    storeService.reduceCommoditiesFromStore(commoditiesWithDetails, HEAD_OFFICE_ID);
+                if (crossLocation) {
+                    // Inter-location fulfilment: the Movement created at issuance approval owns the
+                    // HO→destination transfer (debits HO, credits the destination ADMIN store on
+                    // receipt). No eager move here — that would double-count against the movement.
+                    logger.info("Cross-location issuance; stock transfer deferred to fulfilment movement");
+                } else {
+                    // Same location: direct issuance from the HO ADMIN store.
+                    debitFromAdminStore(request.getCommodities(), HEAD_OFFICE_ID);
                 }
             }
         }
@@ -161,14 +175,38 @@ public class IssuanceService {
             addIssuedCommodities(savedIssuance, request.getCommodities());
         }
 
-        // Update request status
-        updateRequestStatus(request);
+        /*
+         * Link every issued asset and stamp it Issued — cross-location included.
+         *
+         * This comment used to say cross-location assets were "left untouched here" and picked up
+         * by the fulfilment movement on receipt. That was the old behaviour and it is no longer what
+         * applyAssetIssuance does, for a good reason: an asset left at "Available for Issuance"
+         * while it sat on a courier's bike was still in the issuable pool, so it could be issued a
+         * second time before the first delivery arrived. Live data still carries four assets in that
+         * state from before the change — see the method's javadoc.
+         *
+         * Assignment to the requester is what defers to receipt, not the removal from the pool.
+         */
+        if (request.getAssets() != null && !request.getAssets().isEmpty()) {
+            applyAssetIssuance(request.getAssets(), requester, savedIssuance, sameLocationAssets);
+        }
 
-        // Send notification
-        notifyIndividual(
-                request.getComment() != null ? request.getComment() : "Please approve this issued request",
-                requestDetails
-        );
+        if (workflowEngineService.hasActiveInstance(requestDetails.getId())) {
+            // Workflow mode: engine sets status and notifies the next approver
+            workflowEngineService.processStepAction(
+                    requestDetails.getId(),
+                    currentUser.getId(),
+                    "ISSUED",
+                    request.getComment() != null ? request.getComment() : "Items have been issued."
+            );
+        } else {
+            // Legacy mode: set status directly and notify manually
+            updateRequestStatus(request);
+            notifyIndividual(
+                    request.getComment() != null ? request.getComment() : "Please approve this issued request",
+                    requestDetails
+            );
+        }
 
         return buildIssuanceResponse(savedIssuance);
     }
@@ -262,51 +300,48 @@ public class IssuanceService {
      * @param branchId    The branch ID to check
      * @throws NotFoundException If a commodity is not found in the store
      */
-    @Transactional(readOnly = true)
     private void validateCommoditiesInStore(List<IssuanceCommodityDTO> commodities, Long branchId)
             throws NotFoundException {
 
         for (IssuanceCommodityDTO dto : commodities) {
             Commodity commodity = commodityService.findCommodity(dto.getCommodityId());
 
-            Store store = storeRepository.findByBranchIdAndCommodityId(branchId, commodity.getId())
+            // Scope to the branch's ADMIN store. A plain branch-scoped lookup is unsafe: a courier
+            // custody store is anchored at Head Office, so once a consumable has passed through a
+            // courier the branch holds two balance rows for it and a single-result query blows up.
+            StoreBalance balance = storeBalanceRepository
+                    .findByBranchIdAndStore_StoreTypeAndCommodity_Id(branchId, StoreType.ADMIN, commodity.getId())
                     .orElseThrow(() -> new NotFoundException(
                             String.format("Commodity '%s' not found in store for branch ID %d",
                                     commodity.getName(), branchId)));
 
-            if (store.getQuantity() < dto.getQuantity()) {
+            if (balance.getQuantity() < dto.getQuantity()) {
                 throw new NotFoundException(String.format(
                         "Insufficient stock for commodity '%s'. Available: %d, Requested: %d",
-                        commodity.getName(), store.getQuantity(), dto.getQuantity()));
+                        commodity.getName(), balance.getQuantity(), dto.getQuantity()));
             }
         }
         logger.info("All commodities verified as available in branch " + branchId);
     }
 
     /**
-     * Reduces the quantity of commodities in the specified branch store
+     * Direct issuance: debits the commodities from a branch's ADMIN store through the inventory
+     * ledger ({@link InventoryService}), the single authority over balances. Used only for
+     * same-location issuance — cross-location transfers are owned by the fulfilment movement.
      *
-     * @param commodities The commodities to reduce
-     * @param branchId    The branch ID
-     * @throws NotFoundException If a commodity is not found
+     * @param commodities The commodities to debit
+     * @param branchId    The branch whose ADMIN store is debited
+     * @throws NotFoundException If the branch or a commodity is not found
      */
-    @Transactional
-    private void reduceCommoditiesFromStore(List<IssuanceCommodityDTO> commodities, Long branchId)
+    private void debitFromAdminStore(List<IssuanceCommodityDTO> commodities, Long branchId)
             throws NotFoundException {
-
+        Store adminStore = storeService.resolveAdminStore(branchId);
         for (IssuanceCommodityDTO dto : commodities) {
             Commodity commodity = commodityService.findCommodity(dto.getCommodityId());
-
-            Store store = storeRepository.findByBranchIdAndCommodityId(branchId, commodity.getId())
-                    .orElseThrow(() -> new IllegalStateException(String.format(
-                            "Unexpected error: Store record for commodity '%s' not found during stock reduction.",
-                            commodity.getName())));
-
-            int updatedQuantity = store.getQuantity() - dto.getQuantity();
-            store.setQuantity(updatedQuantity);
-            storeRepository.save(store);
+            inventoryService.debitConsumable(adminStore, commodity, dto.getQuantity(),
+                    LedgerContext.of(StockLedgerReason.ISSUANCE, "ISSUANCE", null));
         }
-        logger.info("Stock quantities reduced in branch " + branchId);
+        logger.info("Stock quantities reduced in branch " + branchId + " ADMIN store");
     }
 
     /**
@@ -316,7 +351,6 @@ public class IssuanceService {
      * @param commodities The commodities that were issued
      * @throws NotFoundException If a commodity is not found
      */
-    @Transactional
     private void addIssuedCommodities(Issuance issuance, List<IssuanceCommodityDTO> commodities)
             throws NotFoundException {
         for (IssuanceCommodityDTO dto : commodities) {
@@ -374,39 +408,95 @@ public class IssuanceService {
     }
 
     /**
-     * Updates the assignment and status of assets for a user
+     * Blocks issuance of any asset still flagged "requires update after stocking" — i.e. the
+     * responsible team has not yet filled in the engraved number and remaining details. Surfaces
+     * every offending asset in one error so the issuer doesn't have to retry one-by-one. Called
+     * before the Issuance record is created so an incomplete asset fails the whole request fast.
      *
-     * @param assets The assets to update
-     * @param user   The user to assign the assets to
+     * @param assets The assets about to be issued
+     * @throws NotFoundException If an asset is not found
+     */
+    private void validateAssetsReadyForIssuance(List<IssueAssetsDTO> assets) throws NotFoundException {
+        // The authoritative guard against double-issuance: an asset may be issued only while it is
+        // "Available for Issuance". Anything else — already issued, in transit, assigned, under
+        // maintenance, still needing completion — is rejected here, so a stale frontend list or a
+        // concurrent issuance can never hand out the same asset twice.
+        List<String> notReady = new ArrayList<>();
+        // The status check alone cannot see a repeat *within one payload*: the same id twice both
+        // reads "Available for Issuance" here, because nothing is stamped until applyAssetIssuance
+        // runs later — and two IssuedAsset rows would then be written for one asset. The frontend
+        // rejects duplicates across lines, but that is not a guarantee the API can rely on.
+        Set<Long> seenAssetIds = new HashSet<>();
+        List<String> duplicated = new ArrayList<>();
+
+        for (IssueAssetsDTO asst : assets) {
+            Asset asset = assetService.findOne(asst.getId());
+            String code = asset.getAssetStatus() != null ? asset.getAssetStatus().getStatus() : null;
+            String label = asset.getAssetName() + " [id=" + asset.getId() + "]";
+
+            if (!seenAssetIds.add(asset.getId())) {
+                duplicated.add(label);
+                continue;
+            }
+
+            if (!CODE_ISSUANCE_AVAILABLE.equals(code)) {
+                notReady.add(label + " — " + reasonNotIssuable(code));
+            } else if (asset.getEngravedNumber() == null || asset.getEngravedNumber().isBlank()) {
+                notReady.add(label + " — missing engraved number");
+            }
+        }
+
+        if (!duplicated.isEmpty()) {
+            throw new BadRequestException(
+                    "These assets were listed more than once on the same issuance: "
+                            + String.join("; ", duplicated));
+        }
+        if (!notReady.isEmpty()) {
+            throw new BadRequestException(
+                    "These assets cannot be issued: " + String.join("; ", notReady));
+        }
+    }
+
+    /** Human-readable reason an asset in the given status code cannot be issued. */
+    private String reasonNotIssuable(String code) {
+        if (CODE_REQUIRE_UPDATE.equals(code)) return "not yet completed after stocking";
+        if (CODE_ASSET_ISSUED.equals(code)) return "already issued and awaiting delivery";
+        if (CODE_IN_TRANSIT.equals(code)) return "currently in transit";
+        if (CODE_ASSET_ASSIGNED.equals(code)) return "already assigned to a user";
+        return "not available for issuance" + (code != null ? " (status: " + code + ")" : "");
+    }
+
+    /**
+     * Links every issued asset to this {@link Issuance} (audit trail, and what
+     * {@link pride.bank.erp.movement.FulfillmentService} reads to build a cross-location fulfilment
+     * movement) and stamps it <b>Issued</b> — for same- and cross-location issuance alike.
+     *
+     * <p>Stamping "Issued" immediately removes the asset from the "Available for Issuance" pool the
+     * moment it is issued, so it cannot be issued a second time while it is awaiting approval,
+     * dispatch, transit or delivery. Assignment to the requester (status "Assigned") is deferred to
+     * acknowledgement of receipt — see {@link pride.bank.erp.issuedAsset.IssuedAssetLifecycleService}
+     * — so "Assigned" only ever means the requester has actually confirmed receipt.
+     *
+     * @param assets       The assets being issued
+     * @param user         The requester the assets are ultimately for
+     * @param issuance     The just-saved issuance record to link against
+     * @param sameLocation Whether the issuer and requester share a branch (kept for logging)
      * @throws NotFoundException If an asset or status is not found
      */
-    @Transactional
-    private void updateAssetAssignedToStatusAndStatus(List<IssueAssetsDTO> assets, User user) throws NotFoundException {
-        Status assignedStatus = statusService.findOneStatus(4L);
-        if (assignedStatus == null) {
-            throw new NotFoundException("Status with ID 4 not found.");
-        }
+    private void applyAssetIssuance(List<IssueAssetsDTO> assets, User user, Issuance issuance, boolean sameLocation)
+            throws NotFoundException {
+        Status issuedStatus = statusService.findByStatusCode(CODE_ASSET_ISSUED);
 
         for (IssueAssetsDTO asst : assets) {
             Asset asset = assetService.findOne(asst.getId());
 
-            User oldUser = asset.getAssignedTo();
-            Status oldStatus = asset.getAssetStatus();
+            issuedAssetRepository.save(IssuedAsset.builder().issuance(issuance).asset(asset).build());
 
-            if (oldUser != null && oldUser.getId().equals(user.getId()) && oldStatus != null && oldStatus.getId() == 4) {
-                continue;
-            }
-
-            if (oldUser == null || !oldUser.getId().equals(user.getId())) {
-                trackAssetAssignmentHistory(asset, user, oldStatus, assignedStatus);
-            }
-
-            asset.setAssignedTo(user);
-            asset.setAssetStatus(assignedStatus);
-
+            // Out of the issuable pool now; assignment happens on acknowledgement of receipt.
+            asset.setAssetStatus(issuedStatus);
             assetRepository.save(asset);
         }
-        logger.info("Updated asset assignments for " + assets.size() + " assets");
+        logger.info("Marked " + assets.size() + " asset(s) as issued (sameLocation=" + sameLocation + ")");
     }
 
     /**
@@ -415,11 +505,10 @@ public class IssuanceService {
      * @param request The request information
      * @throws NotFoundException If the request is not found
      */
-    @Transactional
     private void updateRequestStatus(IssuanceDTO request)
             throws NotFoundException {
         Request requestDetails = requestService.findRequest(request.getRequestId());
-        Status status = statusService.findOneStatus(5L); // Get The Request Issued for Approval Status
+        Status status = statusService.findByStatusCode(CODE_ISSUED); // Request issued, pending issuance approval
         requestDetails.setStatus(status);
         requestRepository.save(requestDetails);
         logger.info("Updated status for request ID: " + request.getRequestId());
@@ -433,7 +522,6 @@ public class IssuanceService {
      * @param statusBefore The status before assignment
      * @param statusAfter  The status after assignment
      */
-    @Transactional
     private void trackAssetAssignmentHistory(Asset asset, User newUser, Status statusBefore, Status statusAfter) {
         AssetAssignmentHistory activeHistory = assetAssignmentHistoryRepository
                 .findActiveByAssetId(asset.getId());
@@ -530,11 +618,10 @@ public class IssuanceService {
             Request request
     ) throws NotFoundException {
 
-        ExtractNumberFromEmailAddress cleanedEmail = new ExtractNumberFromEmailAddress(getAdminManager().getEmail());
         String msg = "Please review this issuance request for your approval.";
 
         emailService.sendEmailVerification(
-                cleanedEmail.getCleanedEmail(), // This must be Admin Manager Email or Branch Manager Email
+                getAdminManager().getEmail(), // This must be Admin Manager Email or Branch Manager Email
                 format("Stores Request ID: %s", request.getId()),
                 null,
                 getAdminManager().getFirstName(),

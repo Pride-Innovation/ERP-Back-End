@@ -8,6 +8,8 @@ Managing Director
 package pride.bank.erp.user;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
 import lombok.AllArgsConstructor;
@@ -28,12 +30,17 @@ import pride.bank.erp.branch.Branch;
 import pride.bank.erp.department.Department;
 import pride.bank.erp.helper.Constants;
 import pride.bank.erp.request.Request;
+import pride.bank.erp.role.Role;
 import pride.bank.erp.title.Title;
 import pride.bank.erp.token.Token;
+import pride.bank.erp.unit.Unit;
 
 import java.time.LocalDateTime;
 import java.util.Collection;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Data
@@ -44,6 +51,12 @@ import java.util.stream.Collectors;
 @Table(name = "users", uniqueConstraints = {@UniqueConstraint(columnNames = "email")})
 @EntityListeners(AuditingEntityListener.class)
 @Audited
+// Hibernate hands ManyToOne associations back as ByteBuddy proxies that carry an internal
+// hibernateLazyInitializer/handler field. Jackson has no serializer for that, so the moment a
+// proxy User gets written (e.g. RequestDTO.currentApprover from /requests) the response 500s.
+// Telling Jackson to skip those two fields makes the entity safe to serialize whether it's a
+// real instance or a proxy.
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class User implements UserDetails {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -55,15 +68,42 @@ public class User implements UserDetails {
     @Column(unique = true)
     private String email;
 
+    /**
+     * WRITE_ONLY rather than @JsonIgnore: the hash must never be serialised out, but Jackson must
+     * still be able to bind a password in should anything deserialise into this type.
+     *
+     * <p>Without this, every endpoint that embeds a User — {@code /requests} was returning 77KB for
+     * five rows — shipped each party's bcrypt hash to the client. Endpoints that map to their own
+     * DTO (users, movements) were never affected; this closes it for the ones that don't.
+     */
     @NotNull(message = Constants.NULL_FIELD_VALIDATOR)
     @NotBlank(message = Constants.BLANK_FIELD_VALIDATOR)
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String password;
+    /**
+     * Unique, like the email beside it — see V23.
+     *
+     * <p>The service already refused duplicates on create and on update; the database held no
+     * opinion, so two concurrent creations both passed the check and both committed. The column
+     * stays nullable: MySQL treats NULLs as distinct, so an account may arrive before its number is
+     * known without colliding with another.
+     */
+    @Column(unique = true)
     private String staffNumber;
     private String gender;
     private String availability;
     private String profileImage;
     private boolean blocked;
+    /**
+     * Whether this person is currently acting in another title.
+     *
+     * <p>Pinned for the same reason as {@code isHeadOffice} above: {@code isActing()} publishes as
+     * {@code "acting"}. Nothing reads it on the front end yet, which makes this the cheapest possible
+     * moment to state the name rather than leave the next consumer to discover it.
+     */
+    @JsonProperty("isActing")
     private boolean isActing;
+    @Builder.Default
     private int failedLoginAttempts = 0;
 
     @CreatedDate
@@ -88,9 +128,11 @@ public class User implements UserDetails {
     private List<Token> tokens;
 
     @NotAudited
+    @Builder.Default
     private boolean isEnabled = false;
 
     @NotAudited
+    @Builder.Default
     private boolean isAccountNonLocked = true;
 
     @OneToMany(mappedBy = "requester", cascade = CascadeType.PERSIST)
@@ -120,14 +162,95 @@ public class User implements UserDetails {
     @NotAudited
     private Department department;
 
+    /**
+     * Optional unit the user belongs to (Head Office). Drives in-app visibility of
+     * group-email workflow steps that target the unit's mailbox.
+     */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "unit_id")
+    @NotAudited
+    private Unit unit;
+
+    /**
+     * Optional secondary roles in addition to the role implied by {@link #title}.
+     * Used for workflow matching (e.g. a user can be Officer-by-title and also have
+     * an "Approver" role for cross-cutting approvals). Empty for most users.
+     */
+    @ManyToMany(fetch = FetchType.EAGER)
+    @JoinTable(
+            name = "user_role",
+            joinColumns = @JoinColumn(name = "user_id"),
+            inverseJoinColumns = @JoinColumn(name = "role_id")
+    )
+    @NotAudited
+    @Builder.Default
+    private Set<Role> additionalRoles = new HashSet<>();
+
+    /**
+     * All role IDs that should be considered when matching this user against
+     * workflow {@code requesterRoleIds} or step {@code skipIfRequesterRoleIds}.
+     * Combines the role implied by {@link #title} with {@link #additionalRoles}.
+     */
+    @JsonIgnore
+    public Set<Long> getEffectiveRoleIds() {
+        Set<Long> ids = new LinkedHashSet<>();
+        if (title != null && title.getRole() != null && title.getRole().getId() != null) {
+            ids.add(title.getRole().getId());
+        }
+        if (additionalRoles != null) {
+            for (Role r : additionalRoles) {
+                if (r != null && r.getId() != null) {
+                    ids.add(r.getId());
+                }
+            }
+        }
+        return ids;
+    }
+
+    /**
+     * Spring Security reads this directly; it is not part of the API contract. Clients derive
+     * permissions from {@code title.role.permissions} + {@code additionalRoles}, so serialising the
+     * expanded authority list only duplicated authorisation data onto the wire.
+     */
+    @JsonIgnore
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        if (title == null || title.getRole() == null || title.getRole().getPermissions() == null) {
-            return List.of();
+        Set<String> permissionNames = new LinkedHashSet<>();
+
+        // 1. The role the user's title implies.
+        collectPermissions(title != null ? title.getRole() : null, permissionNames);
+
+        // 2. Roles granted to the person directly, on top of their title.
+        if (additionalRoles != null) {
+            additionalRoles.forEach(role -> collectPermissions(role, permissionNames));
         }
-        return title.getRole().getPermissions().stream()
-                .map(permission -> new SimpleGrantedAuthority(permission.getName()))
+
+        /*
+         * 3. Roles conferred by the unit they belong to.
+         *
+         * This is what makes an Admin Unit or Infra Unit officer senior to an officer elsewhere.
+         * Membership grants, and leaving revokes — the seniority lives on the unit rather than being
+         * hand-granted per person, and it is blind to the user's own role: an officer in Admin Unit
+         * receives the unit's reach exactly as a manager there would.
+         *
+         * A user in no unit is unaffected; the union simply has one fewer source, which is the
+         * position every branch user is in.
+         */
+        if (unit != null && unit.getRoles() != null) {
+            unit.getRoles().forEach(role -> collectPermissions(role, permissionNames));
+        }
+
+        return permissionNames.stream()
+                .map(SimpleGrantedAuthority::new)
                 .collect(Collectors.toList());
+    }
+
+    /** Adds a role's permission names to the set, tolerating nulls at every level. */
+    private static void collectPermissions(Role role, Set<String> into) {
+        if (role == null || role.getPermissions() == null) return;
+        role.getPermissions().forEach(p -> {
+            if (p != null && p.getName() != null) into.add(p.getName());
+        });
     }
 
     @Override

@@ -22,6 +22,17 @@ import java.util.Optional;
 public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByEmail(String email);
 
+    /**
+     * Resolves the holder named on an asset-import row.
+     *
+     * <p>Staff number rather than name: two people share a name often enough that matching on one
+     * would silently assign assets to the wrong person, and a staff number is what an asset register
+     * exported from an older system actually carries.
+     */
+    Optional<User> findByStaffNumberIgnoreCase(String staffNumber);
+
+    Optional<User> findByEmailIgnoreCase(String email);
+
     boolean existsByEmail(String email);
 
     boolean existsByStaffNumber(String staffNumber);
@@ -32,8 +43,23 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     List<User> findByTitleId(Long tileId);
 
+    /** Members of a unit — used to notify everyone in a unit when a request is routed to it. */
+    List<User> findByUnit_Id(Long unitId);
+
     @Query("SELECT u.id FROM User u WHERE u.title.id IN :titleIds")
     List<Long> findUserIdsByTitleIds(@Param("titleIds") List<Long> titleIds);
+
+    /**
+     * The same lookup, confined to one branch.
+     *
+     * <p>A title is organisation-wide — "Teller" is the same title at every branch — so resolving
+     * subordinates by title alone answers with people from the whole bank. That is how a Gulu
+     * supervisor came to see Mbarara's requests: the reporting line is a property of the title, and
+     * the branch has to be applied separately.
+     */
+    @Query("SELECT u.id FROM User u WHERE u.title.id IN :titleIds AND u.branch.id = :branchId")
+    List<Long> findUserIdsByTitleIdsAndBranchId(@Param("titleIds") List<Long> titleIds,
+                                                @Param("branchId") Long branchId);
 
     @Query("SELECT u FROM User u WHERE u.title.id = :titleId AND u.branch.id = :branchId")
     List<User> findByTitleIdAndBranchId(@Param("titleId") Long titleId, @Param("branchId") Long branchId);
@@ -53,4 +79,28 @@ public interface UserRepository extends JpaRepository<User, Long> {
             "   OR LOWER(u.email) LIKE LOWER(CONCAT('%', :text, '%')) " +
             "   OR LOWER(u.staffNumber) LIKE LOWER(CONCAT('%', :text, '%'))")
     Page<User> searchByNameEmailOrStaffNumber(@Param("text") String text, Pageable pageable);
+
+    /**
+     * The same search, narrowed to one duty station.
+     *
+     * <p>The branch predicate is written as an explicit <b>LEFT JOIN</b>, not as {@code u.branch.id}.
+     * A dotted path there would inner-join through a nullable association and drop every branchless
+     * account from the FROM clause before the comparison ran — the trap that has already emptied a
+     * branch-scoped movement listing, an approver inbox and a national roll-up. Those accounts should
+     * not match a branch filter, but they should be excluded *because the branch differs*, not
+     * because the join removed them where nobody could see it happen.
+     *
+     * <p>The text predicate is parenthesised, which the unscoped version above does not need and this
+     * one does: {@code AND} binds tighter than {@code OR}, so without the brackets the branch would
+     * apply to the staff-number clause alone and a search on a first name would return the whole bank.
+     */
+    @Query("SELECT u FROM User u LEFT JOIN u.branch b "
+            + "WHERE b.id = :branchId AND ("
+            + "     LOWER(u.firstName) LIKE LOWER(CONCAT('%', :text, '%')) "
+            + "  OR LOWER(u.lastName) LIKE LOWER(CONCAT('%', :text, '%')) "
+            + "  OR LOWER(u.email) LIKE LOWER(CONCAT('%', :text, '%')) "
+            + "  OR LOWER(u.staffNumber) LIKE LOWER(CONCAT('%', :text, '%')))")
+    Page<User> searchByNameEmailOrStaffNumberInBranch(@Param("text") String text,
+                                                      @Param("branchId") Long branchId,
+                                                      Pageable pageable);
 }

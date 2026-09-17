@@ -1,0 +1,59 @@
+package pride.bank.erp.config;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
+import pride.bank.erp.status.Status;
+import pride.bank.erp.status.StatusRepository;
+
+@Component
+@RequiredArgsConstructor
+@Slf4j
+public class StatusSeeder {
+
+    private final StatusRepository statusRepository;
+
+    public void seedStatuses() {
+        ensureStatus("Asset Request Created",  "requestCreated",  "assetrequestcreated");
+        ensureStatus("Request Rejected",       "requestRejected", "requestrejected");
+        ensureStatus("Request Approved",       "requestApproved", "requestapproved");
+        ensureStatus("Issuance Approved",      "issuanceApproved","issuanceapproved");
+        ensureStatus("Available for Issuance", "issuanceAvailable","issuanceavailable");
+        ensureStatus("Issued",                 "issued",          "issued");
+        ensureStatus("In Maintenance",         "inMaintenance",   "inmaintenance");
+        ensureStatus("Receipt Acknowledged",   "receiptAcknowledged", "receiptacknowledged");
+        ensureStatus("Asset Assigned",         "assetAssigned",   "assetassigned");
+        ensureStatus("Require Update",         "requireUpdate",   "requireupdate");
+        ensureStatus("Stock Pending",          "stockPending",    "stockpending");
+        ensureStatus("Stock Completed",        "stockCompleted",  "stockcompleted");
+        // Terminal state for a partial delivery the supplier will never complete — lets a
+        // stockPending record be closed instead of sitting outstanding forever.
+        ensureStatus("Stock Closed Short",     "stockClosedShort","stockclosedshort");
+        ensureStatus("Sent to Store",              "sentToStore",            "senttostore");
+        ensureStatus("Manager Approved",           "managerApproved",        "managerapproved");
+        ensureStatus("HOD Approved",               "hodApproved",            "hodapproved");
+        ensureStatus("BOM Approved",               "bomApproved",            "bomapproved");
+        ensureStatus("Branch Manager Approved",    "branchManagerApproved",  "branchmanagerapproved");
+        ensureStatus("Supervisor Approved",        "supervisorApproved",     "supervisorapproved");
+        ensureStatus("Unit Acknowledged",          "unitAcknowledged",       "unitacknowledged");
+        ensureStatus("Pending Disposal",           "pendingDisposal",        "pendingdisposal");
+        ensureStatus("In Transit",                 "inTransit",              "intransit");
+        // Asset-level "issued, awaiting delivery/acknowledgement" — keeps an issued asset out of the
+        // "Available for Issuance" pool so it can't be issued twice. Distinct from the request-level
+        // "issued" status above.
+        ensureStatus("Issued",                     "assetIssued",            "assetissued");
+        log.info("Status seeding complete");
+    }
+
+    private void ensureStatus(String name, String statusCode, String code) {
+        statusRepository.findByStatus(statusCode).orElseGet(() -> {
+            log.info("Creating status: {}", name);
+            return statusRepository.save(Status.builder()
+                    .name(name)
+                    .status(statusCode)
+                    .code(code)
+                    .description(name)
+                    .build());
+        });
+    }
+}

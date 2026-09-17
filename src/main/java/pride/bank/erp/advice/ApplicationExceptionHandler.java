@@ -8,6 +8,7 @@ Managing Director
 package pride.bank.erp.advice;
 
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.security.access.AccessDeniedException;
@@ -22,6 +23,8 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import pride.bank.erp.exception.AccountBlockedException;
+import pride.bank.erp.exception.BadRequestException;
+import pride.bank.erp.exception.NoApproverException;
 import pride.bank.erp.exception.NotFoundException;
 
 import java.io.IOException;
@@ -128,12 +131,60 @@ public class ApplicationExceptionHandler {
         return errorDetail;
     }
 
+    /**
+     * A request the server understood but will not act on as written.
+     *
+     * <p>Was unhandled, so it fell through to Spring's default error path and surfaced as a bare 500
+     * — the message never reached the client, turning actionable advice into "Internal Server Error".
+     */
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    @ExceptionHandler(BadRequestException.class)
+    public ProblemDetail handleBadRequest(BadRequestException ex) {
+        ProblemDetail errorDetail = ProblemDetail
+                .forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+        errorDetail.setProperty("request_failure", "Bad Request");
+        errorDetail.setProperty("message", ex.getMessage());
+        return errorDetail;
+    }
+
+    /**
+     * No approver could be resolved for a movement that needs one.
+     *
+     * <p>Carries {@code errorCode} so the client can recognize this specific case and offer to
+     * proceed without approval, rather than parsing the message text.
+     */
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    @ExceptionHandler(NoApproverException.class)
+    public ProblemDetail handleNoApprover(NoApproverException ex) {
+        ProblemDetail errorDetail = ProblemDetail
+                .forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+        errorDetail.setProperty("errorCode", "NO_APPROVER");
+        errorDetail.setProperty("message", ex.getMessage());
+        return errorDetail;
+    }
+
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     @ExceptionHandler(IllegalArgumentException.class)
     public ProblemDetail handleIllegalArgument(IllegalArgumentException ex) {
         ProblemDetail errorDetail = ProblemDetail
                 .forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
         errorDetail.setProperty("request_failure", "Bad Request");
+        return errorDetail;
+    }
+
+    /**
+     * Two people changed the same stock line or store balance at once and one write lost the race.
+     * Nothing is wrong with the request itself — it just needs to be re-read and re-submitted, so
+     * say that in plain language rather than surfacing a Hibernate stack trace.
+     */
+    @ResponseStatus(HttpStatus.CONFLICT)
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ProblemDetail handleOptimisticLock(ObjectOptimisticLockingFailureException ex) {
+        ProblemDetail errorDetail = ProblemDetail.forStatusAndDetail(
+                HttpStatus.CONFLICT,
+                "Someone else updated this record while you were working on it. "
+                        + "Refresh the page to pick up their change, then try again.");
+        errorDetail.setProperty("request_failure", "Conflict");
         return errorDetail;
     }
 
@@ -185,20 +236,63 @@ public class ApplicationExceptionHandler {
         return errorDetail;
     }
 
+    /**
+     * Every authorization refusal in the application arrives here.
+     *
+     * <p>Both kinds: a rule in {@code SecurityConfiguration} or a {@code @PreAuthorize} refusing at
+     * the filter chain — routed in by {@code CustomBearerTokenAccessDeniedHandler} — and a scope
+     * check inside a service refusing a record. That single funnel is why moving off 403 is a change
+     * to two methods rather than to ninety call sites.
+     *
+     * <p>The status comes from {@link AccessDenied#STATUS} because the firewall in front of this
+     * service blocks 403 and replaces it with its own page, so a refusal sent that way never reaches
+     * the caller. The status is transport; {@code errorCode} is the meaning. See {@link AccessDenied}.
+     */
     @ExceptionHandler(AccessDeniedException.class)
-    @ResponseStatus(HttpStatus.FORBIDDEN)
     public ProblemDetail handleAccessDeniedException(AccessDeniedException ex) {
         ProblemDetail errorDetail = ProblemDetail
-                .forStatusAndDetail(HttpStatus.FORBIDDEN, ex.getMessage());
+                .forStatusAndDetail(AccessDenied.STATUS, ex.getMessage());
+        errorDetail.setProperty("errorCode", AccessDenied.ERROR_CODE);
         errorDetail.setProperty("access_denied_reason", "Not Authorized");
         return errorDetail;
     }
 
+    /**
+     * A token that is absent, malformed or expired where one was required — <b>401</b>.
+     *
+     * <h2>This was 422 for a week, and it broke session expiry</h2>
+     * When refusals moved off 403, this exception moved with its neighbour, on the reasoning that
+     * "the front end reads 401 as the session expired, tries a refresh and then signs the user out,
+     * and this is also raised for a token that is simply wrong for the route". That reasoning was
+     * wrong, and it was wrong about the case that matters most.
+     *
+     * <p>Spring Security raises this through the {@code authenticationEntryPoint} when the request is
+     * <b>anonymous</b> — which is precisely what an expired token produces here, because
+     * {@code JwtService.extractUserEmail} returns null for one and {@code JwtAuthenticationFilter}
+     * then sets no authentication. So every expiry arrived as a 422, the interceptor's refresh path
+     * (which keys on 401) never fired, nobody was signed out, and the error surfaced in the browser
+     * as an uncaught {@code AxiosError: Full authentication is required to access this resource}.
+     *
+     * <p>Measured before the fix: a request with no header, one with a garbage token and one with a
+     * correctly-signed expired token <b>all returned 422</b>.
+     *
+     * <h2>The distinction that actually matters</h2>
+     * <ul>
+     *   <li><b>401</b> — I do not know who you are. Re-authenticate: refresh, or sign in again.</li>
+     *   <li><b>{@link AccessDenied#STATUS}</b> — I know who you are and the answer is no. Refreshing
+     *       changes nothing, and signing the user out for it would be wrong.</li>
+     * </ul>
+     *
+     * <p>Splitting them on the exception is what makes that legible, and it is what the front end
+     * needs in order to do two different things. 401 is passed by the firewall — only 403 is blocked —
+     * so there is nothing forcing them together.
+     */
     @ExceptionHandler(InsufficientAuthenticationException.class)
-    @ResponseStatus(HttpStatus.FORBIDDEN)
+    @ResponseStatus(HttpStatus.UNAUTHORIZED)
     public ProblemDetail handleInsufficientAuthenticationException(InsufficientAuthenticationException ex) {
         ProblemDetail errorDetail = ProblemDetail
-                .forStatusAndDetail(HttpStatus.FORBIDDEN, ex.getMessage());
+                .forStatusAndDetail(HttpStatus.UNAUTHORIZED, ex.getMessage());
+        errorDetail.setProperty("errorCode", "SESSION_EXPIRED");
         errorDetail.setProperty("access_denied_reason", "Invalid or Expired Token");
         return errorDetail;
     }
@@ -212,20 +306,40 @@ public class ApplicationExceptionHandler {
         return errorDetail;
     }
 
+    /**
+     * A required query parameter was omitted — a malformed request, not a refused one.
+     *
+     * <p>This answered 403 Forbidden, which sends anyone debugging straight into permissions and
+     * roles when the actual fault is a missing parameter named in the message. The client cannot
+     * act on "Forbidden" here; it can act on "Bad Request".
+     */
     @ExceptionHandler(MissingServletRequestParameterException.class)
-    @ResponseStatus(HttpStatus.FORBIDDEN)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ProblemDetail handleMissingServletRequestParameterException(MissingServletRequestParameterException ex) {
         ProblemDetail errorDetail = ProblemDetail
-                .forStatusAndDetail(HttpStatus.FORBIDDEN, ex.getMessage());
+                .forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+        errorDetail.setProperty("request_failure", "Bad Request");
         errorDetail.setProperty("message", ex.getMessage());
         return errorDetail;
     }
 
+    /**
+     * The record is not in a state where this action makes sense — a conflict, not a refusal.
+     *
+     * <p>Every lifecycle guard in the movement and consignment flows raises this: "Only a dispatched
+     * consignment can be marked in transit", "this movement travels on a consignment and is
+     * dispatched with it", "the goods have to arrive before this can be handed over". Answering 403
+     * dressed all of them up as permission problems, when each one is telling the caller to do
+     * something first — advice a user can act on, and only if the status does not contradict it.
+     *
+     * <p>409 matches how the optimistic-locking handler above already reports a state clash.
+     */
     @ExceptionHandler(IllegalStateException.class)
-    @ResponseStatus(HttpStatus.FORBIDDEN)
+    @ResponseStatus(HttpStatus.CONFLICT)
     public ProblemDetail handleIllegalStateExceptionException(IllegalStateException ex) {
         ProblemDetail errorDetail = ProblemDetail
-                .forStatusAndDetail(HttpStatus.FORBIDDEN, ex.getMessage());
+                .forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+        errorDetail.setProperty("request_failure", "Conflict");
         errorDetail.setProperty("message", ex.getMessage());
         return errorDetail;
     }
