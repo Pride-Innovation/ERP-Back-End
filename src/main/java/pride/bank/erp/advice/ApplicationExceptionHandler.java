@@ -7,6 +7,8 @@ Managing Director
 
 package pride.bank.erp.advice;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -411,6 +413,42 @@ public class ApplicationExceptionHandler {
         ProblemDetail errorDetail = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
         errorDetail.setProperty("errorCode", "NOT_ACCEPTABLE");
         errorDetail.setProperty("message", ex.getMessage());
+        return errorDetail;
+    }
+
+    /**
+     * A payload Jackson could not map. The caller sent the wrong shape - a client error, not a fault.
+     *
+     * <h2>Why this needs its own handler</h2>
+     * Spring turns a malformed <b>request body</b> into {@code HttpMessageNotReadableException} and
+     * reports 400 without help from us. But {@code UserController.bulkInsertUsers} takes the rows as
+     * a {@code @RequestParam} string and calls {@code objectMapper.readValue} itself, so Jackson's
+     * exception escapes as an ordinary unhandled one. It reached the catch-all below and was
+     * reported as a server fault saying "Something went wrong".
+     *
+     * <p>That is what a real import failure looked like: the file had been parsed from the wrong
+     * worksheet and every column was unrecognised, and the only thing the user was told was that
+     * something had gone wrong. The field name was in the server log the whole time.
+     *
+     * <p>So this names the offending field and lists what was expected. The caller can act on that;
+     * they cannot act on "something went wrong".
+     */
+    @ExceptionHandler(JsonProcessingException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ProblemDetail handleJsonProcessingException(JsonProcessingException ex) {
+        String detail = "The data sent could not be read. Please check the file and try again.";
+
+        if (ex instanceof UnrecognizedPropertyException unrecognised) {
+            String known = unrecognised.getKnownPropertyIds() == null ? "" :
+                    unrecognised.getKnownPropertyIds().stream()
+                            .map(Object::toString).sorted().reduce((a, b) -> a + ", " + b).orElse("");
+            detail = "The column \"%s\" is not one this import understands. Expected: %s."
+                    .formatted(unrecognised.getPropertyName(), known);
+        }
+
+        ProblemDetail errorDetail = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, detail);
+        errorDetail.setProperty("errorCode", "MALFORMED_PAYLOAD");
+        errorDetail.setProperty("message", detail);
         return errorDetail;
     }
 
