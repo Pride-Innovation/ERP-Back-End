@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
+import pride.bank.erp.advice.WafStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -164,10 +165,10 @@ public class RequestController {
         } catch (NotFoundException | ResourceNotFoundException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
         } catch (IOException e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("File processing failed.");
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("File processing failed.");
         } catch (Exception e) {
             log.error("Unexpected error creating request", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+            return ResponseEntity.status(WafStatus.SERVER_FAULT)
                     .body("Request creation failed: " + e.getMessage());
         }
     }
@@ -216,10 +217,10 @@ public class RequestController {
         } catch (NotFoundException | ResourceNotFoundException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
         } catch (IOException e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("File processing failed.");
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("File processing failed.");
         } catch (Exception e) {
             log.error("Unexpected error updating request", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+            return ResponseEntity.status(WafStatus.SERVER_FAULT)
                     .body("Request update failed: " + e.getMessage());
         }
     }

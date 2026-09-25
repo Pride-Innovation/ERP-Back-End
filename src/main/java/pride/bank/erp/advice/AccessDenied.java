@@ -38,14 +38,24 @@ import org.springframework.http.HttpStatus;
  */
 public final class AccessDenied {
 
-    /** The wire status a refusal travels under. Not 403 — see above. */
-    public static final HttpStatus STATUS = HttpStatus.UNPROCESSABLE_ENTITY;
+    /**
+     * The wire status a refusal travels under.
+     *
+     * <p>Not 403, which the firewall blocks. <b>And no longer 422</b>: that was chosen when only the
+     * block on 403 was known, but the firewall admits just seven 4xx codes - 400, 401, 404, 407,
+     * 409, 417, 440 - and 422 is not among them. Every refusal in the application was being replaced
+     * by the firewall's own page from that change until this one. See {@link WafStatus}.
+     *
+     * <p>417 because it is one of only two admitted codes this application has not already spent on
+     * another meaning, and unlike 407 it provokes no special handling in browsers.
+     */
+    public static final HttpStatus STATUS = HttpStatus.EXPECTATION_FAILED;
 
     /**
      * What the front end branches on.
      *
      * <p>{@code ProblemDetail} carries this as a property, and the axios interceptor already reads
-     * {@code errorCode} — that mechanism exists so one specific case can be recognised and presented
+     * {@code errorCode} — that mechanism exists so one specific case can be recognized and presented
      * properly rather than toasted as a generic error.
      */
     public static final String ERROR_CODE = "ACCESS_DENIED";

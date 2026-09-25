@@ -9,6 +9,8 @@ package pride.bank.erp.requestReport;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import pride.bank.erp.advice.AccessDenied;
+import pride.bank.erp.advice.WafStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -33,11 +35,11 @@ public class RequestReportController {
             RequestDTO response = requestReportService.approveRequest(requestReportDTO);
             return new ResponseEntity<>(response, HttpStatusCode.valueOf(201));
         } catch (BusinessRuleException e) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(e.getMessage());
+            return ResponseEntity.status(AccessDenied.STATUS).body(e.getMessage());
         } catch (NotFoundException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(e.getMessage());
+            return ResponseEntity.status(WafStatus.SERVER_FAULT).body(e.getMessage());
         }
     }
 
