@@ -395,7 +395,10 @@ public class SecurityConfiguration {
                 "Authorization",
                 "Content-Type",
                 HttpMethodOverrideFilter.HEADER,
-                CSRF_TOKEN_HEADER));
+                CSRF_TOKEN_HEADER,
+                // The double-submit header, matching the SMS gateway's wire format. Only consulted
+                // in local development: production is same-origin, so no preflight ever happens.
+                "X-XSRF-TOKEN"));
         configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

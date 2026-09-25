@@ -7,7 +7,16 @@ Managing Director
 
 package pride.bank.erp.advice;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.ErrorResponse;
+import org.springframework.web.HttpMediaTypeNotAcceptableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -36,6 +45,8 @@ import java.util.Properties;
 
 @RestControllerAdvice
 public class ApplicationExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(ApplicationExceptionHandler.class);
 
     private static final Map<String, String> CONSTRAINT_MAP = loadConstraintMap();
 
@@ -342,5 +353,109 @@ public class ApplicationExceptionHandler {
         errorDetail.setProperty("request_failure", "Conflict");
         errorDetail.setProperty("message", ex.getMessage());
         return errorDetail;
+    }
+
+    // ── Statuses the firewall will not carry ─────────────────────────────────
+    //
+    // Everything below exists because a blocked status does not reach the caller as an error: the
+    // firewall replaces it with its own HTML page served as HTTP 200. See WafStatus.
+
+    /**
+     * An upload larger than the configured limit. Spring answers 413, which the firewall blocks.
+     *
+     * <p>400 rather than 440, because this genuinely is the caller's doing and they can act on it.
+     * The limit is {@code spring.servlet.multipart.max-file-size}, currently 2MB, and seven
+     * controllers accept uploads - asset images, GRN documents, repair and movement attachments,
+     * request files - so this is reachable by anyone attaching a photograph from a phone.
+     */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ProblemDetail handleMaxUploadSizeExceeded(MaxUploadSizeExceededException ex) {
+        ProblemDetail errorDetail = ProblemDetail.forStatusAndDetail(
+                HttpStatus.BAD_REQUEST, "That file is too large. The maximum upload size is 2MB.");
+        errorDetail.setProperty("errorCode", "FILE_TOO_LARGE");
+        errorDetail.setProperty("message", "That file is too large. The maximum upload size is 2MB.");
+        return errorDetail;
+    }
+
+    /**
+     * The verb does not match the route. Spring answers 405, which the firewall blocks.
+     *
+     * <p>Worth keeping in mind while reading this: {@code HttpMethodOverrideFilter} rewrites POST
+     * into PUT or DELETE before routing, so a mismatch here can mean the override header disagreed
+     * with the route rather than that the caller used the wrong verb.
+     */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ProblemDetail handleMethodNotSupported(HttpRequestMethodNotSupportedException ex) {
+        ProblemDetail errorDetail = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+        errorDetail.setProperty("errorCode", "METHOD_NOT_ALLOWED");
+        errorDetail.setProperty("message", ex.getMessage());
+        return errorDetail;
+    }
+
+    /** Wrong {@code Content-Type}. Spring answers 415, which the firewall blocks. */
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ProblemDetail handleMediaTypeNotSupported(HttpMediaTypeNotSupportedException ex) {
+        ProblemDetail errorDetail = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+        errorDetail.setProperty("errorCode", "UNSUPPORTED_MEDIA_TYPE");
+        errorDetail.setProperty("message", ex.getMessage());
+        return errorDetail;
+    }
+
+    /** Unsatisfiable {@code Accept}. Spring answers 406, which the firewall blocks. */
+    @ExceptionHandler(HttpMediaTypeNotAcceptableException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ProblemDetail handleMediaTypeNotAcceptable(HttpMediaTypeNotAcceptableException ex) {
+        ProblemDetail errorDetail = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+        errorDetail.setProperty("errorCode", "NOT_ACCEPTABLE");
+        errorDetail.setProperty("message", ex.getMessage());
+        return errorDetail;
+    }
+
+    /**
+     * The floor. Anything not handled above leaves here, never as a 5xx.
+     *
+     * <h2>Why this had to exist</h2>
+     * There was no catch-all, so every unhandled exception - a null dereference, a driver timeout, a
+     * mapping fault - became Spring's default <b>500</b>. The firewall blocks the whole 5xx range,
+     * so none of those reached the caller: they arrived as the firewall's rejection page under
+     * HTTP 200, indistinguishable from any other block. Fixing the seven hand-written 500s would
+     * have left that untouched, because the problem was the absence of a floor rather than those
+     * seven lines.
+     *
+     * <h2>Spring's own exceptions keep their status</h2>
+     * {@link ErrorResponse} is implemented by the exceptions that carry an intended status -
+     * {@code ResponseStatusException}, {@code NoResourceFoundException} and others. Without the
+     * check below this handler would sit in front of them and flatten every one into a server
+     * fault: the 400s and 409s raised across the asset-type, courier and consultant services, and a
+     * 404 from an unmatched route, would all have started reporting as "something went wrong".
+     * Their status is honoured wherever the firewall admits it.
+     *
+     * <p>The exception is logged in full here because the response deliberately does not carry it -
+     * a stack trace is not something to hand a caller, and the firewall would block it anyway.
+     */
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ProblemDetail> handleUnexpectedException(Exception ex) {
+        HttpStatusCode status = WafStatus.SERVER_FAULT;
+        String errorCode = WafStatus.SERVER_FAULT_CODE;
+        String detail = "Something went wrong. Please try again, or contact support if it continues.";
+
+        if (ex instanceof ErrorResponse errorResponse
+                && WafStatus.ALLOWED_ERROR_STATUSES.contains(errorResponse.getStatusCode().value())) {
+            status = errorResponse.getStatusCode();
+            errorCode = null;
+            detail = ex.getMessage();
+        } else {
+            log.error("Unhandled exception, reported as {}", WafStatus.SERVER_FAULT.value(), ex);
+        }
+
+        ProblemDetail errorDetail = ProblemDetail.forStatusAndDetail(status, detail);
+        if (errorCode != null) {
+            errorDetail.setProperty("errorCode", errorCode);
+        }
+        errorDetail.setProperty("message", detail);
+        return ResponseEntity.status(status).body(errorDetail);
     }
 }
