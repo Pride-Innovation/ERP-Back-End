@@ -42,13 +42,18 @@ public class RepairTransferDTO implements ApprovalBypassRequest {
     private String faultDescription;
 
     /**
-     * Who is expected to work on it, if known at dispatch.
+     * Who is expected to work on it, if known at dispatch: the kind first, then one reference.
      *
      * <p>Optional, because for an IT- or Admin-routed repair the bench decides that after it arrives.
-     * For an EXTERNAL repair it defaults to the consultant's name, which is the answer by
-     * construction — nobody should have to type what the form already knows.
+     * An INTERNAL technician must be an active member of the unit servicing the routing (Infra for IT,
+     * Admin for Admin). For an EXTERNAL repair these are not sent: the technician is the consultant
+     * chosen for the routing, by construction.
+     *
+     * <p>This replaced a free-text {@code technician} string, which tied the record to nobody.
      */
-    private String technician;
+    private pride.bank.erp.repair.TechnicianType technicianType;
+    private Long technicianUserId;
+    private Long technicianConsultantId;
 
     /** Overrides the category's default routing (IT / ADMIN / EXTERNAL); null uses the category default. */
     private RepairDestination repairDestination;

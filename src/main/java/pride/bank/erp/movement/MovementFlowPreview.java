@@ -46,9 +46,16 @@ public class MovementFlowPreview {
      */
     private boolean returningToBranchUnassigned;
 
-    /** The loaner that should come back with this return, derived from the user's open issue. */
-    private Long loanerAssetId;
-    private String loanerAssetLabel;
+
+    /**
+     * The open repair a return would close, and who it already names as technician - so the form
+     * asks for one only when the repair does not have one yet, and lists internal officers from the
+     * unit that services where it went.
+     */
+    private Long openRepairId;
+    private pride.bank.erp.assetType.RepairDestination repairDestination;
+    private pride.bank.erp.repair.TechnicianType technicianType;
+    private String technicianName;
 
     /**
      * Set when the flow cannot proceed as configured — no recorded holder, no branch on record.

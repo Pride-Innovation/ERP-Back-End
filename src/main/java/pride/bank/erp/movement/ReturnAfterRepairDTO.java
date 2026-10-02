@@ -6,8 +6,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * Returns a repaired asset to its originating location (§16). Optionally reassigns it to a user, and
- * optionally returns the temporary replacement asset to the IT store in a second movement.
+ * Returns a repaired asset to its originating location (§16), back to the holder who sent it. Any
+ * loaner the holder has is left with them until they hand it back themselves.
  */
 @Data
 @Builder
@@ -25,20 +25,11 @@ public class ReturnAfterRepairDTO implements ApprovalBypassRequest {
     private Long recipientUserId;
     /** Required when returning the asset to someone other than its recorded holder. */
     private String overrideReason;
-    /**
-     * Optional. When set, a second movement returns this temporary asset to its pool store.
-     *
-     * <p>Normally left null: the loaner is derived from what is actually out with the recipient. It
-     * was a manual picker on the form, which made returning a loaner depend on the user remembering
-     * to select it — anything forgotten never came back and the pool drained.
+    /*
+     * There is no loaner field here any more. Returning a repaired asset used to take a loaner back
+     * in the same call; a loaner is now returned by hand once the user has their own asset - see
+     * LoanerService.
      */
-    private Long tempAssetId;
-
-    /**
-     * Set false when the recipient is keeping the loaner for now, so no return leg is created for
-     * it. Null or true derives and returns it.
-     */
-    private Boolean returnLoaner;
     private String remarks;
 
     /**
@@ -54,6 +45,15 @@ public class ReturnAfterRepairDTO implements ApprovalBypassRequest {
      */
     private String completionNotes;
     private java.util.List<String> completionDocuments;
+
+    /**
+     * Who repaired it. Required unless the repair already names somebody - a closed repair must say
+     * who did the work. Same shape as the transfer and the bench completion, so one picker serves
+     * all three.
+     */
+    private pride.bank.erp.repair.TechnicianType technicianType;
+    private Long technicianUserId;
+    private Long technicianConsultantId;
 
     /** Set once the initiator has confirmed they want to proceed with no approver available. */
     private Boolean proceedWithoutApproval;

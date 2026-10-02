@@ -360,8 +360,13 @@ public class InventoryService {
             // closed — otherwise the asset keeps showing "assigned to" them while it sits in the
             // IT/Admin store under repair.
             case REPAIR_TRANSFER -> returnAssetToStore(asset, dest);
-            // A user handing an asset back: it stops being theirs and belongs to the store again.
-            case RETURN_TO_STORE -> returnAssetToStore(asset, dest);
+            // A user handing an asset back: it stops being theirs and belongs to the store again. A
+            // returned loaner carries issuanceAvailable, so it reads lendable once it is on the shelf;
+            // an ordinary hand-back carries nothing and its status is left as it was.
+            case RETURN_TO_STORE -> {
+                returnAssetToStore(asset, dest);
+                applyRestoreStatus(movement, asset);
+            }
             case RETURN_AFTER_REPAIR -> {
                 if (recipient != null) {
                     assignAssetToUser(asset, recipient); // back to its user

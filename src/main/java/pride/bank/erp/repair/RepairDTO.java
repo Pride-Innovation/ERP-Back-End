@@ -18,6 +18,11 @@ public class RepairDTO {
     private LocalDateTime repairStartDate;
     private LocalDateTime repairEndDate;
     private String technician;
+    /** Null on a record with nobody recorded, or one typed as free text before V26. */
+    private TechnicianType technicianType;
+    private Long technicianUserId;
+    private Long technicianConsultantId;
+    private pride.bank.erp.assetType.RepairDestination repairDestination;
     private String repairReason;
     private String status;
     private List<String> documents;

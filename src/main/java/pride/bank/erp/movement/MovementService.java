@@ -80,6 +80,9 @@ public class MovementService {
      */
     private final pride.bank.erp.auditing.trail.AuditService auditService;
 
+    /** Reminds a holder to hand back a loaner once their own asset comes home from repair. */
+    private final LoanerReminder loanerReminder;
+
     @Transactional
     public Movement createMovement(MovementDTO dto) throws NotFoundException {
         if (dto.getMovementType() == null) {
@@ -492,6 +495,8 @@ public class MovementService {
             movement.setRemarks(remarks);
         }
         Movement saved = movementRepository.save(movement);
+        // A repaired asset reaching its holder is the moment any loaner standing in for it is due.
+        loanerReminder.onCompleted(saved);
         // Anything other than a clean receipt is flagged: a short or damaged delivery is the
         // discrepancy someone will need to reconstruct later.
         boolean clean = receiptStatus == ReceiptStatus.RECEIVED_OK;

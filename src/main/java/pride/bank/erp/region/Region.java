@@ -29,7 +29,12 @@ public class Region {
     private Long id;
     private String name;
 
+    /**
+     * Out of equals/hashCode/toString - see {@code Title#users} for why, which is the same fault.
+     */
     @OneToMany(mappedBy = "region", cascade = CascadeType.PERSIST)
     @JsonIgnore
+    @lombok.EqualsAndHashCode.Exclude
+    @lombok.ToString.Exclude
     private Set<Branch> branches;
 }

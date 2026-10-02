@@ -52,6 +52,7 @@ class RepairFlowUnificationTest {
     @Autowired AssetRepository assetRepository;
     @Autowired SeederStateRepository seederStateRepository;
     @Autowired RequestMappingHandlerMapping handlerMapping;
+    @Autowired pride.bank.erp.consultant.ConsultantRepository consultantRepository;
 
     private static final String SERVICE =
             "src/main/java/pride/bank/erp/repair/RepairService.java";
@@ -77,7 +78,8 @@ class RepairFlowUnificationTest {
                 .orElseThrow(() -> new AssertionError("no asset to open a repair against"));
 
         Repair opened = repairService.openForTransfer(
-                asset, "Screen flickers under load", "HO IT Bench", List.of("dispatch-note.pdf"));
+                asset, "Screen flickers under load", pride.bank.erp.assetType.RepairDestination.IT,
+                null, null, List.of("dispatch-note.pdf"));
 
         assertThat(opened.getId()).isNotNull();
         assertThat(opened.getStatus()).isEqualTo("Pending");
@@ -87,7 +89,15 @@ class RepairFlowUnificationTest {
                 .as("a repair that has only just been raised has not finished")
                 .isNull();
 
-        Repair closed = repairService.closeForReturn(asset, "Replaced the panel", List.of("grn.pdf"));
+        // A closed repair names who did it, so the bench records a vendor here. Created inside the
+        // rolled-back transaction rather than relying on one being registered in Settings.
+        pride.bank.erp.consultant.Consultant vendor = consultantRepository.save(
+                pride.bank.erp.consultant.Consultant.builder().name("Test Bench Vendor").build());
+        Repair closed = repairService.closeForReturn(asset, "Replaced the panel", List.of("grn.pdf"),
+                TechnicianSelectionDTO.builder()
+                        .technicianType(TechnicianType.EXTERNAL)
+                        .technicianConsultantId(vendor.getId())
+                        .build());
 
         assertThat(closed)
                 .as("the return leg must find the record the transfer opened, or every maintenance "
@@ -98,6 +108,8 @@ class RepairFlowUnificationTest {
         assertThat(closed.getRepairEndDate()).isNotNull();
         assertThat(closed.getCompletionNotes()).isEqualTo("Replaced the panel");
         assertThat(closed.getCompletionDocuments()).containsExactly("grn.pdf");
+        assertThat(closed.getTechnicianType()).isEqualTo(TechnicianType.EXTERNAL);
+        assertThat(closed.getTechnician()).isEqualTo("Test Bench Vendor");
     }
 
     /**
@@ -111,7 +123,8 @@ class RepairFlowUnificationTest {
     void openingARecordRequiresSayingWhatIsWrong() {
         Asset asset = assetRepository.findAll().get(0);
 
-        assertThatThrownBy(() -> repairService.openForTransfer(asset, "   ", "Bench", List.of()))
+        assertThatThrownBy(() -> repairService.openForTransfer(
+                asset, "   ", pride.bank.erp.assetType.RepairDestination.IT, null, null, List.of()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("what is wrong");
     }
@@ -132,7 +145,7 @@ class RepairFlowUnificationTest {
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("every asset has an open repair"));
 
-        assertThat(repairService.closeForReturn(asset, "n/a", List.of()))
+        assertThat(repairService.closeForReturn(asset, "n/a", List.of(), null))
                 .as("nothing to close is a fact, not a fault")
                 .isNull();
     }

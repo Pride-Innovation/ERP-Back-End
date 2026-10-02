@@ -38,6 +38,7 @@ public class RepairMovementController {
 
     private final RepairMovementService repairMovementService;
     private final MovementMapper movementMapper;
+    private final pride.bank.erp.repair.RepairService repairService;
 
     /** §14: send a faulty asset to the Head Office IT store for repair. */
     @PreAuthorize("hasAuthority('" + Constants.REPAIR_ASSET + "')")
@@ -89,6 +90,22 @@ public class RepairMovementController {
     ) throws NotFoundException {
         return new ResponseEntity<>(
                 repairMovementService.previewRepairTransfer(assetId, repairDestination), HttpStatus.OK);
+    }
+
+    /**
+     * The officers who may be recorded as the internal technician on a repair with this routing:
+     * the Infra unit for IT, the Admin unit for Admin, nobody for an external repair.
+     *
+     * <p>{@code REPAIR_ASSET} alone, because both people who need it hold that: whoever raises the
+     * repair and whoever closes it on the bench. Not branch-scoped - see
+     * {@code RepairService#listInternalTechnicians}.
+     */
+    @PreAuthorize("hasAuthority('" + Constants.REPAIR_ASSET + "')")
+    @GetMapping("/movements/repair-technicians")
+    public ResponseEntity<java.util.List<pride.bank.erp.user.StaffOptionDTO>> internalTechnicians(
+            @RequestParam pride.bank.erp.assetType.RepairDestination repairDestination
+    ) {
+        return ResponseEntity.ok(repairService.listInternalTechnicians(repairDestination));
     }
 
     @PreAuthorize("hasAnyAuthority('" + Constants.READ_MOVEMENT + "', '" + Constants.REPAIR_ASSET + "')")

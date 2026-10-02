@@ -46,6 +46,23 @@ public interface UserRepository extends JpaRepository<User, Long> {
     /** Members of a unit — used to notify everyone in a unit when a request is routed to it. */
     List<User> findByUnit_Id(Long unitId);
 
+    /**
+     * Active members of every unit carrying the named role - the officers who may be recorded as a
+     * repair's internal technician.
+     *
+     * <p>Keyed on the role the unit confers ({@code INFRA_UNIT}, {@code ADMIN_UNIT}), never on the
+     * unit's name: a unit is renamed from Settings, and a lookup by display name would empty the
+     * technician picker the day somebody did.
+     *
+     * <p>Inner joins on purpose. A user with no unit, or a unit without the role, is exactly who this
+     * must not return - trap #1 is about joins through an association the query treats as optional,
+     * and here it is the filter.
+     */
+    @Query("SELECT DISTINCT u FROM User u JOIN u.unit un JOIN un.roles r "
+            + "WHERE r.name = :roleName AND u.isEnabled = true AND u.blocked = false "
+            + "ORDER BY u.firstName, u.lastName, u.id")
+    List<User> findActiveMembersOfUnitsWithRole(@Param("roleName") String roleName);
+
     @Query("SELECT u.id FROM User u WHERE u.title.id IN :titleIds")
     List<Long> findUserIdsByTitleIds(@Param("titleIds") List<Long> titleIds);
 

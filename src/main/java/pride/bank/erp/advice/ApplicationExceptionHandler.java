@@ -274,7 +274,7 @@ public class ApplicationExceptionHandler {
      * A token that is absent, malformed or expired where one was required — <b>401</b>.
      *
      * <h2>This was 422 for a week, and it broke session expiry</h2>
-     * When refusals moved off 403, this exception moved with its neighbour, on the reasoning that
+     * When refusals moved off 403, this exception moved with its neighbor, on the reasoning that
      * "the front end reads 401 as the session expired, tries a refresh and then signs the user out,
      * and this is also raised for a token that is simply wrong for the route". That reasoning was
      * wrong, and it was wrong about the case that matters most.
@@ -365,7 +365,7 @@ public class ApplicationExceptionHandler {
     /**
      * An upload larger than the configured limit. Spring answers 413, which the firewall blocks.
      *
-     * <p>400 rather than 440, because this genuinely is the caller's doing and they can act on it.
+     * <p>400 rather than 440, because this genuinely is the caller's doing, and they can act on it.
      * The limit is {@code spring.servlet.multipart.max-file-size}, currently 2MB, and seven
      * controllers accept uploads - asset images, GRN documents, repair and movement attachments,
      * request files - so this is reachable by anyone attaching a photograph from a phone.
@@ -427,7 +427,7 @@ public class ApplicationExceptionHandler {
      * reported as a server fault saying "Something went wrong".
      *
      * <p>That is what a real import failure looked like: the file had been parsed from the wrong
-     * worksheet and every column was unrecognised, and the only thing the user was told was that
+     * worksheet and every column was unrecognized, and the only thing the user was told was that
      * something had gone wrong. The field name was in the server log the whole time.
      *
      * <p>So this names the offending field and lists what was expected. The caller can act on that;
@@ -459,7 +459,7 @@ public class ApplicationExceptionHandler {
      * There was no catch-all, so every unhandled exception - a null dereference, a driver timeout, a
      * mapping fault - became Spring's default <b>500</b>. The firewall blocks the whole 5xx range,
      * so none of those reached the caller: they arrived as the firewall's rejection page under
-     * HTTP 200, indistinguishable from any other block. Fixing the seven hand-written 500s would
+     * HTTP 200, indistinguishable from any other block. Fixing the seven handwritten 500s would
      * have left that untouched, because the problem was the absence of a floor rather than those
      * seven lines.
      *
@@ -469,7 +469,7 @@ public class ApplicationExceptionHandler {
      * check below this handler would sit in front of them and flatten every one into a server
      * fault: the 400s and 409s raised across the asset-type, courier and consultant services, and a
      * 404 from an unmatched route, would all have started reporting as "something went wrong".
-     * Their status is honoured wherever the firewall admits it.
+     * Their status is honored wherever the firewall admits it.
      *
      * <p>The exception is logged in full here because the response deliberately does not carry it -
      * a stack trace is not something to hand a caller, and the firewall would block it anyway.

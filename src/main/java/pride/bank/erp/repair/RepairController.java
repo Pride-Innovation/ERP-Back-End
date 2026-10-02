@@ -80,18 +80,46 @@ public class RepairController {
             @PathVariable Long repairId,
             @RequestParam(value = "repairEndDate") LocalDateTime repairEndDate,
             @RequestParam(value = "completionNotes", required = false) String completionNotes,
-            @RequestParam(value = "completionDocuments", required = false) MultipartFile[] files
-    ) {
+            @RequestParam(value = "completionDocuments", required = false) MultipartFile[] files,
+            @RequestParam(value = "technicianType", required = false) TechnicianType technicianType,
+            @RequestParam(value = "technicianUserId", required = false) Long technicianUserId,
+            @RequestParam(value = "technicianConsultantId", required = false) Long technicianConsultantId
+    ) throws pride.bank.erp.exception.NotFoundException {
+        /*
+         * Only the upload failure is caught here. This used to catch every exception into a 440, so
+         * a refusal (AccessDeniedException) and a validation failure - now including "record who
+         * repaired it" - both reached the user as "Error creating repair" and a server fault, rather
+         * than as the refusal and the 400 the application's handlers already produce for them.
+         */
         try {
             Repair repair = repairService.completeRepair(
                     repairId,
                     repairEndDate,
                     completionNotes,
-                    files);
+                    files,
+                    TechnicianSelectionDTO.builder()
+                            .technicianType(technicianType)
+                            .technicianUserId(technicianUserId)
+                            .technicianConsultantId(technicianConsultantId)
+                            .build());
             return ResponseEntity.status(HttpStatus.CREATED).body(repair);
-        } catch (Exception ex) {
+        } catch (java.io.IOException ex) {
             return ResponseEntity.status(WafStatus.SERVER_FAULT)
-                    .body("Error creating repair: " + ex.getMessage());
+                    .body("The completion documents could not be stored: " + ex.getMessage());
         }
+    }
+
+    /**
+     * Records or corrects who worked on a repair, without closing it.
+     *
+     * <p>Under {@code /assets/repairs/**}, so the filter chain's PUT rule for that route -
+     * {@code REPAIR_ASSET} - already governs it; no new matcher was needed.
+     */
+    @PutMapping(value = "/assets/repairs/{repairId}/technician", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<RepairDTO> assignTechnician(
+            @PathVariable Long repairId,
+            @RequestBody TechnicianSelectionDTO technician
+    ) throws pride.bank.erp.exception.NotFoundException {
+        return ResponseEntity.ok(repairService.assignTechnician(repairId, technician));
     }
 }

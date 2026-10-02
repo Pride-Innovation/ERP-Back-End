@@ -31,8 +31,21 @@ public class Title {
     private String name;
     private String shortCode;
 
+    /**
+     * Out of equals/hashCode/toString, and that is a fix rather than tidiness.
+     *
+     * <p>{@code User}'s Lombok hashCode includes its title, and this one included the title's users:
+     * a cycle through a lazy collection. Hashing a User initialised this set; loading the set hashes
+     * each User into it, which re-enters the set mid-load. Hibernate guards that with an
+     * {@code assert}, so with assertions on - every test run - it fails with a bare
+     * {@code AssertionError} in {@code PersistentSet.initializeEmptyCollection}, and in production,
+     * where they are off, it silently loads the collection a second time. {@code Region#branches}
+     * had the same cycle through {@code Branch}. Met by {@code LoanerFlowTest}.
+     */
     @OneToMany(mappedBy = "title", cascade = CascadeType.PERSIST)
     @JsonIgnore
+    @lombok.EqualsAndHashCode.Exclude
+    @lombok.ToString.Exclude
     private Set<User> users;
 
     @ManyToOne(fetch = FetchType.EAGER)
