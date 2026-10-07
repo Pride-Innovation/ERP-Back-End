@@ -100,7 +100,10 @@ public class Consignment {
 
     /** Courier name as recorded, so the paperwork survives a courier being renamed or retired. */
     private String courierService;
+    /** Issued by the system - see {@code TrackingNumberService}. Never accepted from the client. */
     private String trackingNumber;
+    /** The courier's own waybill or reference, typed at dispatch. Theirs, so not held unique. */
+    private String courierReference;
     private String plateNumber;
     private LocalDateTime dispatchDate;
     private LocalDateTime expectedDeliveryDate;

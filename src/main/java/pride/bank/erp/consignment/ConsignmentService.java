@@ -56,6 +56,8 @@ public class ConsignmentService {
     private final pride.bank.erp.auditing.trail.AuditService auditService;
     private final pride.bank.erp.access.AccessScopeService accessScopeService;
     private final ConsignmentSearchDao consignmentSearchDao;
+    /** Issues the tracking number a load travels under. */
+    private final pride.bank.erp.tracking.TrackingNumberService trackingNumberService;
 
     // ── Assembly ─────────────────────────────────────────────────────────────
 
@@ -139,6 +141,14 @@ public class ConsignmentService {
         }
 
         movement.setConsignment(consignment);
+        /*
+         * It travels under the consignment's number now. A number it was reserved on its own - its
+         * dispatch form opened before it was loaded - is set aside rather than deleted, so the gap in
+         * the sequence is explained; and it carries the consignment's number, if one has been
+         * reserved yet, so the two never disagree.
+         */
+        trackingNumberService.supersede(pride.bank.erp.tracking.TrackingNumber.OwnerType.MOVEMENT, movementId);
+        movement.setTrackingNumber(consignment.getTrackingNumber());
         movementRepository.save(movement);
         log.info("Loaded movement {} onto consignment {}", movementId, consignment.getReference());
         return findConsignment(consignmentId);
@@ -157,8 +167,35 @@ public class ConsignmentService {
             throw new IllegalArgumentException("Movement " + movementId + " is not on this consignment");
         }
         movement.setConsignment(null);
+        // The consignment's number was never its own. Off the van, it gets a fresh one of its own
+        // when its dispatch form next opens.
+        movement.setTrackingNumber(null);
         movementRepository.save(movement);
         return findConsignment(consignmentId);
+    }
+
+    /**
+     * The tracking number this load will travel under, issued now if it has none - called as the
+     * dispatch form opens, because the consignment note printed there carries it and is signed
+     * before Dispatch is pressed. Idempotent. Every movement on board is given the same number.
+     */
+    @Transactional
+    public String reserveTrackingNumber(Long consignmentId) throws NotFoundException {
+        Consignment consignment = findConsignment(consignmentId);
+        requireConsignmentInScope(consignment, pride.bank.erp.access.ScopeAction.MANAGE);
+        if (consignment.getStatus() != ConsignmentStatus.DRAFT) {
+            // Already on the road: it keeps what it left with.
+            return consignment.getTrackingNumber();
+        }
+        String number = trackingNumberService.ensure(
+                pride.bank.erp.tracking.TrackingNumber.OwnerType.CONSIGNMENT, consignmentId);
+        consignment.setTrackingNumber(number);
+        consignmentRepository.save(consignment);
+        for (Movement movement : movementsOn(consignmentId)) {
+            movement.setTrackingNumber(number);
+            movementRepository.save(movement);
+        }
+        return number;
     }
 
     // ── Journey ──────────────────────────────────────────────────────────────
@@ -194,7 +231,13 @@ public class ConsignmentService {
         consignment.setCourier(courier);
         consignment.setCourierService(courier.getName());
         consignment.setPlateNumber(dto.getPlateNumber());
-        consignment.setTrackingNumber(dto.getTrackingNumber());
+        // Issued by the system: normally reserved as the dispatch form opened, so this is the number
+        // on the signed consignment note.
+        String tracking = trackingNumberService.ensure(
+                pride.bank.erp.tracking.TrackingNumber.OwnerType.CONSIGNMENT, consignmentId);
+        consignment.setTrackingNumber(tracking);
+        String courierReference = isBlank(dto.getCourierReference()) ? null : dto.getCourierReference().trim();
+        consignment.setCourierReference(courierReference);
         consignment.setDispatchDate(dto.getDispatchDate() != null ? dto.getDispatchDate() : LocalDateTime.now());
         consignment.setExpectedDeliveryDate(dto.getExpectedDeliveryDate());
         consignment.setDeliveryDocuments(new ArrayList<>(dto.getDeliveryDocuments()));
@@ -208,7 +251,10 @@ public class ConsignmentService {
             movement.setCourier(courier);
             movement.setCourierService(courier.getName());
             movement.setPlateNumber(dto.getPlateNumber());
-            movement.setTrackingNumber(dto.getTrackingNumber());
+            movement.setTrackingNumber(tracking);
+            movement.setCourierReference(courierReference);
+            // A number it held of its own is set aside; it travelled under the consignment's.
+            trackingNumberService.supersede(pride.bank.erp.tracking.TrackingNumber.OwnerType.MOVEMENT, movement.getId());
             movement.setDispatchDate(consignment.getDispatchDate());
             movement.setExpectedDeliveryDate(dto.getExpectedDeliveryDate());
             // Appended rather than replaced, for the same reason a solo dispatch appends: a movement

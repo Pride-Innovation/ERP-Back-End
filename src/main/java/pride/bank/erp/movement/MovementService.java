@@ -83,6 +83,9 @@ public class MovementService {
     /** Reminds a holder to hand back a loaner once their own asset comes home from repair. */
     private final LoanerReminder loanerReminder;
 
+    /** Issues the tracking number a dispatch travels under. */
+    private final pride.bank.erp.tracking.TrackingNumberService trackingNumberService;
+
     @Transactional
     public Movement createMovement(MovementDTO dto) throws NotFoundException {
         if (dto.getMovementType() == null) {
@@ -156,7 +159,6 @@ public class MovementService {
                 .originLocation(resolveBranch(dto.getOriginLocationId()))
                 .restoreStatusCode(dto.getRestoreStatusCode())
                 .courierService(dto.getCourierService())
-                .trackingNumber(dto.getTrackingNumber())
                 .dispatchDate(dto.getDispatchDate())
                 .expectedDeliveryDate(dto.getExpectedDeliveryDate())
                 .deliveryDocuments(dto.getDeliveryDocuments() != null ? dto.getDeliveryDocuments() : new ArrayList<>())
@@ -325,9 +327,6 @@ public class MovementService {
         if (movement.getStatus() != MovementStatus.INITIATED) {
             throw new IllegalStateException("Movement " + movementId + " cannot be dispatched from status " + movement.getStatus());
         }
-        if (isBlank(dto.getTrackingNumber())) {
-            throw new IllegalArgumentException("A tracking number is required to dispatch");
-        }
         if (isBlank(dto.getPlateNumber())) {
             throw new IllegalArgumentException("A vehicle plate number is required to dispatch");
         }
@@ -342,7 +341,12 @@ public class MovementService {
         movement.setCourier(courier);
         movement.setPlateNumber(dto.getPlateNumber());
         movement.setCourierService(courier.getName());
-        movement.setTrackingNumber(dto.getTrackingNumber());
+        // Issued by the system - normally already reserved when the dispatch form opened, so this
+        // returns the number printed on the signed note; issued here only if nothing reserved one.
+        String tracking = trackingNumberService.ensure(
+                pride.bank.erp.tracking.TrackingNumber.OwnerType.MOVEMENT, movement.getId());
+        movement.setTrackingNumber(tracking);
+        movement.setCourierReference(isBlank(dto.getCourierReference()) ? null : dto.getCourierReference().trim());
         movement.setDispatchDate(dto.getDispatchDate() != null ? dto.getDispatchDate() : LocalDateTime.now());
         movement.setExpectedDeliveryDate(dto.getExpectedDeliveryDate());
         // Appended, not replaced. An EXTERNAL repair transfer is rejected at creation without its
@@ -351,15 +355,59 @@ public class MovementService {
         appendDeliveryDocuments(movement, dto.getDeliveryDocuments());
         movement.setStatus(MovementStatus.DISPATCHED);
         log.info("Dispatched movement {} to courier {} (plate {}, tracking {})",
-                movementId, courier.getName(), dto.getPlateNumber(), dto.getTrackingNumber());
+                movementId, courier.getName(), dto.getPlateNumber(), tracking);
         Movement saved = movementRepository.save(movement);
         audit(AuditEventType.UPDATED, "MOVEMENT_DISPATCHED", saved,
                 "Dispatched movement #" + saved.getId() + " (" + routeLabel(saved) + ") via "
                         + courier.getName()
                         + (isBlank(dto.getPlateNumber()) ? "" : ", plate " + dto.getPlateNumber())
-                        + (isBlank(dto.getTrackingNumber()) ? "" : ", tracking " + dto.getTrackingNumber()),
+                        + ", tracking " + tracking
+                        + (isBlank(dto.getCourierReference()) ? "" : ", courier ref " + dto.getCourierReference().trim()),
                 AuditSeverity.INFO);
         return saved;
+    }
+
+    /**
+     * The tracking number this movement will travel under, issued now if it has none - called as
+     * the dispatch form opens, so the number exists while the dispatch note is printed and signed.
+     *
+     * <p>Idempotent: reopening the form or reprinting the note returns the same number. A movement
+     * on a consignment travels under the consignment's number, and gets that. Once a movement has
+     * left, whatever it already carries is returned unchanged - a number is not reissued after the
+     * paper bearing it has gone out with the van, including a typed one from before numbers were
+     * issued.
+     */
+    @Transactional
+    public String reserveTrackingNumber(Long movementId) throws NotFoundException {
+        Movement movement = findMovement(movementId);
+        requireMovementInScope(movement, pride.bank.erp.access.ScopeAction.MANAGE);
+        if (movement.getMovementCategory() != MovementCategory.INTER_LOCATION) {
+            throw new IllegalStateException("A movement within one location does not travel, so it has no tracking number.");
+        }
+
+        if (movement.getConsignment() != null) {
+            var consignment = movement.getConsignment();
+            if (consignment.getStatus() != pride.bank.erp.consignment.ConsignmentStatus.DRAFT) {
+                return consignment.getTrackingNumber();
+            }
+            String number = trackingNumberService.ensure(
+                    pride.bank.erp.tracking.TrackingNumber.OwnerType.CONSIGNMENT, consignment.getId());
+            consignment.setTrackingNumber(number);
+            movement.setTrackingNumber(number);
+            movementRepository.save(movement);
+            return number;
+        }
+
+        // Only an approved movement waiting to leave is issued one. Still awaiting approval, it may
+        // never travel; already gone, it keeps what it left with.
+        if (movement.getStatus() != MovementStatus.INITIATED) {
+            return movement.getTrackingNumber();
+        }
+        String number = trackingNumberService.ensure(
+                pride.bank.erp.tracking.TrackingNumber.OwnerType.MOVEMENT, movement.getId());
+        movement.setTrackingNumber(number);
+        movementRepository.save(movement);
+        return number;
     }
 
     /**

@@ -22,7 +22,9 @@ public class ConsignmentDispatchDTO {
     /** Free-text name for an ad-hoc courier — resolved or created by name. */
     private String courierName;
     private String plateNumber;
-    private String trackingNumber;
+    // No trackingNumber: issued by the system - see TrackingNumberService.
+    /** The courier's waybill or reference, if they gave one. Optional and not held unique. */
+    private String courierReference;
     private LocalDateTime dispatchDate;
     private LocalDateTime expectedDeliveryDate;
     /** At least one signed dispatch note. Enforced, exactly as it is for a single movement. */

@@ -41,6 +41,7 @@ public class MovementMapper {
                 .originLocation(branch(m.getOriginLocation()))
                 .courierService(m.getCourierService())
                 .trackingNumber(m.getTrackingNumber())
+                .courierReference(m.getCourierReference())
                 .dispatchDate(m.getDispatchDate())
                 .expectedDeliveryDate(m.getExpectedDeliveryDate())
                 .courier(courier(m.getCourier()))

@@ -15,7 +15,12 @@ import java.util.List;
 @AllArgsConstructor
 public class MovementDispatchDTO {
     private String courierService;
-    private String trackingNumber;
+    /*
+     * No trackingNumber: the system issues it (TrackingNumberService), and a value sent here would be
+     * a way to type a duplicate. The courier's own number goes in courierReference.
+     */
+    /** The courier's waybill or reference, if they gave one. Optional and not held unique. */
+    private String courierReference;
     private LocalDateTime dispatchDate;
     private LocalDateTime expectedDeliveryDate;
     private List<String> deliveryDocuments;

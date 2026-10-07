@@ -152,6 +152,7 @@ public class DataInitializer {
     private final BranchHeadOfficeSeeder branchHeadOfficeSeeder;
     private final AssetCategoryFeatureSeeder assetCategoryFeatureSeeder;
     private final StatusSeeder statusSeeder;
+    private final LoanerStatusSeeder loanerStatusSeeder;
     private final StoreSeeder storeSeeder;
 
     @Value("${application.super.admin.email}")
@@ -239,6 +240,8 @@ public class DataInitializer {
             branchHeadOfficeSeeder.seedHeadOfficeFlag();
             assetCategoryFeatureSeeder.seedFeatures();
             statusSeeder.seedStatuses();
+            // After seedStatuses(), which creates the loanAvailable row this points shelved loaners at.
+            loanerStatusSeeder.seedLoanerStatus();
 
             // Phase 1 (Store foundation): typed stores per location + legacy balance backfill.
             storeSeeder.seedStoresAndMigrateBalances();

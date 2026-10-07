@@ -12,13 +12,11 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-
-import java.io.File;
 
 /**
  * Sends already-rendered mail off the request thread.
@@ -41,7 +39,13 @@ import java.io.File;
 public class MailDispatcher {
 
     private static final Logger logger = LoggerFactory.getLogger(MailDispatcher.class);
-    private static final String LOGO_PATH = "src/main/resources/static/images/logo.png";
+    /*
+     * From the classpath, not the file system. It was "src/main/resources/static/images/logo.png" -
+     * a path that exists only when the application is started from the source checkout. Packaged
+     * and run anywhere else, the file is not there, the attachment cannot be read, and the whole
+     * message fails inside the catch below: no email at all, only a log line.
+     */
+    private static final ClassPathResource LOGO = new ClassPathResource("static/images/logo.png");
 
     private final JavaMailSender mailSender;
 
@@ -63,7 +67,7 @@ public class MailDispatcher {
             helper.setSubject(subject);
             helper.setFrom(fromEmail);
             helper.setText(htmlContent, true);
-            helper.addInline("logoImage", new FileSystemResource(new File(LOGO_PATH)));
+            helper.addInline("logoImage", LOGO, "image/png");
 
             mailSender.send(mimeMessage);
             logger.info("{} email sent to {}", context, recipient);

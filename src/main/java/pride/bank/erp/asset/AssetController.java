@@ -299,7 +299,9 @@ public class AssetController {
         AssetDAO response = assetService.sendAssetToStore(
                 assetID,
                 request != null ? request.getStoreId() : null,
-                request != null ? request.getTemporaryPool() : null
+                request != null ? request.getTemporaryPool() : null,
+                request != null ? request.getProceedWithoutApproval() : null,
+                request != null ? request.getBypassReason() : null
         );
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }

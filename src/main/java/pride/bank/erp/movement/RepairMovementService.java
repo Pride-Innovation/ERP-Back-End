@@ -37,7 +37,8 @@ public class RepairMovementService {
 
     private static final String CODE_IN_MAINTENANCE = "inMaintenance";
     private static final String CODE_PENDING_DISPOSAL = "pendingDisposal";
-    private static final String CODE_ISSUANCE_AVAILABLE = "issuanceAvailable";
+    /** Where a repaired asset whose holder has left lands: pool stock, so a loaner. */
+    private static final String CODE_LOAN_AVAILABLE = pride.bank.erp.asset.AssetService.CODE_LOAN_AVAILABLE;
     private static final String CODE_ASSET_ASSIGNED = "assetAssigned";
     private static final String CODE_SENT_TO_STORE = "sentToStore";
 
@@ -567,7 +568,7 @@ public class RepairMovementService {
      * What the asset should read once it has been handed back.
      *
      * <ol>
-     *   <li><b>Holder gone</b> → {@code issuanceAvailable}. The asset returns to the branch
+     *   <li><b>Holder gone</b> → {@code loanAvailable}. The asset returns to the branch
      *       unassigned as pool stock, so it must read as available to lend rather than as whatever
      *       its departed owner left it on.</li>
      *   <li><b>Otherwise</b> → the status recorded on the repair transfer: exactly what the asset
@@ -580,7 +581,7 @@ public class RepairMovementService {
      */
     private String statusToRestore(Asset repaired, ReturnTarget target) {
         if (target.markAvailableForTemporaryIssuance()) {
-            return CODE_ISSUANCE_AVAILABLE;
+            return CODE_LOAN_AVAILABLE;
         }
         String recorded = movementRepository
                 .findFirstByItems_Asset_IdAndMovementTypeOrderByIdDesc(repaired.getId(), MovementType.REPAIR_TRANSFER)

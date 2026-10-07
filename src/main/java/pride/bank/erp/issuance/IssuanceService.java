@@ -441,6 +441,12 @@ public class IssuanceService {
 
             if (!CODE_ISSUANCE_AVAILABLE.equals(code)) {
                 notReady.add(label + " — " + reasonNotIssuable(code));
+            } else if (asset.isTemporaryPool()) {
+                // Checked beside the status, not instead of it. Loaners now read Available for Loan,
+                // but they used to read Available for Issuance, and this check was the only thing
+                // that looked - so a loaner could be issued against a request and leave the pool for
+                // good. A pool asset still carrying the old status must not slip through either.
+                notReady.add(label + " — a temporary-replacement loaner, not stock for issuance");
             } else if (asset.getEngravedNumber() == null || asset.getEngravedNumber().isBlank()) {
                 notReady.add(label + " — missing engraved number");
             }
@@ -463,6 +469,9 @@ public class IssuanceService {
         if (CODE_ASSET_ISSUED.equals(code)) return "already issued and awaiting delivery";
         if (CODE_IN_TRANSIT.equals(code)) return "currently in transit";
         if (CODE_ASSET_ASSIGNED.equals(code)) return "already assigned to a user";
+        if (pride.bank.erp.asset.AssetService.CODE_LOAN_AVAILABLE.equals(code)) {
+            return "a temporary-replacement loaner, not stock for issuance";
+        }
         return "not available for issuance" + (code != null ? " (status: " + code + ")" : "");
     }
 

@@ -26,4 +26,13 @@ public class SendToStoreDTO {
      * which is why it is set as part of this move rather than on its own.
      */
     private Boolean temporaryPool;
+
+    /**
+     * Set on a second attempt, once the person has confirmed they want to proceed with no approver
+     * available. A hand-back from a holder at one branch into a store at another is a cross-location
+     * movement and climbs the approval ladder like any other; where nobody can approve it, this is the
+     * same recorded override every movement form offers.
+     */
+    private Boolean proceedWithoutApproval;
+    private String bypassReason;
 }

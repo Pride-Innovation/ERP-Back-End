@@ -330,7 +330,20 @@ public class MovementController {
         return new ResponseEntity<>(movementMapper.toDtoList(movementService.findByRequest(requestId)), HttpStatus.OK);
     }
 
-    /** Dispatches an inter-location movement with courier/tracking details (§9, §10). */
+    /**
+     * The tracking number this movement travels under, issued if it has none - see
+     * {@link MovementService#reserveTrackingNumber}. Called as the dispatch form opens, because the
+     * release note it prints carries the number and is signed before Dispatch.
+     */
+    @PreAuthorize("hasAuthority('" + Constants.DISPATCH_MOVEMENT + "')")
+    @PostMapping("/movements/{movementId}/tracking-number")
+    public ResponseEntity<java.util.Map<String, String>> reserveTrackingNumber(@PathVariable Long movementId)
+            throws NotFoundException {
+        String number = movementService.reserveTrackingNumber(movementId);
+        return ResponseEntity.ok(java.util.Collections.singletonMap("trackingNumber", number));
+    }
+
+    /** Dispatches an inter-location movement with courier details; the tracking number is issued (§9, §10). */
     @PreAuthorize("hasAuthority('" + Constants.DISPATCH_MOVEMENT + "')")
     @PostMapping("/movements/{movementId}/dispatch")
     public ResponseEntity<MovementResponseDTO> dispatchMovement(

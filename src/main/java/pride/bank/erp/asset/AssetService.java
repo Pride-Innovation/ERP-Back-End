@@ -117,6 +117,8 @@ public class AssetService {
 
     /** What the stocking flow leaves behind; see requireEngravedNumberBeforeLeavingStocking. */
     private static final String CODE_REQUIRE_UPDATE = "requireUpdate";
+    /** A loaner on the shelf - see {@code StatusSeeder}. */
+    public static final String CODE_LOAN_AVAILABLE = "loanAvailable";
 
     /** Upper bound on assets scanned in-memory when computing the derived "due for disposal" list. */
     private static final int DISPOSAL_SCAN_LIMIT = 10_000;
@@ -1109,6 +1111,18 @@ public class AssetService {
         Asset asset = findOne(assetID);
         requireAssetInScope(asset, pride.bank.erp.access.ScopeAction.MANAGE);
 
+        /*
+         * A loaner is lent through Temporary Replacement, which records it as a loan and brings it
+         * back. Reassigning it would hand it over as an ordinary assignment while it is still flagged
+         * as pool stock - a loan nothing would ever ask for back. Making a loan permanent is its own
+         * action on the outstanding-loaners list.
+         */
+        if (asset.isTemporaryPool()) {
+            throw new IllegalArgumentException(describe(asset) + " is a temporary-replacement loaner. "
+                    + "Lend it through Temporary Replacement, or receive it into store with "
+                    + "\"Available for temporary issuance\" switched off before assigning it.");
+        }
+
         Long previousUserId = null;
         if (asset.getAssignedTo() != null) {
             previousUserId = asset.getAssignedTo().getId();
@@ -1117,6 +1131,21 @@ public class AssetService {
         User user = userService.findUser(reassignAsset.assignedTo());
         asset.setAssignedTo(user);
         asset.setBranch(user.getBranch());
+
+        /*
+         * Out of the store and onto the person.
+         *
+         * Assigning an asset that sat in a store used to leave both standing: it read "in the Admin
+         * store" and "with Jane" at once, and kept the status it had on the shelf - "Sent to Store"
+         * or "Available for Issuance" - so the register said nobody had it. Statuses that describe
+         * something else happening to the asset (in maintenance, in transit, pending disposal) are
+         * left as they are; this only settles the ones that mean "on a shelf".
+         */
+        asset.setCurrentStore(null);
+        String shelfCode = asset.getAssetStatus() != null ? asset.getAssetStatus().getStatus() : null;
+        if (shelfCode == null || "sentToStore".equals(shelfCode) || "issuanceAvailable".equals(shelfCode)) {
+            asset.setAssetStatus(statusService.findByStatusCode("assetAssigned"));
+        }
 
         AssetDAO data = buildAssetDao(assetRepository.save(asset));
         updateAssetAssignmentHistory(asset, user);
@@ -1244,13 +1273,41 @@ public class AssetService {
     @Transactional
     public AssetDAO sendAssetToStore(Long assetID, Long storeId, Boolean temporaryPool)
             throws NotFoundException {
+        return sendAssetToStore(assetID, storeId, temporaryPool, null, null);
+    }
+
+    /** As above, carrying the recorded no-approver override for a cross-location hand-back. */
+    @Transactional
+    public AssetDAO sendAssetToStore(Long assetID, Long storeId, Boolean temporaryPool,
+                                     Boolean proceedWithoutApproval, String bypassReason)
+            throws NotFoundException {
         Asset asset = findOne(assetID);
         requireAssetInScope(asset, pride.bank.erp.access.ScopeAction.MANAGE);
 
+        // Whether the asset ends up as a loaner: what was asked, else what it already is.
+        boolean loaner = temporaryPool != null ? temporaryPool : asset.isTemporaryPool();
+
+        /*
+         * Where it goes. Named outright wins; otherwise a loaner goes to its category's loaner store
+         * and anything else to the Admin store where it stands.
+         *
+         * The loaner default used to be the same Admin store as everything else, so an IT loaner
+         * received with no store chosen landed in the Head Office Admin store - lendable, but not
+         * where the IT store page or anybody looking for it would find it.
+         */
         Store destination = (storeId != null)
                 ? storeRepository.findById(storeId)
                 .orElseThrow(() -> new NotFoundException("Store " + storeId + " not found"))
-                : resolveDefaultStoreFor(asset);
+                : (loaner ? loanerStoreFor(asset) : resolveDefaultStoreFor(asset));
+
+        // The loan pool is IT and Admin stores only - the temporary-replacement picker reads nothing
+        // else. A loaner booked into a Disposal or courier store would be flagged lendable and never
+        // offered, which is how one ended up in the Disposal store.
+        if (loaner && destination.getStoreType() != pride.bank.erp.store.StoreType.IT
+                && destination.getStoreType() != pride.bank.erp.store.StoreType.ADMIN) {
+            throw new IllegalArgumentException("A loaner must be kept in an IT or Admin store; "
+                    + destination.getName() + " is a " + destination.getStoreType() + " store.");
+        }
 
         User holder = asset.getAssignedTo();
         if (holder != null) {
@@ -1261,6 +1318,8 @@ public class AssetService {
                     .sourceUserId(holder.getId())
                     .destStoreId(destination.getId())
                     .remarks("Asset returned to " + destination.getName())
+                    .proceedWithoutApproval(proceedWithoutApproval)
+                    .bypassReason(bypassReason)
                     .items(List.of(MovementItemDTO.builder().assetId(assetID).quantity(1).build()))
                     .build());
         }
@@ -1270,12 +1329,15 @@ public class AssetService {
         // method exists to prevent.
         inventoryService.returnAssetToStore(asset, destination);
 
-        if (temporaryPool != null) {
-            asset.setTemporaryPool(temporaryPool);
-        }
-        // Pool stock is offered for loan, so it reads as available; anything else is simply in store.
-        asset.setAssetStatus(statusService.findByStatusCode(
-                asset.isTemporaryPool() ? "issuanceAvailable" : "sentToStore"));
+        asset.setTemporaryPool(loaner);
+        /*
+         * A loaner reads Available for Loan; anything else is simply in store.
+         *
+         * Loaners used to read "Available for Issuance" - the status of stock waiting to be issued
+         * against a request. On the register the two were indistinguishable, and issuance, which
+         * checks only that status, would hand a loaner out permanently.
+         */
+        asset.setAssetStatus(statusService.findByStatusCode(loaner ? CODE_LOAN_AVAILABLE : "sentToStore"));
 
         Asset saved = assetRepository.save(asset);
         // The RETURN_TO_STORE movement above is audited in its own right, but only when someone was
@@ -1287,6 +1349,25 @@ public class AssetService {
                         + (saved.isTemporaryPool() ? " — held as temporary pool stock" : ""),
                 AuditSeverity.INFO);
         return buildAssetDao(saved);
+    }
+
+    /**
+     * The store a loaner of this category belongs in: the bank's IT store for an IT-routed category,
+     * the Head Office Admin store for anything else - the same split the repair routing uses, so a
+     * loaner sits with the people who lend and fix that kind of asset.
+     */
+    private Store loanerStoreFor(Asset asset) throws NotFoundException {
+        pride.bank.erp.assetType.RepairDestination routing =
+                asset.getAssetType() != null && asset.getAssetType().getRepairDestination() != null
+                        ? asset.getAssetType().getRepairDestination()
+                        : pride.bank.erp.assetType.RepairDestination.IT;
+        if (routing == pride.bank.erp.assetType.RepairDestination.IT) {
+            return storeRepository.findByStoreType(pride.bank.erp.store.StoreType.IT).stream().findFirst()
+                    .orElseThrow(() -> new NotFoundException("The organisation has no IT store"));
+        }
+        Branch headOffice = branchRepository.findFirstByIsHeadOfficeTrue()
+                .orElseThrow(() -> new NotFoundException("No Head Office branch is configured"));
+        return storeService.resolveAdminStore(headOffice);
     }
 
     /** Where an asset goes when no store is named: the ADMIN store of the branch holding it. */

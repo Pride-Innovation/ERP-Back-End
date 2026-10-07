@@ -42,6 +42,11 @@ public class StatusSeeder {
         // "Available for Issuance" pool so it can't be issued twice. Distinct from the request-level
         // "issued" status above.
         ensureStatus("Issued",                     "assetIssued",            "assetissued");
+        // A loaner on the shelf: temporary-replacement pool stock, unassigned and in a store. Its own
+        // status rather than "Available for Issuance", which it used to share - so on the register a
+        // loaner looked exactly like stock waiting to be issued against a request, and issuance,
+        // which checks nothing but that status, would hand it out permanently.
+        ensureStatus("Available for Loan",         "loanAvailable",          "loanavailable");
         log.info("Status seeding complete");
     }
 

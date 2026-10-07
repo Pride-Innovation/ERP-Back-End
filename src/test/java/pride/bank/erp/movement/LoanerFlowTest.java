@@ -87,8 +87,8 @@ class LoanerFlowTest {
                 .as("back to the store it was lent from")
                 .isEqualTo(f.pool.getId());
         assertThat(movement.getRestoreStatusCode())
-                .as("so it reads lendable again once it is on the shelf")
-                .isEqualTo("issuanceAvailable");
+                .as("so it reads Available for Loan once it is back on the shelf - not Available for Issuance, which issuance would hand out")
+                .isEqualTo("loanAvailable");
     }
 
     @Test
@@ -152,7 +152,7 @@ class LoanerFlowTest {
         Asset back = assetRepository.findById(f.loaner.getId()).orElseThrow();
         assertThat(back.getAssignedTo()).isNull();
         assertThat(back.getCurrentStore().getId()).isEqualTo(f.pool.getId());
-        assertThat(back.getAssetStatus().getStatus()).isEqualTo("issuanceAvailable");
+        assertThat(back.getAssetStatus().getStatus()).isEqualTo("loanAvailable");
     }
 
     // ── What the holder sees ─────────────────────────────────────────────────

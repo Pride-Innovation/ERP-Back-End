@@ -68,7 +68,8 @@ import java.util.Optional;
 @Slf4j
 public class LoanerService {
 
-    private static final String CODE_ISSUANCE_AVAILABLE = "issuanceAvailable";
+    /** A loaner back on the shelf reads Available for Loan, not Available for Issuance. */
+    private static final String CODE_LOAN_AVAILABLE = pride.bank.erp.asset.AssetService.CODE_LOAN_AVAILABLE;
     private static final String CODE_ASSET_ASSIGNED = "assetAssigned";
     private static final List<MovementStatus> FINISHED =
             List.of(MovementStatus.COMPLETED, MovementStatus.CANCELLED);
@@ -141,7 +142,7 @@ public class LoanerService {
                 .destStoreId(destination.getId())
                 // Back on the shelf and lendable. Issuing it marked it Assigned; without this it would
                 // sit in the store reading as though it were still out with the borrower.
-                .restoreStatusCode(CODE_ISSUANCE_AVAILABLE)
+                .restoreStatusCode(CODE_LOAN_AVAILABLE)
                 .remarks(isBlank(request.getRemarks())
                         ? "Return of temporary replacement " + label(loaner)
                         : request.getRemarks().trim())

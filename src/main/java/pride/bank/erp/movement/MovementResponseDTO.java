@@ -40,6 +40,7 @@ public class MovementResponseDTO {
 
     private String courierService;
     private String trackingNumber;
+    private String courierReference;
     private LocalDateTime dispatchDate;
     private LocalDateTime expectedDeliveryDate;
     private CourierSummary courier;

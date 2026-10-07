@@ -214,7 +214,7 @@ public class InventoryService {
      * Puts back the status this movement is carrying, when it has one.
      *
      * <p>Set on a return-after-repair by {@code RepairMovementService}: the status the asset held
-     * before the fault, or {@code issuanceAvailable} when its holder has left and it comes back as
+     * before the fault, or {@code loanAvailable} when its holder has left and it comes back as
      * pool stock. Applied here rather than at creation because the asset is only really back with
      * its owner once the movement completes.
      *
@@ -361,7 +361,7 @@ public class InventoryService {
             // IT/Admin store under repair.
             case REPAIR_TRANSFER -> returnAssetToStore(asset, dest);
             // A user handing an asset back: it stops being theirs and belongs to the store again. A
-            // returned loaner carries issuanceAvailable, so it reads lendable once it is on the shelf;
+            // returned loaner carries loanAvailable, so it reads lendable once it is on the shelf;
             // an ordinary hand-back carries nothing and its status is left as it was.
             case RETURN_TO_STORE -> {
                 returnAssetToStore(asset, dest);

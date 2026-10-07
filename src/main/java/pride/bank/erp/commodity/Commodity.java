@@ -29,9 +29,9 @@ import java.util.Set;
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-@EqualsAndHashCode(exclude = {"requestCommodities", "stockCommodities", "assetType", "suppliers"})
-@ToString(exclude = {"requestCommodities", "stockCommodities", "assetType", "suppliers"})
-public class Commodity {
+@EqualsAndHashCode(exclude = {"requestCommodities", "stockCommodities", "assetType", "suppliers", "stockingBranches"})
+@ToString(exclude = {"requestCommodities", "stockCommodities", "assetType", "suppliers", "stockingBranches"})
+public class Commodity implements pride.bank.erp.stocking.StockingRule {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -58,4 +58,38 @@ public class Commodity {
     @JsonIgnoreProperties({"commodities", "stocks"})
     @Builder.Default
     private Set<Supplier> suppliers = new HashSet<>();
+
+    // ── Where this commodity may be stocked (V28) - see StockingRuleService ─────────────────────
+
+    /**
+     * False (the default): follow the category's rule, and the three fields below are ignored.
+     * True: this commodity's own rule wins - the exception a category rule cannot express, such as
+     * letting branches stock toner while printers stay at Head Office.
+     */
+    @Column(name = "stocking_override", columnDefinition = "BIT NOT NULL DEFAULT 0")
+    @Builder.Default
+    private boolean stockingOverride = false;
+
+    @Column(name = "stock_at_head_office", columnDefinition = "BIT NOT NULL DEFAULT 1")
+    @Builder.Default
+    private boolean stockAtHeadOffice = true;
+
+    @Column(name = "stock_at_all_branches", columnDefinition = "BIT NOT NULL DEFAULT 0")
+    @Builder.Default
+    private boolean stockAtAllBranches = false;
+
+    @ManyToMany(fetch = FetchType.EAGER)
+    @JoinTable(name = "commodity_stocking_branch",
+            joinColumns = @JoinColumn(name = "commodity_id"),
+            inverseJoinColumns = @JoinColumn(name = "branch_id"))
+    @JsonIgnore
+    @Builder.Default
+    private Set<pride.bank.erp.branch.Branch> stockingBranches = new HashSet<>();
+
+    /** The specific branches as ids, which is all a client needs - not the branch records. */
+    @com.fasterxml.jackson.annotation.JsonProperty("stockingBranchIds")
+    public java.util.List<Long> getStockingBranchIds() {
+        return stockingBranches == null ? java.util.List.of()
+                : stockingBranches.stream().map(pride.bank.erp.branch.Branch::getId).sorted().toList();
+    }
 }
