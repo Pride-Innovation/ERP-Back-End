@@ -31,7 +31,7 @@ public record StaffOptionDTO(
         String email,
         String title) {
 
-    static StaffOptionDTO from(User user) {
+    public static StaffOptionDTO from(User user) {
         return new StaffOptionDTO(
                 user.getId(),
                 user.getFirstName(),

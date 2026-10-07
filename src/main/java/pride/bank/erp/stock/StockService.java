@@ -76,13 +76,13 @@ public class StockService {
     private final ApplicationEventPublisher eventPublisher;
     private final StockReversalService stockReversalService;
     private final pride.bank.erp.auditing.trail.AuditService auditService;
+    private final pride.bank.erp.stocking.StockingRuleService stockingRuleService;
 
     // Status codes (stable across re-seeds) — replace brittle magic numeric IDs.
     private static final String STATUS_REQUIRE_UPDATE  = "requireUpdate";
     private static final String STATUS_STOCK_PENDING   = "stockPending";
     private static final String STATUS_STOCK_COMPLETED = "stockCompleted";
     private static final String STATUS_STOCK_CLOSED_SHORT = "stockClosedShort";
-    private static final Long HEAD_OFFICE_BRANCH_ID = 1L;
 
     @Transactional
     public Page<StockDAO> fetchAllStocks(
@@ -249,6 +249,13 @@ public class StockService {
                 branch != null ? branch.getId() : null,
                 null);
 
+        // Before anything is saved, so a refused order leaves no half-written stock behind.
+        List<Commodity> ordered = new ArrayList<>();
+        for (StockCommodityDTO dto : stockCommoditiesRequest) {
+            ordered.add(commodityService.findCommodity(dto.getCommodityId()));
+        }
+        stockingRuleService.requireStockable(ordered, branch);
+
         Summation summation = calculateSums(stockCommoditiesRequest);
         Status status = summation.getDeliveredCommoditiesSummation() == summation.getOrderedCommoditiesSummation()
                 ? statusService.findByStatusCode(STATUS_STOCK_COMPLETED)
@@ -328,21 +335,14 @@ public class StockService {
         }
     }
 
-    /** Stock is recorded against the current user's branch; falls back to Head Office. */
+    /**
+     * Stock is recorded against the current user's branch; falls back to Head Office - found by its
+     * flag rather than the id 1 this used to assume (trap #4's shape: ids depend on seed order).
+     * Shared with the stocking rules so the branch the form is filtered for is the branch the order
+     * is checked against.
+     */
     private Branch resolveStockBranch() throws NotFoundException {
-        try {
-            User current = currentUserService.getCurrentUser();
-            if (current != null && current.getBranch() != null && current.getBranch().getId() != null) {
-                return current.getBranch();
-            }
-        } catch (Exception ignored) {
-            // No authenticated user / branch — fall back to Head Office below.
-        }
-        Branch headOffice = branchService.findBranch(HEAD_OFFICE_BRANCH_ID);
-        if (headOffice == null) {
-            throw new NotFoundException("Head office branch not found.");
-        }
-        return headOffice;
+        return stockingRuleService.stockingBranchForCurrentUser();
     }
 
     /**
@@ -652,6 +652,23 @@ public class StockService {
         List<StockCommodity> existing = stockCommodityRepository.findByStockId(stock.getId());
         Map<Long, StockCommodity> existingByCommodity = existing.stream()
                 .collect(Collectors.toMap(sc -> sc.getCommodity().getId(), sc -> sc, (a, b) -> a));
+
+        /*
+         * Only lines this correction ADDS answer to the stocking rules. A line already on the order
+         * was admitted when it was raised; re-checking it would make a rule tightened in Settings
+         * block every later price or quantity correction on orders placed before the change.
+         */
+        List<Commodity> added = new ArrayList<>();
+        for (StockCommodityDTO dto : requested) {
+            if (!existingByCommodity.containsKey(dto.getCommodityId())) {
+                added.add(commodityService.findCommodity(dto.getCommodityId()));
+            }
+        }
+        if (!added.isEmpty()) {
+            // An order with no branch on record predates branch stocking, when everything was Head Office's.
+            Branch target = stock.getBranch() != null ? stock.getBranch() : stockingRuleService.headOffice();
+            stockingRuleService.requireStockable(added, target);
+        }
 
         Set<Long> requestedIds = new HashSet<>();
         for (StockCommodityDTO dto : requested) {

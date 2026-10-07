@@ -13,6 +13,12 @@ import lombok.NoArgsConstructor;
 public class TempReplacementDTO implements ApprovalBypassRequest {
     private Long tempAssetId;
     private Long recipientUserId;
+
+    /**
+     * Optional: the asset under repair this loaner stands in for. It must have an open repair, which
+     * the loaner is then tied to. Left null for a loaner covering a disposal or nothing in particular.
+     */
+    private Long coversAssetId;
     private String remarks;
 
     /** Set once the initiator has confirmed they want to proceed with no approver available. */

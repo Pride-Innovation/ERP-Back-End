@@ -29,5 +29,11 @@ public enum NotificationTarget {
     REQUEST,
 
     /** A stock movement - everything the movement approval service raises. */
-    MOVEMENT
+    MOVEMENT,
+
+    /**
+     * A temporary replacement still out with the recipient - the entity id is the loaner asset.
+     * Raised when their own asset comes back from repair, as a reminder to hand the loaner in.
+     */
+    LOANER
 }

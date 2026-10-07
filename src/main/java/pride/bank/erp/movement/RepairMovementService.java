@@ -37,7 +37,8 @@ public class RepairMovementService {
 
     private static final String CODE_IN_MAINTENANCE = "inMaintenance";
     private static final String CODE_PENDING_DISPOSAL = "pendingDisposal";
-    private static final String CODE_ISSUANCE_AVAILABLE = "issuanceAvailable";
+    /** Where a repaired asset whose holder has left lands: pool stock, so a loaner. */
+    private static final String CODE_LOAN_AVAILABLE = pride.bank.erp.asset.AssetService.CODE_LOAN_AVAILABLE;
     private static final String CODE_ASSET_ASSIGNED = "assetAssigned";
     private static final String CODE_SENT_TO_STORE = "sentToStore";
 
@@ -160,13 +161,20 @@ public class RepairMovementService {
          *
          * An explicit repairId still wins, so an existing record can be attached instead - that is
          * what the field on the DTO has always been for, and nothing ever sent it.
+         *
+         * The routing goes onto the record because it decides whose staff may later be named as the
+         * internal technician; the consultant goes with it because, for an EXTERNAL repair, the
+         * vendor is the technician.
          */
         if (dto.getRepairId() == null) {
-            String technician = !isBlank(dto.getTechnician())
-                    ? dto.getTechnician()
-                    : (movement.getConsultant() != null ? movement.getConsultant().getName() : null);
             pride.bank.erp.repair.Repair repair = repairService.openForTransfer(
-                    asset, dto.getFaultDescription(), technician, dto.getDeliveryDocuments());
+                    asset, dto.getFaultDescription(), routing,
+                    pride.bank.erp.repair.TechnicianSelectionDTO.builder()
+                            .technicianType(dto.getTechnicianType())
+                            .technicianUserId(dto.getTechnicianUserId())
+                            .technicianConsultantId(dto.getTechnicianConsultantId())
+                            .build(),
+                    consultantId, dto.getDeliveryDocuments());
             movement.setRepair(repair);
             movementRepository.save(movement);
         }
@@ -182,12 +190,22 @@ public class RepairMovementService {
                 movement.getId(), asset.getId(), routing, source.getName(),
                 originHolder != null ? originHolder.getId() : "no assigned holder");
 
-        // Optionally hand the affected user a temporary replacement while the repair runs (§15).
-        if (dto.getTempAssetId() != null && dto.getAffectedUserId() != null) {
+        // Optionally hand the affected user a temporary replacement while the repair runs (§15). The
+        // recipient defaults to whoever held the asset - that is who is left without one - and the
+        // loaner is tied to this repair, so it reads "covering repair of ..." wherever it is listed.
+        Long affectedUserId = dto.getAffectedUserId() != null ? dto.getAffectedUserId()
+                : (originHolder != null ? originHolder.getId() : null);
+        if (dto.getTempAssetId() != null) {
+            if (affectedUserId == null) {
+                throw new IllegalArgumentException(
+                        "This asset has no holder, so there is nobody to lend a temporary replacement to.");
+            }
             issueTemporaryReplacement(TempReplacementDTO.builder()
                     .tempAssetId(dto.getTempAssetId())
-                    .recipientUserId(dto.getAffectedUserId())
-                    .remarks("Temporary replacement while asset " + asset.getId() + " is under repair")
+                    .recipientUserId(affectedUserId)
+                    .coversAssetId(asset.getId())
+                    .remarks("Temporary replacement while " + assetLabel(asset) + " is under repair")
+                    .proceedWithoutApproval(dto.getProceedWithoutApproval()).bypassReason(dto.getBypassReason())
                     .build());
         }
         return movement;
@@ -204,10 +222,28 @@ public class RepairMovementService {
         requireAssetInScope(temp);
         Store source = currentStoreOf(temp);
 
+        /*
+         * Which repair this loaner stands in for, when there is one. Optional on purpose: a loaner
+         * can cover an asset going to disposal, or nothing in particular. The link is a label - it is
+         * what lets somebody holding two loaners tell them apart, and what the reminder uses to know
+         * a loaner is due - never a trigger that moves anything.
+         */
+        Long repairId = null;
+        if (dto.getCoversAssetId() != null) {
+            Asset covered = findAsset(dto.getCoversAssetId());
+            pride.bank.erp.repair.Repair open = repairService.findOpenRepair(covered);
+            if (open == null) {
+                throw new IllegalArgumentException(assetLabel(covered)
+                        + " is not under repair, so a temporary replacement cannot be tied to it.");
+            }
+            repairId = open.getId();
+        }
+
         return movementService.createMovement(MovementDTO.builder()
                 .movementType(MovementType.TEMP_REPLACEMENT)
                 .sourceStoreId(source.getId())
                 .recipientUserId(dto.getRecipientUserId())
+                .repairId(repairId)
                 // No logistics: a loaner going out is dispatched like anything else, and dispatch is
                 // where the courier and dates are recorded.
                 .remarks(dto.getRemarks())
@@ -243,6 +279,26 @@ public class RepairMovementService {
         ReturnTarget target = resolveReturnTarget(repaired, dto);
         Store destStore = storeService.resolveAdminStore(target.locationId());
 
+        /*
+         * Closing the record the transfer opened. Returning a repaired asset *is* the moment the
+         * repair finished, so this is where it is recorded - the old flow asked for the completion
+         * through a second endpoint that nothing on the movements page ever called, which is how a
+         * maintenance record came to stay "Pending" for the life of the asset.
+         *
+         * Before the movement is created, because it can refuse: a closed repair must name who did
+         * the work, and that refusal should cost nothing rather than unwind a movement.
+         *
+         * Tolerant of there being nothing to close: the seven assets already returned this way
+         * predate the record being opened at all, and refusing their return to fix a reporting gap
+         * would strand them at Head Office.
+         */
+        repairService.closeForReturn(repaired, dto.getCompletionNotes(), dto.getCompletionDocuments(),
+                pride.bank.erp.repair.TechnicianSelectionDTO.builder()
+                        .technicianType(dto.getTechnicianType())
+                        .technicianUserId(dto.getTechnicianUserId())
+                        .technicianConsultantId(dto.getTechnicianConsultantId())
+                        .build());
+
         Movement movement = movementService.createMovement(MovementDTO.builder()
                 .movementType(MovementType.RETURN_AFTER_REPAIR)
                 .sourceStoreId(source.getId())
@@ -258,18 +314,6 @@ public class RepairMovementService {
                 .items(List.of(assetItem(dto.getAssetId())))
                 .build());
 
-        /*
-         * Closing the record the transfer opened. Returning a repaired asset *is* the moment the
-         * repair finished, so this is where it is recorded - the old flow asked for the completion
-         * through a second endpoint that nothing on the movements page ever called, which is how a
-         * maintenance record came to stay "Pending" for the life of the asset.
-         *
-         * Tolerant of there being nothing to close: the seven assets already returned this way
-         * predate the record being opened at all, and refusing their return to fix a reporting gap
-         * would strand them at Head Office.
-         */
-        repairService.closeForReturn(repaired, dto.getCompletionNotes(), dto.getCompletionDocuments());
-
         // If the user has left, the asset comes back to the branch rather than to a person, and is
         // made available for temporary issuance so it can be lent out instead of sitting idle.
         if (target.markAvailableForTemporaryIssuance()) {
@@ -279,58 +323,17 @@ public class RepairMovementService {
                     + "its previous holder is no longer active", repaired.getId(), target.locationId());
         }
 
-        // Return the temporary replacement to its own pool store — IT store for IT-routed
-        // categories, Head Office Admin store for others. It carries the same logistics as the leg
-        // above: created bare, an inter-location return stranded in INITIATED because nobody knew
-        // it still needed dispatching.
-        Long loanerId = resolveLoanerToReturn(dto, target.recipientUserId());
-        if (loanerId != null) {
-            Asset temp = findAsset(loanerId);
-            Store tempSource = currentStoreOf(temp);
-            Store poolStore = repairCustodyStoreFor(temp);
-            movementService.createMovement(MovementDTO.builder()
-                    .movementType(MovementType.RETURN_AFTER_REPAIR)
-                    .sourceStoreId(tempSource.getId())
-                    .destStoreId(poolStore.getId())
-                    // No logistics — recorded at dispatch. This leg was also inheriting the other
-                    // movement's courier details, describing a journey it does not necessarily share.
-                    .remarks("Return of temporary replacement asset issued while asset "
-                            + repaired.getId() + " was under repair")
-                    // Back on the shelf and lendable again. Issuing the loaner marks it Assigned, so
-                    // without this it would sit in the pool store reading as though it were still out
-                    // with the borrower — and the picker's "unassigned" test would be the only thing
-                    // keeping it visible.
-                    .restoreStatusCode(CODE_ISSUANCE_AVAILABLE)
-                    .proceedWithoutApproval(dto.getProceedWithoutApproval()).bypassReason(dto.getBypassReason())
-                    .items(List.of(assetItem(loanerId)))
-                    .build());
-        }
+        /*
+         * Nothing happens to a loaner here, deliberately.
+         *
+         * This used to create a second movement taking the loaner back, at the moment the return
+         * was raised. It guessed which loaner (the newest ever issued to the user, without checking
+         * it was still with them), it could collect the loaner before the repaired asset had even
+         * been approved to travel, and cancelling the return left it live. A loaner is now returned
+         * by hand once the user has their own asset back - see LoanerService - and LoanerReminder
+         * tells them when that moment comes.
+         */
         return movement;
-    }
-
-    /**
-     * Which loaner, if any, comes back with this return.
-     *
-     * <p>Derived from what is actually out with the recipient rather than asked for. The form used
-     * to carry a manual picker, which made the loaner's return depend on somebody remembering to
-     * select it — and this call is the only thing that returns one, so anything forgotten stayed
-     * with the user indefinitely while the pool ran down.
-     *
-     * <p>An explicit {@code tempAssetId} still wins, and {@code returnLoaner=false} suppresses the
-     * leg for a recipient who is keeping the loaner for now.
-     */
-    private Long resolveLoanerToReturn(ReturnAfterRepairDTO dto, Long recipientUserId) {
-        if (dto.getTempAssetId() != null) return dto.getTempAssetId();
-        if (Boolean.FALSE.equals(dto.getReturnLoaner())) return null;
-        if (recipientUserId == null) return null;
-
-        return movementRepository.findTempReplacementsForUser(recipientUserId).stream()
-                .findFirst()
-                .flatMap(m -> m.getItems().stream()
-                        .filter(i -> i.getAsset() != null)
-                        .findFirst())
-                .map(i -> i.getAsset().getId())
-                .orElse(null);
     }
 
     /** Where a repaired asset is going, and to whom. */
@@ -432,18 +435,19 @@ public class RepairMovementService {
                 .recipientUserId(target.recipientUserId())
                 .returningToBranchUnassigned(target.markAvailableForTemporaryIssuance());
 
+        // The record this return would close, and whether it already says who did the work - the
+        // form asks for a technician only when it does not.
+        pride.bank.erp.repair.Repair open = repairService.findOpenRepair(repaired);
+        if (open != null) {
+            preview.openRepairId(open.getId())
+                    .repairDestination(pride.bank.erp.repair.RepairService.destinationOf(open))
+                    .technicianType(open.getTechnicianType())
+                    .technicianName(open.getTechnician());
+        }
+
         if (target.recipientUserId() != null) {
             User recipient = userOf(target.recipientUserId());
             preview.recipientUserName(displayName(recipient));
-            // The loaner is derived from what is actually out with this user, so the form can state
-            // it. Asking the user to pick it was the only thing returning loaners to their pool, and
-            // anything they forgot simply never came back.
-            movementRepository.findTempReplacementsForUser(target.recipientUserId()).stream()
-                    .findFirst()
-                    .flatMap(m -> m.getItems().stream().filter(i -> i.getAsset() != null).findFirst())
-                    .ifPresent(item -> preview
-                            .loanerAssetId(item.getAsset().getId())
-                            .loanerAssetLabel(assetLabel(item.getAsset())));
         }
         return preview.build();
     }
@@ -564,7 +568,7 @@ public class RepairMovementService {
      * What the asset should read once it has been handed back.
      *
      * <ol>
-     *   <li><b>Holder gone</b> → {@code issuanceAvailable}. The asset returns to the branch
+     *   <li><b>Holder gone</b> → {@code loanAvailable}. The asset returns to the branch
      *       unassigned as pool stock, so it must read as available to lend rather than as whatever
      *       its departed owner left it on.</li>
      *   <li><b>Otherwise</b> → the status recorded on the repair transfer: exactly what the asset
@@ -577,7 +581,7 @@ public class RepairMovementService {
      */
     private String statusToRestore(Asset repaired, ReturnTarget target) {
         if (target.markAvailableForTemporaryIssuance()) {
-            return CODE_ISSUANCE_AVAILABLE;
+            return CODE_LOAN_AVAILABLE;
         }
         String recorded = movementRepository
                 .findFirstByItems_Asset_IdAndMovementTypeOrderByIdDesc(repaired.getId(), MovementType.REPAIR_TRANSFER)
@@ -766,18 +770,6 @@ public class RepairMovementService {
         return storeService.resolveAdminStore(asset.getBranch());
     }
 
-    /**
-     * The store a repair-pool asset of this category belongs in — the IT store for IT-routed
-     * categories, the Head Office Admin store otherwise (ADMIN-routed, EXTERNAL-routed, or
-     * unconfigured). Used to resolve where a temporary-replacement asset should live, instead of
-     * assuming it's always the IT store.
-     */
-    private Store repairCustodyStoreFor(Asset asset) throws NotFoundException {
-        AssetType category = asset.getAssetType();
-        RepairDestination routing = (category != null && category.getRepairDestination() != null)
-                ? category.getRepairDestination() : RepairDestination.IT;
-        return routing == RepairDestination.IT ? headOfficeStore(StoreType.IT) : headOfficeAdminStore();
-    }
 
     /**
      * The organisation's single {@link StoreType#IT} / {@link StoreType#DISPOSAL} store.

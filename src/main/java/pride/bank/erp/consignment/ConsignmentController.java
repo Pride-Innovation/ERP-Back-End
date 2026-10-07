@@ -212,6 +212,19 @@ public class ConsignmentController {
 
     // ── Journey ──────────────────────────────────────────────────────────────
 
+    /**
+     * The tracking number this load travels under, issued if it has none. The dispatch form calls it
+     * as it opens, because the consignment note it prints carries the number and is signed before
+     * Dispatch. Same permission as dispatching - it is the first step of it.
+     */
+    @PreAuthorize("hasAuthority('" + Constants.DISPATCH_MOVEMENT + "')")
+    @PostMapping("/consignments/{consignmentId}/tracking-number")
+    public ResponseEntity<java.util.Map<String, String>> reserveTrackingNumber(@PathVariable Long consignmentId)
+            throws NotFoundException {
+        String number = consignmentService.reserveTrackingNumber(consignmentId);
+        return ResponseEntity.ok(java.util.Collections.singletonMap("trackingNumber", number));
+    }
+
     @PreAuthorize("hasAuthority('" + Constants.DISPATCH_MOVEMENT + "')")
     @PostMapping("/consignments/{consignmentId}/dispatch")
     public ResponseEntity<ConsignmentResponseDTO> dispatch(

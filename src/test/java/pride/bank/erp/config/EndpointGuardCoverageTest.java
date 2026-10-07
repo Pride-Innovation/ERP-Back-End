@@ -114,6 +114,14 @@ class EndpointGuardCoverageTest {
             // about yourself.
             "GET /api/v1/users/me",
             /*
+             * A person's own loaners, and handing one back. A loaner is the holder's to return, as
+             * their password is theirs to change; gating it on REPAIR_ASSET would mean nobody could
+             * hand back what they were lent without a storekeeper. The service admits the holder and,
+             * besides them, only REPAIR_ASSET with the holder in reach (LoanerService#requireMayActOn).
+             */
+            "GET /api/v1/movements/loaners/mine",
+            "POST /api/v1/movements/loaners/{assetId}/return",
+            /*
              * Colleagues at your own branch, for the leave form's acting-person picker. Same
              * reasoning as /users/me: it takes no parameters and resolves the caller from the JWT,
              * so it can only ever answer about the branch that caller belongs to.
@@ -136,9 +144,7 @@ class EndpointGuardCoverageTest {
     private static final Set<String> KNOWN_UNGUARDED = Set.of(
             // Settings reference data — plan Phase 2. Reuse the SETTING keys: one section, one set of keys,
             // rather than eleven near-identical triples.
-            "DELETE /api/v1/asset-types/{id}",
             "DELETE /api/v1/branches/{id}",
-            "DELETE /api/v1/commodities/{id}",
             "DELETE /api/v1/consultants/{id}",
             "DELETE /api/v1/couriers/{id}",
             "DELETE /api/v1/departments/{id}",
@@ -169,9 +175,7 @@ class EndpointGuardCoverageTest {
             "GET /api/v1/titles/{id}",
             "GET /api/v1/units",
             "GET /api/v1/units/{id}",
-            "POST /api/v1/asset-types",
             "POST /api/v1/branches",
-            "POST /api/v1/commodities",
             "POST /api/v1/consultants",
             "POST /api/v1/couriers",
             "POST /api/v1/departments",
@@ -180,11 +184,7 @@ class EndpointGuardCoverageTest {
             "POST /api/v1/suppliers",
             "POST /api/v1/titles",
             "POST /api/v1/units",
-            "PUT /api/v1/asset-types/{id}",
-            "PUT /api/v1/asset-types/{id}/custom-attributes",
-            "PUT /api/v1/asset-types/{id}/field-config",
             "PUT /api/v1/branches/{id}",
-            "PUT /api/v1/commodities/{id}",
             "PUT /api/v1/consultants/{id}",
             "PUT /api/v1/couriers/{id}",
             "PUT /api/v1/departments/{id}",

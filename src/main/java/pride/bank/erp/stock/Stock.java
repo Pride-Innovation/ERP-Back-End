@@ -82,8 +82,21 @@ public class Stock {
     @NotAudited
     private Status status;
 
+    /**
+     * Out of equals/hashCode/toString - the same lazy-collection cycle as {@code Title#users}.
+     *
+     * <p>And serialised without each line's {@code stock}, which points straight back here. The
+     * hashCode cycle used to hide this one: loading the set re-entered itself and, with assertions
+     * off, left it reading empty, so Jackson wrote {@code []} and never followed the loop. Once the
+     * set loaded its real lines, every endpoint returning an asset with a stock - the store pages
+     * among them - recursed until the stack overflowed. The lines stay in the JSON; the Stock report
+     * reads them.
+     */
     @OneToMany(mappedBy = "stock", cascade = CascadeType.ALL, orphanRemoval = true)
     @NotAudited
+    @lombok.EqualsAndHashCode.Exclude
+    @lombok.ToString.Exclude
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties("stock")
     private Set<StockCommodity> stockCommodities;
 
     @ManyToOne(fetch = FetchType.EAGER)
@@ -99,6 +112,8 @@ public class Stock {
 
     @OneToMany(mappedBy = "stock", cascade = CascadeType.PERSIST)
     @NotAudited
+    @lombok.EqualsAndHashCode.Exclude
+    @lombok.ToString.Exclude
     private List<GrnReport> grnReports;
 
     @CreatedDate

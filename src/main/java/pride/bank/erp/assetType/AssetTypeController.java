@@ -17,6 +17,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
@@ -53,6 +54,7 @@ public class AssetTypeController {
     }
 
     @Operation(summary = "Create an asset category")
+    @PreAuthorize("hasAuthority('" + Constants.CREATE_SETTING + "')")
     @PostMapping("/asset-types")
     public ResponseEntity<AssetTypeDTO> createAssetType(@RequestBody AssetTypeDTO assetType) {
         AssetTypeDTO response = assetTypeService.createAssetType(assetType);
@@ -60,6 +62,7 @@ public class AssetTypeController {
     }
 
     @Operation(summary = "Update an asset category")
+    @PreAuthorize("hasAuthority('" + Constants.UPDATE_SETTING + "')")
     @PutMapping("/asset-types/{id}")
     public ResponseEntity<AssetTypeDTO> updateAssetType(@PathVariable Long id, @RequestBody AssetTypeDTO assetType)
             throws NotFoundException {
@@ -68,6 +71,7 @@ public class AssetTypeController {
     }
 
     @Operation(summary = "Delete an asset category")
+    @PreAuthorize("hasAuthority('" + Constants.DELETE_SETTING + "')")
     @DeleteMapping("/asset-types/{id}")
     public ResponseEntity<DeleteResponse> deleteAssetType(@PathVariable Long id) throws NotFoundException {
         DeleteResponse response = assetTypeService.deleteAssetType(id);
@@ -85,6 +89,7 @@ public class AssetTypeController {
             summary = "Configure field visibility for an asset category",
             description = "Sets each form field to 'required', 'optional', or 'hidden' for this asset type."
     )
+    @PreAuthorize("hasAuthority('" + Constants.UPDATE_SETTING + "')")
     @PutMapping("/asset-types/{id}/field-config")
     public ResponseEntity<AssetTypeDTO> updateFieldConfig(
             @PathVariable Long id,
@@ -99,6 +104,7 @@ public class AssetTypeController {
             description = "Replaces the asset category's custom attributes with the supplied array. " +
                     "Order in the payload determines display order (1..n)."
     )
+    @PreAuthorize("hasAuthority('" + Constants.UPDATE_SETTING + "')")
     @PutMapping("/asset-types/{id}/custom-attributes")
     public ResponseEntity<List<AssetTypeCustomAttributeDTO>> updateCustomAttributes(
             @PathVariable Long id,

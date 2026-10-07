@@ -20,8 +20,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import pride.bank.erp.exception.NotFoundException;
+import pride.bank.erp.helper.Constants;
 import pride.bank.erp.helper.DeleteResponse;
 
 import static pride.bank.erp.helper.Constants.GENERAL_ROUTE;
@@ -72,6 +74,7 @@ public class CommodityController {
             @ApiResponse(responseCode = "404", description = "Referenced asset type not found",
                     content = @Content)
     })
+    @PreAuthorize("hasAuthority('" + Constants.CREATE_SETTING + "')")
     @PostMapping("/commodities")
     public ResponseEntity<Commodity> createCommodity(
             @Valid @RequestBody CommodityDTO commodity)
@@ -93,6 +96,7 @@ public class CommodityController {
             @ApiResponse(responseCode = "404", description = "Commodity or referenced asset type not found",
                     content = @Content)
     })
+    @PreAuthorize("hasAuthority('" + Constants.UPDATE_SETTING + "')")
     @PutMapping("/commodities/{id}")
     public ResponseEntity<Commodity> updateCommodity(
             @Valid @RequestBody CommodityDTO commodity,
@@ -134,6 +138,7 @@ public class CommodityController {
             @ApiResponse(responseCode = "404", description = "Commodity not found",
                     content = @Content)
     })
+    @PreAuthorize("hasAuthority('" + Constants.DELETE_SETTING + "')")
     @DeleteMapping("/commodities/{id}")
     public ResponseEntity<DeleteResponse> deleteCommodity(
             @Parameter(description = "ID of the commodity to delete", required = true)

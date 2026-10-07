@@ -108,22 +108,20 @@ public interface MovementRepository extends JpaRepository<Movement, Long> {
             + "WHERE a.id IN :assetIds ORDER BY m.id DESC")
     List<Object[]> findOriginLocationsForAssets(@Param("assetIds") java.util.Collection<Long> assetIds);
 
-    /**
-     * The loaner currently out with a user, if any: the newest TEMP_REPLACEMENT issued to them that
-     * has not been cancelled.
-     *
-     * <p>Used to work out which temporary asset should come back when a repaired one is returned,
-     * so the return form can state it instead of asking the user to remember and pick it.
+    /*
+     * findTempReplacementsForUser is gone, deliberately. It answered "which loaner is out with this
+     * user" from the movements - the newest TEMP_REPLACEMENT not cancelled - and a movement only says
+     * a loaner was sent. Once that loaner came back, it still matched, so the automatic return built
+     * on it kept "returning" loaners already in the pool. Who holds a loaner is an open temporary
+     * assignment: AssetAssignmentHistoryRepository#findOpenLoansForUser.
      */
-    @org.springframework.data.jpa.repository.Query("""
-            SELECT m FROM Movement m
-            WHERE m.recipientUser.id = :userId
-              AND m.movementType = pride.bank.erp.movement.MovementType.TEMP_REPLACEMENT
-              AND m.status <> pride.bank.erp.movement.MovementStatus.CANCELLED
-            ORDER BY m.id DESC
-            """)
-    List<Movement> findTempReplacementsForUser(
-            @org.springframework.data.repository.query.Param("userId") Long userId);
+
+    /**
+     * A hand-back of this asset that is still under way - initiated, awaiting approval, or on the
+     * road. A loaner with one of these is already being returned, so it is not offered again.
+     */
+    java.util.Optional<Movement> findFirstByItems_Asset_IdAndMovementTypeAndStatusNotInOrderByIdDesc(
+            Long assetId, MovementType movementType, java.util.Collection<MovementStatus> statuses);
 
     /** Everything riding on one journey. */
     List<Movement> findByConsignment_Id(Long consignmentId);

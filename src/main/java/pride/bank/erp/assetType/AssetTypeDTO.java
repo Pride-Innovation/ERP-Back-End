@@ -40,4 +40,12 @@ public class AssetTypeDTO {
 
     @Builder.Default
     private List<AssetTypeCustomAttributeDTO> customAttributes = new ArrayList<>();
+
+    /*
+     * Where this category may be stocked - read-only here. Changed only through
+     * PUT /asset-types/{id}/stocking-rule, so saving the category's other fields can never reset it.
+     */
+    private Boolean stockAtHeadOffice;
+    private Boolean stockAtAllBranches;
+    private List<Long> stockingBranchIds;
 }

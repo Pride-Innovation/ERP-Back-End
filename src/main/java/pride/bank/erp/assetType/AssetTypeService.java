@@ -242,7 +242,7 @@ public class AssetTypeService {
         return StringUtils.hasText(email) ? email.trim() : null;
     }
 
-    AssetTypeDTO toDTO(AssetType entity) {
+    public AssetTypeDTO toDTO(AssetType entity) {
         if (entity == null) {
             return null;
         }
@@ -262,6 +262,10 @@ public class AssetTypeService {
                 .repairDestination(entity.getRepairDestination())
                 .fieldConfig(entity.getFieldConfig())
                 .customAttributes(attrs)
+                .stockAtHeadOffice(entity.isStockAtHeadOffice())
+                .stockAtAllBranches(entity.isStockAtAllBranches())
+                .stockingBranchIds(entity.getStockingBranches() == null ? List.of()
+                        : entity.getStockingBranches().stream().map(pride.bank.erp.branch.Branch::getId).sorted().toList())
                 .build();
     }
 

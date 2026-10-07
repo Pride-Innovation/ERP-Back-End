@@ -28,6 +28,7 @@ public class ConsignmentResponseDTO {
     private RefSummary courier;
     private String courierService;
     private String trackingNumber;
+    private String courierReference;
     private String plateNumber;
     private LocalDateTime dispatchDate;
     private LocalDateTime expectedDeliveryDate;

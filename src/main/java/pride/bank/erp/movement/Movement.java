@@ -141,7 +141,13 @@ public class Movement {
 
     // ── Logistics (populated only for INTER_LOCATION movements) ──────────────
     private String courierService;
+    /**
+     * Issued by the system - see {@code TrackingNumberService}. A movement travelling alone has its
+     * own; one on a consignment carries the consignment's. Never accepted from the client.
+     */
     private String trackingNumber;
+    /** The courier's own waybill or reference, typed at dispatch. Theirs, so not held unique. */
+    private String courierReference;
     private LocalDateTime dispatchDate;
     private LocalDateTime expectedDeliveryDate;
 

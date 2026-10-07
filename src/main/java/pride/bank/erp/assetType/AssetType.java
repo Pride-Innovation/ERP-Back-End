@@ -34,7 +34,7 @@ import java.util.Map;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class AssetType {
+public class AssetType implements pride.bank.erp.stocking.StockingRule {
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
     private Long id;
@@ -110,4 +110,41 @@ public class AssetType {
     @JsonIgnore
     @Builder.Default
     private List<AssetTypeCustomAttribute> customAttributes = new ArrayList<>();
+
+    // ── Where this category may be stocked (V28) - see StockingRuleService ──────────────────────
+    // Every commodity in the category follows this unless it sets its own. A new category starts at
+    // Head Office only, the conservative default: widening is a decision, narrowing a surprise.
+
+    @Column(name = "stock_at_head_office", columnDefinition = "BIT NOT NULL DEFAULT 1")
+    @Builder.Default
+    private boolean stockAtHeadOffice = true;
+
+    @Column(name = "stock_at_all_branches", columnDefinition = "BIT NOT NULL DEFAULT 0")
+    @Builder.Default
+    private boolean stockAtAllBranches = false;
+
+    /**
+     * Out of JSON (the DTO carries ids) and out of equals/hashCode/toString: Branch's Lombok hash
+     * reaches into its region, and hashing through a collection like this is the trap CLAUDE.md
+     * records against Title and Region.
+     */
+    @jakarta.persistence.ManyToMany(fetch = FetchType.EAGER)
+    @jakarta.persistence.JoinTable(name = "asset_type_stocking_branch",
+            joinColumns = @jakarta.persistence.JoinColumn(name = "asset_type_id"),
+            inverseJoinColumns = @jakarta.persistence.JoinColumn(name = "branch_id"))
+    @JsonIgnore
+    @lombok.EqualsAndHashCode.Exclude
+    @lombok.ToString.Exclude
+    @Builder.Default
+    private java.util.Set<pride.bank.erp.branch.Branch> stockingBranches = new java.util.HashSet<>();
+
+    /**
+     * The named branches as ids, for wherever the entity itself is serialised - inside a commodity,
+     * which is how the commodity form shows the category rule it would otherwise follow.
+     */
+    @com.fasterxml.jackson.annotation.JsonProperty("stockingBranchIds")
+    public List<Long> getStockingBranchIds() {
+        return stockingBranches == null ? List.of()
+                : stockingBranches.stream().map(pride.bank.erp.branch.Branch::getId).sorted().toList();
+    }
 }

@@ -38,6 +38,7 @@ public class ConsignmentMapper {
                 .courier(ref(c.getCourier()))
                 .courierService(c.getCourierService())
                 .trackingNumber(c.getTrackingNumber())
+                .courierReference(c.getCourierReference())
                 .plateNumber(c.getPlateNumber())
                 .dispatchDate(c.getDispatchDate())
                 .expectedDeliveryDate(c.getExpectedDeliveryDate())
