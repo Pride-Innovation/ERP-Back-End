@@ -142,7 +142,10 @@ public class AssetService {
             LocalDateTime startDate,
             LocalDateTime endDate,
             Boolean dueForDisposal,
-            Boolean includeDeleted
+            Boolean includeDeleted,
+            Long branchId,
+            LocalDateTime disposedFrom,
+            LocalDateTime disposedTo
     ) {
 
         try {
@@ -167,6 +170,9 @@ public class AssetService {
                     .assignedTo(assignedTo)
                     .location(location)
                 .departmentId(departmentId)
+                    .branchId(branchId)
+                    .disposedFrom(disposedFrom)
+                    .disposedTo(disposedTo)
                     // Applied from the caller's permissions, never from the request, so no filter
                     // the client sends can widen it. AccessScopeService returns null for the branch
                     // at ALL scope (the multiplier a unit confers), the caller's own branch below

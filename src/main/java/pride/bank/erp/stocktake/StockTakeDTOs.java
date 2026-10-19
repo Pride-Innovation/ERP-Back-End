@@ -94,6 +94,11 @@ public final class StockTakeDTOs {
         private String assetTypeName;
         private StockCountStatus status;
         private boolean blind;
+        /**
+         * So the sheet can mirror the rule that a count is never approved by whoever counted it,
+         * and offer the counter Cancel on their own unfinished count. The name alone cannot do it.
+         */
+        private Long countedById;
         private String countedByName;
         private String approvedByName;
         private LocalDateTime submittedAt;

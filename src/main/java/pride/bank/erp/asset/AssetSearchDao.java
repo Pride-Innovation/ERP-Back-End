@@ -159,6 +159,24 @@ public class AssetSearchDao {
                     holderDepartment(assetRoot).get("id"), assetSearchCriteria.getDepartmentId()));
         }
 
+        if (Objects.nonNull(assetSearchCriteria.getBranchId())) {
+            Long chosen = assetSearchCriteria.getBranchId();
+            predicates.add(criteriaBuilder.or(
+                    criteriaBuilder.equal(assetBranch(assetRoot).get("id"), chosen),
+                    criteriaBuilder.equal(holderBranch(assetRoot).get("id"), chosen)
+            ));
+        }
+
+        if (Objects.nonNull(assetSearchCriteria.getDisposedFrom())) {
+            predicates.add(criteriaBuilder.greaterThanOrEqualTo(
+                    assetRoot.get("disposalDate"), assetSearchCriteria.getDisposedFrom()));
+        }
+
+        if (Objects.nonNull(assetSearchCriteria.getDisposedTo())) {
+            predicates.add(criteriaBuilder.lessThanOrEqualTo(
+                    assetRoot.get("disposalDate"), assetSearchCriteria.getDisposedTo()));
+        }
+
         if (Objects.nonNull(assetSearchCriteria.getScopedBranchId())) {
             // Matches the asset's own branch or its holder's, so an item assigned to someone at this
             // branch stays visible even if the asset row still points elsewhere.

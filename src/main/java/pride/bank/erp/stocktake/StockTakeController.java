@@ -92,7 +92,11 @@ public class StockTakeController {
         return new ResponseEntity<>(stockTakeService.post(countId), HttpStatus.OK);
     }
 
-    @PreAuthorize("hasAuthority('" + Constants.APPROVE_STOCK_TAKE + "')")
+    /**
+     * Either permission: an approver may cancel anything not yet posted, and the counter may cancel
+     * their own count while it is still being counted — see {@code StockTakeService#cancel}.
+     */
+    @PreAuthorize("hasAnyAuthority('" + Constants.PERFORM_STOCK_TAKE + "', '" + Constants.APPROVE_STOCK_TAKE + "')")
     @PostMapping("/stock-counts/{countId}/cancel")
     public ResponseEntity<CountView> cancel(
             @PathVariable Long countId,

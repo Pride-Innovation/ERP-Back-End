@@ -59,7 +59,8 @@ public class RepairController {
             java.time.LocalDateTime endDate
     ) {
         Pageable pageable = PageRequest.of(pageNumber, pageSize,
-                org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "repairStartDate"));
+                // `id` breaks ties: two repairs booked the same instant otherwise page unpredictably.
+                org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "repairStartDate", "id"));
         return new ResponseEntity<>(
                 repairService.listAllRepairs(status, assetTypeId, startDate, endDate, pageable), HttpStatus.OK);
     }

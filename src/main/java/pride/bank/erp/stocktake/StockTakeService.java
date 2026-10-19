@@ -22,8 +22,18 @@ import pride.bank.erp.store.StoreRepository;
 import pride.bank.erp.stocktake.StockTakeDTOs.*;
 import pride.bank.erp.user.User;
 
+import pride.bank.erp.auditing.trail.AuditEventType;
+import pride.bank.erp.auditing.trail.AuditModule;
+import pride.bank.erp.auditing.trail.AuditService;
+import pride.bank.erp.auditing.trail.AuditSeverity;
+import pride.bank.erp.helper.Constants;
+import pride.bank.erp.store.StoreType;
+import org.springframework.security.access.AccessDeniedException;
+
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * The stock-take workflow: open a sheet, count it, submit it, approve the variances, post them.
@@ -51,17 +61,13 @@ public class StockTakeService {
     private final AssetTypeRepository assetTypeRepository;
     private final CurrentUserService currentUserService;
     private final StockTakePostingService postingService;
+    private final AuditService auditService;
 
     /** The one resolver for how far a person may reach — see AccessScopeService. */
     private final pride.bank.erp.access.AccessScopeService accessScopeService;
 
     // ── Opening ─────────────────────────────────────────────────────────────
 
-    /**
-     * Opens a count sheet, snapshotting what the system currently believes for every commodity the
-     * store holds. The snapshot is what variances are later measured against.
-     */
-    @Transactional
     /**
      * Refuses unless this store is one the caller could physically count.
      *
@@ -98,6 +104,15 @@ public class StockTakeService {
         requireStoreCountable(count.getStore(), action);
     }
 
+    /**
+     * Opens a count sheet, snapshotting what the system currently believes for every commodity the
+     * store holds. The snapshot is what variances are later measured against.
+     *
+     * <p>Transactional so the count and its lines land together. The annotation used to sit above
+     * the private scope helper instead, where Spring ignores it, so a failure part-way through the
+     * snapshot left a count holding only some of its lines.
+     */
+    @Transactional
     public CountView openCount(OpenCountRequest request) throws NotFoundException {
         if (request.getStoreId() == null) {
             throw new IllegalArgumentException("A store is required to open a count");
@@ -108,6 +123,13 @@ public class StockTakeService {
 
         // Opening a count claims a set of shelves. You can only claim shelves you can reach.
         requireStoreCountable(store, pride.bank.erp.access.ScopeAction.MANAGE);
+
+        // A courier "store" is stock on the road: there is no shelf to stand at, and the movement
+        // that carries it settles the balance on receipt.
+        if (store.getStoreType() == StoreType.COURIER) {
+            throw new IllegalArgumentException(
+                    store.getName() + " is a courier holding stock in transit and cannot be counted.");
+        }
 
         // Two simultaneous counts of the same shelves produce two conflicting truths.
         List<StockCount> open = countRepository.findOpenForStore(store.getId());
@@ -153,6 +175,9 @@ public class StockTakeService {
 
         log.info("Opened stock count {} for store '{}' with {} line(s), blind={}",
                 count.getReference(), store.getName(), created, count.isBlind());
+        audit(AuditEventType.CREATED, "STOCK_COUNT_OPENED", AuditSeverity.INFO, count,
+                String.format("Opened stock count %s for %s (%d line(s))",
+                        count.getReference(), store.getName(), created));
         return toView(count, true);
     }
 
@@ -247,6 +272,8 @@ public class StockTakeService {
         count.setSubmittedAt(LocalDateTime.now());
         count.setReviewRemarks(null);
         log.info("Stock count {} submitted for review", count.getReference());
+        audit(AuditEventType.UPDATED, "STOCK_COUNT_SUBMITTED", AuditSeverity.INFO, count,
+                String.format("Submitted stock count %s for review", count.getReference()));
         return toView(countRepository.save(count), true);
     }
 
@@ -271,6 +298,8 @@ public class StockTakeService {
         count.setApprovedAt(LocalDateTime.now());
         count.setReviewRemarks(trimToNull(request != null ? request.getRemarks() : null));
         log.info("Stock count {} approved", count.getReference());
+        audit(AuditEventType.APPROVED, "STOCK_COUNT_APPROVED", AuditSeverity.INFO, count,
+                String.format("Approved the variances on stock count %s", count.getReference()));
         return toView(countRepository.save(count), true);
     }
 
@@ -288,18 +317,52 @@ public class StockTakeService {
         count.setStatus(StockCountStatus.IN_PROGRESS);
         count.setSubmittedAt(null);
         count.setReviewRemarks(request.getRemarks().trim());
+        audit(AuditEventType.REJECTED, "STOCK_COUNT_SENT_BACK", AuditSeverity.INFO, count,
+                String.format("Sent stock count %s back for recount: %s",
+                        count.getReference(), count.getReviewRemarks()));
         return toView(countRepository.save(count), true);
     }
 
+    /**
+     * Abandons a count that has not been posted. Nothing was ever applied, so nothing is undone.
+     *
+     * <h2>Two ways in</h2>
+     * An approver may cancel anything short of POSTED. The counter may cancel <b>their own</b> count
+     * while it is still being counted (DRAFT or IN_PROGRESS) — without that, a count opened by mistake
+     * or left half-done held its store's one open slot until an approver happened to notice, and no
+     * screen offered a way out at all. Once submitted, the sheet is the approver's to decide.
+     *
+     * <p>A reason is required: a cancelled count is a gap in the store's history, and the trail
+     * should say why.
+     */
     @Transactional
     public CountView cancel(Long countId, ReviewRequest request) throws NotFoundException {
         StockCount count = find(countId);
         requireCountInScope(count, pride.bank.erp.access.ScopeAction.MANAGE);
-        if (count.getStatus() == StockCountStatus.POSTED) {
-            throw new IllegalArgumentException("A posted count cannot be cancelled — count again instead");
+        requireStatus(count, "cancel", StockCountStatus.DRAFT, StockCountStatus.IN_PROGRESS,
+                StockCountStatus.SUBMITTED, StockCountStatus.APPROVED);
+
+        User caller = currentUserService.getCurrentUser();
+        if (!holds(caller, Constants.APPROVE_STOCK_TAKE)) {
+            boolean ownCount = caller != null && count.getCountedBy() != null
+                    && caller.getId().equals(count.getCountedBy().getId());
+            boolean stillCounting = count.getStatus() == StockCountStatus.DRAFT
+                    || count.getStatus() == StockCountStatus.IN_PROGRESS;
+            if (!ownCount || !stillCounting) {
+                throw new AccessDeniedException(
+                        "Only an approver can cancel this count. A counter may cancel their own count "
+                                + "only while it is still being counted.");
+            }
         }
+
+        if (request == null || isBlank(request.getRemarks())) {
+            throw new IllegalArgumentException("Say why the count is being cancelled");
+        }
+
         count.setStatus(StockCountStatus.CANCELLED);
-        count.setReviewRemarks(trimToNull(request != null ? request.getRemarks() : null));
+        count.setReviewRemarks(request.getRemarks().trim());
+        audit(AuditEventType.DELETED, "STOCK_COUNT_CANCELLED", AuditSeverity.WARNING, count,
+                String.format("Cancelled stock count %s: %s", count.getReference(), count.getReviewRemarks()));
         return toView(countRepository.save(count), true);
     }
 
@@ -371,23 +434,45 @@ public class StockTakeService {
 
     /** Whether this count's store is one the caller could reach, without throwing. */
     private boolean countIsInScope(StockCount count) {
-        Long locationId = count.getStore() != null && count.getStore().getLocation() != null
-                ? count.getStore().getLocation().getId() : null;
+        return storeIsInScope(count.getStore());
+    }
+
+    private boolean storeIsInScope(Store store) {
+        Long locationId = store != null && store.getLocation() != null ? store.getLocation().getId() : null;
         return accessScopeService.canView(
                 pride.bank.erp.access.ScopeSubject.INVENTORY, locationId, null);
     }
 
-    /** Adjustment history — what was corrected, by how much, and why. */
+    /**
+     * Adjustment history — what was corrected, by how much, and why.
+     *
+     * <h2>Scoped by the same rule as the count listing</h2>
+     * It was not scoped at all: any holder of READ_STOCK_TAKE read every store's corrections in the
+     * bank, and the headline totals beside them were bank-wide too, on a page whose count list was
+     * already narrowed to the caller's stores. Narrowed silently when no store is named; refused when
+     * one is named that the caller cannot reach, as the listing of a named store would be.
+     */
     @Transactional(readOnly = true)
     public VarianceReport varianceReport(Long storeId, LocalDateTime from, LocalDateTime to) {
-        List<StockAdjustment> adjustments = adjustmentRepository.findForReport(storeId, from, to);
+        if (storeId != null) {
+            storeRepository.findById(storeId)
+                    .ifPresent(store -> requireStoreCountable(store, pride.bank.erp.access.ScopeAction.VIEW));
+        }
 
-        List<ReasonSummary> byReason = adjustmentRepository.summariseByReason(storeId, from, to).stream()
-                .map(row -> ReasonSummary.builder()
-                        .reason((AdjustmentReason) row[0])
-                        .lines(((Number) row[1]).longValue())
-                        .netUnits(row[2] == null ? 0L : ((Number) row[2]).longValue())
-                        .build())
+        List<StockAdjustment> adjustments = adjustmentRepository.findForReport(storeId, from, to).stream()
+                .filter(a -> storeIsInScope(a.getStore()))
+                .toList();
+
+        // From the scoped list, not a separate aggregate — which would total stores the list withholds.
+        Map<AdjustmentReason, long[]> tally = new LinkedHashMap<>();
+        for (StockAdjustment a : adjustments) {
+            long[] t = tally.computeIfAbsent(a.getReason(), r -> new long[2]);
+            t[0]++;
+            t[1] += a.getQuantityDelta();
+        }
+        List<ReasonSummary> byReason = tally.entrySet().stream()
+                .map(e -> ReasonSummary.builder()
+                        .reason(e.getKey()).lines(e.getValue()[0]).netUnits(e.getValue()[1]).build())
                 .toList();
 
         long up = adjustments.stream().filter(a -> a.getQuantityDelta() > 0)
@@ -474,6 +559,7 @@ public class StockTakeService {
                 .assetTypeName(count.getAssetType() != null ? count.getAssetType().getName() : null)
                 .status(count.getStatus())
                 .blind(count.isBlind())
+                .countedById(count.getCountedBy() != null ? count.getCountedBy().getId() : null)
                 .countedByName(fullName(count.getCountedBy()))
                 .approvedByName(fullName(count.getApprovedBy()))
                 .submittedAt(count.getSubmittedAt())
@@ -503,6 +589,16 @@ public class StockTakeService {
                 .countReference(a.getStockCount() != null ? a.getStockCount().getReference() : null)
                 .postedAt(a.getPostedAt())
                 .build();
+    }
+
+    private static boolean holds(User user, String authority) {
+        return user != null && user.getAuthorities().stream()
+                .anyMatch(a -> authority.equals(a.getAuthority()));
+    }
+
+    /** Stock takes in the audit trail; the ledger records the stock, this records who did what. */
+    private void audit(AuditEventType type, String action, AuditSeverity severity, StockCount count, String text) {
+        auditService.record(type, AuditModule.INVENTORY, action, text, severity, "STOCK_COUNT", count.getId());
     }
 
     private static String fullName(User user) {

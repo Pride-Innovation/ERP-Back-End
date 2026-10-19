@@ -57,7 +57,7 @@ the first slice of the wider stock ledger — deliberately the slice where the r
 | **Approve** | — | Status → `APPROVED`; approver and timestamp recorded | — |
 | **Send back** | — | Status → `IN_PROGRESS` with mandatory remarks | — |
 | **Post** | **credited or debited per line, via `InventoryService`** | Status → `POSTED` | **one row per changed line** |
-| **Cancel** | — | Status → `CANCELLED` | — |
+| **Cancel** | — | Status → `CANCELLED`, with a required reason. An approver may cancel anything short of `POSTED`; the counter may cancel their own count while it is still being counted | — |
 
 ---
 
@@ -188,8 +188,8 @@ producing `LOST_OR_STOLEN` variances is telling you something a single count nev
 | Permission | Grants |
 |---|---|
 | `READ_STOCK_TAKE` | View counts and the variance report |
-| `PERFORM_STOCK_TAKE` | Open a count, record quantities, submit |
-| `APPROVE_STOCK_TAKE` | Approve, send back, post |
+| `PERFORM_STOCK_TAKE` | Open a count, record quantities, submit; cancel their own unsubmitted count |
+| `APPROVE_STOCK_TAKE` | Approve, send back, post, cancel |
 
 Counting and approving are separate duties on purpose. **These permissions are seeded to the
 super-admin role only — grant them to your storekeeper and approver roles before use.**

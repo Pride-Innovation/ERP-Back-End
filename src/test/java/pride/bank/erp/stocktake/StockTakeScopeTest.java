@@ -100,6 +100,77 @@ class StockTakeScopeTest {
                 .contains("cannot be approved by the person who counted it");
     }
 
+    /**
+     * The adjustment history is narrowed by the same rule as the count listing — and so are its
+     * totals. It answered with every store in the bank, and its headline aggregate was a separate
+     * query that would have gone on disclosing bank-wide figures even after the list was narrowed.
+     */
+    @Test
+    void theAdjustmentHistoryAndItsTotalsAreScoped() {
+        String service = readSource("src/main/java/pride/bank/erp/stocktake/StockTakeService.java");
+        String body = bodyOf(service, "varianceReport");
+
+        assertThat(body).contains("storeIsInScope").contains("requireStoreCountable");
+        assertThat(service)
+                .as("a separate aggregate totals stores the scoped list withholds")
+                .doesNotContain("summariseByReason");
+    }
+
+    /**
+     * Cancel admits the counter as well as an approver — but only for their own count, and only
+     * while it is still being counted. Without the counter limb an abandoned draft held its store's
+     * one open slot until an approver noticed; without the narrowing, PERFORM would let any counter
+     * cancel anyone's submitted sheet.
+     */
+    @Test
+    void aCounterMayCancelOnlyTheirOwnUnsubmittedCount() {
+        String body = bodyOf(
+                readSource("src/main/java/pride/bank/erp/stocktake/StockTakeService.java"), "cancel");
+
+        assertThat(body)
+                .contains("APPROVE_STOCK_TAKE")
+                .contains("getCountedBy()")
+                .contains("StockCountStatus.DRAFT")
+                .contains("StockCountStatus.IN_PROGRESS")
+                .contains("AccessDeniedException")
+                .as("a reason is required, as it is for sending back")
+                .contains("isBlank(request.getRemarks())");
+
+        String controller = readSource("src/main/java/pride/bank/erp/stocktake/StockTakeController.java");
+        int cancel = controller.indexOf("\"/stock-counts/{countId}/cancel\"");
+        String annotation = controller.substring(controller.lastIndexOf("@PreAuthorize", cancel), cancel);
+        assertThat(annotation).contains("PERFORM_STOCK_TAKE").contains("APPROVE_STOCK_TAKE");
+    }
+
+    /** Every lifecycle step leaves a row in the audit trail — the ledger records stock, not people. */
+    @Test
+    void everyLifecycleStepIsAudited() {
+        String service = readSource("src/main/java/pride/bank/erp/stocktake/StockTakeService.java");
+        for (String method : List.of("openCount", "submit", "approve", "sendBack", "cancel")) {
+            assertThat(bodyOf(service, method)).as("%s must be audited", method).contains("audit(");
+        }
+        assertThat(readSource("src/main/java/pride/bank/erp/stocktake/StockTakePostingService.java"))
+                .as("posting is audited inside the transaction that changes the balances")
+                .contains("STOCK_COUNT_POSTED");
+    }
+
+    /** A courier holds stock on the road; there is no shelf to count. */
+    @Test
+    void aCourierStoreCannotBeCounted() {
+        assertThat(bodyOf(
+                readSource("src/main/java/pride/bank/erp/stocktake/StockTakeService.java"), "openCount"))
+                .contains("StoreType.COURIER");
+    }
+
+    /** Opening snapshots a count and all its lines; they must land together or not at all. */
+    @Test
+    void openingACountIsTransactional() throws Exception {
+        Method open = StockTakeService.class.getMethod("openCount", StockTakeDTOs.OpenCountRequest.class);
+        assertThat(open.isAnnotationPresent(org.springframework.transaction.annotation.Transactional.class))
+                .as("the annotation once sat on a private helper, where Spring ignores it")
+                .isTrue();
+    }
+
     // ── helpers ─────────────────────────────────────────────────────────────
 
     private static String readSource(String path) {

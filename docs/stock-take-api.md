@@ -158,7 +158,7 @@ Send a `countedQuantity` of `null` to clear a line back to uncounted. Allowed wh
 | Approve | `POST /stock-counts/{id}/approve` | `{ "remarks": "…" }` optional | `SUBMITTED` |
 | Send back | `POST /stock-counts/{id}/send-back` | `{ "remarks": "…" }` **required** | `SUBMITTED` |
 | Post | `POST /stock-counts/{id}/post` | none | `APPROVED` |
-| Cancel | `POST /stock-counts/{id}/cancel` | `{ "remarks": "…" }` optional | anything except `POSTED` |
+| Cancel | `POST /stock-counts/{id}/cancel` | `{ "remarks": "…" }` **required** | approver: anything except `POSTED` / `CANCELLED`; counter: their own count while `DRAFT` / `IN_PROGRESS` |
 
 ### Variance Report
 
@@ -167,7 +167,7 @@ Send a `countedQuantity` of `null` to clear a line back to uncounted. Allowed wh
 
 | Parameter | Type | Description |
 |---|---|---|
-| `storeId` | number | Optional. Limit to one store. |
+| `storeId` | number | Optional. Limit to one store. Refused when the caller cannot reach that store. |
 | `from` | ISO date-time | Optional. |
 | `to` | ISO date-time | Optional. |
 
@@ -209,6 +209,7 @@ Send a `countedQuantity` of `null` to clear a line back to uncounted. Allowed wh
 | `assetTypeName` | string | Null when the whole store was counted. |
 | `status` | enum | `DRAFT`, `IN_PROGRESS`, `SUBMITTED`, `APPROVED`, `POSTED`, `CANCELLED` |
 | `blind` | boolean | |
+| `countedById` | number | Who counted — lets a client hide Approve from them and offer them Cancel. |
 | `countedByName` / `approvedByName` | string | |
 | `submittedAt` / `approvedAt` / `postedAt` | date-time | |
 | `notes` / `reviewRemarks` | string | `reviewRemarks` carries send-back and drift explanations. |
@@ -250,8 +251,12 @@ Send a `countedQuantity` of `null` to clear a line back to uncounted. Allowed wh
 | Permission | Grants |
 |---|---|
 | `READ_STOCK_TAKE` | View counts and the variance report. |
-| `PERFORM_STOCK_TAKE` | Open a count, record quantities, submit. |
-| `APPROVE_STOCK_TAKE` | Approve, send back, post. |
+| `PERFORM_STOCK_TAKE` | Open a count, record quantities, submit; cancel **their own** count while it is still being counted. |
+| `APPROVE_STOCK_TAKE` | Approve, send back, post, cancel. |
+
+The count listing and the variance report (list *and* totals) are both narrowed to stores at a
+location the caller can reach. Courier stores cannot be counted. Every lifecycle step is written to
+the audit trail (module Inventory, actions `STOCK_COUNT_OPENED` … `STOCK_COUNT_POSTED`).
 
 Counting and approving are separate duties on purpose. The system additionally refuses to let the
 same person approve a count they performed, regardless of the permissions they hold.

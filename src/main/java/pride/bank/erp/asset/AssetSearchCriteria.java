@@ -44,6 +44,17 @@ public class AssetSearchCriteria {
     private Long departmentId;
 
     /**
+     * A branch the caller chose, matched by id on the asset's branch or its holder's — the same pair
+     * {@link #scopedBranchId} uses. A choice, not a limit: it narrows inside the scope and cannot
+     * widen it, because the scope predicate is applied as well.
+     */
+    private Long branchId;
+
+    /** Bounds on {@code Asset.disposalDate}, for the disposal report. */
+    private LocalDateTime disposedFrom;
+    private LocalDateTime disposedTo;
+
+    /**
      * Hard branch restriction applied on top of every other filter. Set by the service from the
      * caller's permissions, never from the request — a client cannot widen its own scope.
      */
