@@ -96,17 +96,109 @@ public interface MovementRepository extends JpaRepository<Movement, Long> {
      * column. Fetched for a whole page of assets at once rather than per row: the alternative is a
      * query per asset inside a filter.
      *
-     * <p>Every join is inner and deliberately so — a movement with no origin, or a consumable line
-     * with no asset, has no answer to give and should not produce a row. That is the one shape where
-     * trap #1 does not apply, because nothing here is optional.
+     * <h2>The same rule as {@code MovementService#branchLastSentAwayFrom}, batched</h2>
+     * Only the movements that send an asset <em>away</em> count — a repair transfer or a disposal
+     * transfer — and the branch is the recorded {@code originLocation}, else the source store's
+     * location, because a disposal records no origin.
      *
-     * @return rows of {@code [assetId, originLocationId]}, newest movement first; the caller keeps
-     *         the first row seen per asset.
+     * <p>It used to take the newest movement of <em>any</em> kind that happened to carry an origin.
+     * Only a repair transfer sets one, so returns, disposals and reassignments were skipped over and
+     * an asset kept the branch of its last repair for good — after it had come home, and after it had
+     * moved on. Two copies of one rule had drifted; the detail page's copy was the right one.
+     *
+     * <p>Whether the asset is away <em>now</em> is not asked here: the caller filters on status first
+     * ({@code AssetService.isAwayFromItsBranch}), exactly as the detail page does.
+     *
+     * <p>The two branch joins are LEFT (trap #1): either may be missing and the other still answers.
+     * A movement where both are missing gives no row rather than a null.
+     *
+     * @return rows of {@code [assetId, branchId]}, newest movement first; the caller keeps the first
+     *         row seen per asset.
      */
-    @Query("SELECT a.id, ol.id FROM Movement m "
-            + "JOIN m.items i JOIN i.asset a JOIN m.originLocation ol "
-            + "WHERE a.id IN :assetIds ORDER BY m.id DESC")
+    @Query("SELECT a.id, COALESCE(ol.id, sl.id) FROM Movement m "
+            + "JOIN m.items i JOIN i.asset a "
+            + "LEFT JOIN m.originLocation ol LEFT JOIN m.sourceStore ss LEFT JOIN ss.location sl "
+            + "WHERE a.id IN :assetIds "
+            + "AND m.movementType IN (pride.bank.erp.movement.MovementType.REPAIR_TRANSFER, "
+            + "                       pride.bank.erp.movement.MovementType.DISPOSAL_TRANSFER) "
+            + "AND (ol.id IS NOT NULL OR sl.id IS NOT NULL) "
+            + "ORDER BY m.id DESC")
     List<Object[]> findOriginLocationsForAssets(@Param("assetIds") java.util.Collection<Long> assetIds);
+
+    /**
+     * Whose write-off each asset was: the branch on its newest disposal transfer, else that
+     * transfer's source store's branch - the Disposal report's "Disposed From" column, read by the
+     * same rule as its scope and Branch filter ({@code AssetSearchDao#disposedFrom}).
+     *
+     * @return rows of {@code [assetId, branchId]}, newest disposal first; keep the first per asset
+     */
+    @Query("SELECT a.id, COALESCE(ol.id, sl.id) FROM Movement m "
+            + "JOIN m.items i JOIN i.asset a "
+            + "LEFT JOIN m.originLocation ol LEFT JOIN m.sourceStore ss LEFT JOIN ss.location sl "
+            + "WHERE a.id IN :assetIds "
+            + "AND m.movementType = pride.bank.erp.movement.MovementType.DISPOSAL_TRANSFER "
+            + "ORDER BY m.id DESC")
+    List<Object[]> findDisposingBranchesForAssets(@Param("assetIds") java.util.Collection<Long> assetIds);
+
+    /**
+     * Which of these assets are on a movement not yet completed or cancelled - committed somewhere,
+     * even if nothing on the asset has changed yet. {@code LoanerAvailability} reads it.
+     */
+    /**
+     * The assets this person handed over for repair or disposal that are still away, each with the
+     * transfer that took it: the "Away" section of My Items.
+     *
+     * <p>The same rule as {@code MovementService#holderLastSentAwayFrom}, batched: the <b>newest</b>
+     * repair or disposal transfer of the asset decides, and its {@code originHolder} - captured from
+     * the active assignment when the transfer was raised - must be this person. Whether it is away now
+     * is the caller's status list, as everywhere else ({@code AssetService.AWAY_FROM_BRANCH_CODES}).
+     *
+     * <p>The inner joins are deliberate: each one is to something the predicate requires.
+     *
+     * @return rows of {@code [Asset, Movement]}
+     */
+    @Query("SELECT a, m FROM Movement m JOIN m.items i JOIN i.asset a JOIN a.assetStatus st "
+            + "WHERE m.originHolder.id = :userId "
+            + "AND m.movementType IN (pride.bank.erp.movement.MovementType.REPAIR_TRANSFER, "
+            + "                       pride.bank.erp.movement.MovementType.DISPOSAL_TRANSFER) "
+            + "AND a.deleted = false AND st.status IN :awayCodes "
+            + "AND m.id = (SELECT MAX(m2.id) FROM Movement m2 JOIN m2.items i2 "
+            + "            WHERE i2.asset.id = a.id "
+            + "            AND m2.movementType IN (pride.bank.erp.movement.MovementType.REPAIR_TRANSFER, "
+            + "                                    pride.bank.erp.movement.MovementType.DISPOSAL_TRANSFER)) "
+            + "ORDER BY m.id DESC")
+    List<Object[]> findAwayAssetsSentBy(@Param("userId") Long userId,
+                                         @Param("awayCodes") java.util.Collection<String> awayCodes);
+
+    /**
+     * Movements not yet completed or cancelled that are on their way to this person: addressed to
+     * them, or fulfilling a request they raised. These are the "a movement I am party to" limbs that
+     * point at the person receiving.
+     *
+     * <p>Both are LEFT joins (trap #1): a movement has either, or neither, and an inner join on one
+     * would drop every movement that has only the other.
+     */
+    @Query("SELECT DISTINCT m FROM Movement m "
+            + "LEFT JOIN m.recipientUser ru LEFT JOIN m.request r LEFT JOIN r.requester rq "
+            + "WHERE (ru.id = :userId OR rq.id = :userId) "
+            + "AND m.status NOT IN (pride.bank.erp.movement.MovementStatus.COMPLETED, "
+            + "                     pride.bank.erp.movement.MovementStatus.CANCELLED) "
+            + "ORDER BY m.id DESC")
+    List<Movement> findOpenMovementsComingTo(@Param("userId") Long userId);
+
+    @Query("SELECT DISTINCT a.id FROM Movement m JOIN m.items i JOIN i.asset a "
+            + "WHERE a.id IN :assetIds "
+            + "AND m.status NOT IN (pride.bank.erp.movement.MovementStatus.COMPLETED, "
+            + "                     pride.bank.erp.movement.MovementStatus.CANCELLED)")
+    List<Long> findAssetIdsOnOpenMovements(@Param("assetIds") java.util.Collection<Long> assetIds);
+
+    /** The open movements carrying this asset, newest first - for saying which one it is on. */
+    @Query("SELECT m FROM Movement m JOIN m.items i "
+            + "WHERE i.asset.id = :assetId "
+            + "AND m.status NOT IN (pride.bank.erp.movement.MovementStatus.COMPLETED, "
+            + "                     pride.bank.erp.movement.MovementStatus.CANCELLED) "
+            + "ORDER BY m.id DESC")
+    List<Movement> findOpenMovementsForAsset(@Param("assetId") Long assetId);
 
     /*
      * findTempReplacementsForUser is gone, deliberately. It answered "which loaner is out with this

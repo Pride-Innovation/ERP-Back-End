@@ -98,7 +98,21 @@ public class AssetController {
              * nothing else. Mixing them into the ordinary listing would put records back in front of
              * everyone that the delete existed to take away.
              */
-            @RequestParam(required = false, defaultValue = "false") Boolean includeDeleted
+            @RequestParam(required = false, defaultValue = "false") Boolean includeDeleted,
+
+            /*
+             * Also list this branch's assets that are away at Head Office (in maintenance or pending
+             * disposal, sent by this branch). Read-only and asked for by the reports page alone: the
+             * assets page's row menu offers Edit and Reassign, which an away asset refuses.
+             */
+            @RequestParam(required = false, defaultValue = "false") Boolean includeAwayFromBranch,
+
+            /*
+             * The Disposal report: scope and Branch filter by whose write-off it was - the branch on
+             * the newest disposal transfer - rather than where the asset stands, which for every
+             * disposed asset is Head Office. Honoured only with disposed=true; read-only.
+             */
+            @RequestParam(required = false, defaultValue = "false") Boolean byDisposingBranch
     ) {
         Page<AssetDAO> response = assetService.fetchAllAssets(
                 pageSize,
@@ -122,7 +136,9 @@ public class AssetController {
                 includeDeleted,
                 branchId,
                 disposedFrom,
-                disposedTo
+                disposedTo,
+                includeAwayFromBranch,
+                byDisposingBranch
         );
         return new ResponseEntity<>(response, HttpStatus.OK);
     }

@@ -104,8 +104,10 @@ variance review.
 
 ### 4 — Approve, or send back
 
-**The person who counted cannot approve their own count** — enforced regardless of permissions held.
-Approving records who accepted the variances and still changes no stock.
+**The person who opened the count cannot approve it or send it back** — enforced regardless of
+permissions held, the super administrator included. Any other approver at the branch may decide it,
+and all of them are notified in the app and by email when the count is submitted. Approving records
+who accepted the variances and still changes no stock.
 
 Sending back returns the sheet to `IN_PROGRESS` with mandatory remarks so the counter knows what to
 redo.
@@ -166,7 +168,7 @@ Head Office Admin store holds Chair 7, Keyboard 2, and four other lines.
 | Submit (first try) | Reasons missing | `400` — *"A reason is required for every variance. Missing on: Chair, Keyboard"* |
 | Count again | Chair → `DAMAGED` "Two chairs broken", Keyboard → `FOUND` "Unrecorded return" | — |
 | Submit | Passes | Revealed: Chair −2, Keyboard +1, net −1 |
-| Approve (as the counter) | Refused | `400` — *"A count cannot be approved by the person who counted it."* |
+| Approve or send back (as the opener) | Refused | `400` — *"A count cannot be approved or sent back by the person who opened it. Any other approver at this branch can review it."* |
 | Approve (as someone else) | Accepted | Status `APPROVED`; **no stock changed yet** |
 | Post | Applied | Chair **7 → 5**, Keyboard **2 → 3**; 2 adjustments written |
 

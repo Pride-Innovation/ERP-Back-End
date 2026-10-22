@@ -70,6 +70,24 @@ public class AssetSearchCriteria {
     private Long scopedOwnerId;
 
     /**
+     * Also admit, in a branch-scoped listing, this branch's assets that are <em>away</em> - in
+     * maintenance or pending disposal, sent by this branch on their newest repair or disposal
+     * transfer. Receipt rewrites {@code asset.branch} to Head Office and the transfer clears the
+     * holder, so neither scope column still names the branch that owns them.
+     *
+     * <p><b>Server-resolved</b> and set only when asked for: the reports page asks, the assets page
+     * does not - its row menu offers Edit and Reassign, which an away asset at Head Office refuses.
+     */
+    private Long awayFromBranchId;
+
+    /**
+     * The Disposal report: scope and Branch filter by <em>whose write-off it was</em> (the branch on
+     * the newest disposal transfer) instead of where the asset stands. Honoured only with
+     * {@code disposed = true}.
+     */
+    private Boolean byDisposingBranch;
+
+    /**
      * Shows the soft-deleted register instead of the live one.
      *
      * <p>Not "live plus deleted" — deleted assets are a separate view, reached deliberately by

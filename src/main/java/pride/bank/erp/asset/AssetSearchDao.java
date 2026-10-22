@@ -50,7 +50,7 @@ public class AssetSearchDao {
         CriteriaQuery<Asset> criteriaQuery = criteriaBuilder.createQuery(Asset.class);
         Root<Asset> assetRoot = criteriaQuery.from(Asset.class);
 
-        Predicate predicate = getPredicate(assetSearchCriteria, assetRoot);
+        Predicate predicate = getPredicate(assetSearchCriteria, criteriaQuery, assetRoot);
         criteriaQuery.where(predicate);
 
         setOrder(assetPage, criteriaQuery, assetRoot);
@@ -72,7 +72,85 @@ public class AssetSearchDao {
      * @param assetRoot           the root entity in the query.
      * @return a predicate containing the filtering conditions.
      */
-    private Predicate getPredicate(AssetSearchCriteria assetSearchCriteria, Root<Asset> assetRoot) {
+    /**
+     * The asset is away (in maintenance or pending disposal) and the newest movement that sent it
+     * away - a repair or disposal transfer - left from this branch: its {@code originLocation}, else
+     * its source store's location.
+     *
+     * <p>The same rule as {@code MovementService#branchLastSentAwayFrom} and the store listings'
+     * {@code findOriginLocationsForAssets}, written as SQL because this listing pages in the
+     * database. "Newest" is a NOT EXISTS on a later send-away movement for the same asset, so an
+     * asset repaired twice belongs to whoever sent it most recently.
+     */
+    private Predicate awayFrom(AbstractQuery<?> query, Root<Asset> assetRoot, Long branchId) {
+        return criteriaBuilder.and(
+                reuseJoin(assetRoot, "assetStatus").get("status").in(AssetService.AWAY_FROM_BRANCH_CODES),
+                newestSentFrom(query, assetRoot, branchId, List.of(
+                        pride.bank.erp.movement.MovementType.REPAIR_TRANSFER,
+                        pride.bank.erp.movement.MovementType.DISPOSAL_TRANSFER)));
+    }
+
+    /**
+     * Whose write-off this is: the branch recorded on the asset's newest disposal transfer, else that
+     * transfer's source store's branch - the disposal records its owner (see
+     * {@code RepairMovementService#disposeAsset}), so a branch laptop written off from the Head Office
+     * repair bench is the branch's, not Head Office's.
+     *
+     * <p>Permanent, unlike {@link #awayFrom}: a written-off asset never comes home, and the Disposal
+     * report is a history. A disposed asset with no disposal transfer at all falls back to where it
+     * stands or who held it, so nothing disappears from the report.
+     */
+    private Predicate disposedFrom(AbstractQuery<?> query, Root<Asset> assetRoot, Long branchId) {
+        List<pride.bank.erp.movement.MovementType> disposal =
+                List.of(pride.bank.erp.movement.MovementType.DISPOSAL_TRANSFER);
+
+        Subquery<Long> anyDisposal = query.subquery(Long.class);
+        Root<pride.bank.erp.movement.MovementItem> item = anyDisposal.from(pride.bank.erp.movement.MovementItem.class);
+        anyDisposal.select(item.get("id")).where(
+                criteriaBuilder.equal(item.get("asset"), assetRoot),
+                item.join("movement").get("movementType").in(disposal));
+
+        return criteriaBuilder.or(
+                newestSentFrom(query, assetRoot, branchId, disposal),
+                criteriaBuilder.and(
+                        criteriaBuilder.not(criteriaBuilder.exists(anyDisposal)),
+                        criteriaBuilder.or(
+                                criteriaBuilder.equal(assetBranch(assetRoot).get("id"), branchId),
+                                criteriaBuilder.equal(holderBranch(assetRoot).get("id"), branchId))));
+    }
+
+    /**
+     * The asset's newest movement of these types left from this branch: its {@code originLocation},
+     * else its source store's location. "Newest" is a NOT EXISTS on a later one of the same types.
+     */
+    private Predicate newestSentFrom(AbstractQuery<?> query, Root<Asset> assetRoot, Long branchId,
+                                     List<pride.bank.erp.movement.MovementType> sendAway) {
+        Subquery<Long> sent = query.subquery(Long.class);
+        Root<pride.bank.erp.movement.MovementItem> item = sent.from(pride.bank.erp.movement.MovementItem.class);
+        Join<Object, Object> movement = item.join("movement");
+        Join<Object, Object> origin = movement.join("originLocation", JoinType.LEFT);
+        Join<Object, Object> sourceLocation = movement.join("sourceStore", JoinType.LEFT)
+                .join("location", JoinType.LEFT);
+
+        Subquery<Long> later = sent.subquery(Long.class);
+        Root<pride.bank.erp.movement.MovementItem> laterItem = later.from(pride.bank.erp.movement.MovementItem.class);
+        Join<Object, Object> laterMovement = laterItem.join("movement");
+        later.select(laterItem.get("id")).where(
+                criteriaBuilder.equal(laterItem.get("asset"), assetRoot),
+                laterMovement.get("movementType").in(sendAway),
+                criteriaBuilder.greaterThan(laterMovement.get("id"), movement.<Long>get("id")));
+
+        sent.select(item.get("id")).where(
+                criteriaBuilder.equal(item.get("asset"), assetRoot),
+                movement.get("movementType").in(sendAway),
+                criteriaBuilder.equal(
+                        criteriaBuilder.coalesce(origin.<Long>get("id"), sourceLocation.<Long>get("id")), branchId),
+                criteriaBuilder.not(criteriaBuilder.exists(later)));
+
+        return criteriaBuilder.exists(sent);
+    }
+
+    private Predicate getPredicate(AssetSearchCriteria assetSearchCriteria, AbstractQuery<?> query, Root<Asset> assetRoot) {
         List<Predicate> predicates = new ArrayList<>();
 
         if (Objects.nonNull(assetSearchCriteria.getAssetName())) {
@@ -159,12 +237,16 @@ public class AssetSearchDao {
                     holderDepartment(assetRoot).get("id"), assetSearchCriteria.getDepartmentId()));
         }
 
+        boolean byDisposingBranch = Boolean.TRUE.equals(assetSearchCriteria.getByDisposingBranch());
+
         if (Objects.nonNull(assetSearchCriteria.getBranchId())) {
             Long chosen = assetSearchCriteria.getBranchId();
-            predicates.add(criteriaBuilder.or(
-                    criteriaBuilder.equal(assetBranch(assetRoot).get("id"), chosen),
-                    criteriaBuilder.equal(holderBranch(assetRoot).get("id"), chosen)
-            ));
+            // The Disposal report filters on whose write-off it was; everywhere else on where it is.
+            predicates.add(byDisposingBranch
+                    ? disposedFrom(query, assetRoot, chosen)
+                    : criteriaBuilder.or(
+                            criteriaBuilder.equal(assetBranch(assetRoot).get("id"), chosen),
+                            criteriaBuilder.equal(holderBranch(assetRoot).get("id"), chosen)));
         }
 
         if (Objects.nonNull(assetSearchCriteria.getDisposedFrom())) {
@@ -182,10 +264,23 @@ public class AssetSearchDao {
             // branch stays visible even if the asset row still points elsewhere.
             Long scoped = assetSearchCriteria.getScopedBranchId();
 
-            predicates.add(criteriaBuilder.or(
-                    criteriaBuilder.equal(assetBranch(assetRoot).get("id"), scoped),
-                    criteriaBuilder.equal(holderBranch(assetRoot).get("id"), scoped)
-            ));
+            if (byDisposingBranch) {
+                /*
+                 * Disposal report: a branch sees the write-offs that were its own, and nothing else -
+                 * replacing, not widening, the location rule. Every disposed asset ends up reading
+                 * Head Office, so by location a Head Office branch viewer would see every branch's
+                 * write-offs and a branch would see none of its own.
+                 */
+                predicates.add(disposedFrom(query, assetRoot, scoped));
+            } else {
+                List<Predicate> inReach = new ArrayList<>(List.of(
+                        criteriaBuilder.equal(assetBranch(assetRoot).get("id"), scoped),
+                        criteriaBuilder.equal(holderBranch(assetRoot).get("id"), scoped)));
+                if (Objects.nonNull(assetSearchCriteria.getAwayFromBranchId())) {
+                    inReach.add(awayFrom(query, assetRoot, assetSearchCriteria.getAwayFromBranchId()));
+                }
+                predicates.add(criteriaBuilder.or(inReach.toArray(new Predicate[0])));
+            }
         }
 
         /*
@@ -361,7 +456,7 @@ public class AssetSearchDao {
         CriteriaQuery<Long> countQuery = criteriaBuilder.createQuery(Long.class);
         Root<Asset> countRoot = countQuery.from(Asset.class);
 
-        Predicate countPredicate = getPredicate(assetSearchCriteria, countRoot);
+        Predicate countPredicate = getPredicate(assetSearchCriteria, countQuery, countRoot);
         countQuery.select(criteriaBuilder.count(countRoot)).where(countPredicate);
 
         return entityManager.createQuery(countQuery).getSingleResult();

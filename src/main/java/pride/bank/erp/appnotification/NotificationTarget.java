@@ -35,5 +35,11 @@ public enum NotificationTarget {
      * A temporary replacement still out with the recipient - the entity id is the loaner asset.
      * Raised when their own asset comes back from repair, as a reminder to hand the loaner in.
      */
-    LOANER
+    LOANER,
+
+    /**
+     * A stock count - the entity id is the count. Raised when a count is submitted, to every other
+     * approver at its branch. The column is a VARCHAR, so a new value needs no migration.
+     */
+    STOCK_COUNT
 }

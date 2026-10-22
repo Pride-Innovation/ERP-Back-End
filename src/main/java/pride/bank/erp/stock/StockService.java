@@ -753,10 +753,23 @@ public class StockService {
      * an empty page rather than their own branch's deliveries. The resolver returns the caller's own
      * branch below ALL scope, which is already the answer we want; the floor matters only in that
      * this module must never narrow further.
+     *
+     * <p><b>Null means two opposite things from the resolver</b> - every branch at ALL scope, and a
+     * caller below it with no branch on record - and downstream null reads as "no restriction". So an
+     * unconfigured account was handed every branch's orders. It is refused instead, as the movements
+     * register already does.
      */
     private Long visibleBranchId(Long requestedBranchId) {
-        return accessScopeService.resolveBranch(
+        Long branch = accessScopeService.resolveBranch(
                 pride.bank.erp.access.ScopeSubject.INVENTORY, requestedBranchId);
+        if (branch == null && accessScopeService.scopeFor(
+                pride.bank.erp.access.ScopeSubject.INVENTORY, pride.bank.erp.access.ScopeAction.VIEW)
+                != pride.bank.erp.dashboard.DashboardScope.ALL) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Your account is not attached to a branch, so stock orders cannot be shown. "
+                            + "Ask an administrator to set your branch.");
+        }
+        return branch;
     }
 
     /**

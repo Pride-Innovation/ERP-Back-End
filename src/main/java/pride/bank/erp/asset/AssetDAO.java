@@ -51,6 +51,14 @@ public class AssetDAO {
     private String monthlyDepreciation;
     /** Derived: "In service" or "Ready for disposal" once the asset's age reaches its useful life. */
     private String disposalStatus;
+
+    /**
+     * Whose write-off this was - the Disposal report's "Disposed From". Set only on that listing
+     * ({@code byDisposingBranch}); a disposed asset's own {@code branch} reads Head Office, where the
+     * Disposal store stands, so it cannot answer.
+     */
+    private Long disposedFromBranchId;
+    private String disposedFromBranchName;
     private String description;
     private String image;
 

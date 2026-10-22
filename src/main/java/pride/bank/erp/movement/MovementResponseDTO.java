@@ -158,6 +158,8 @@ public class MovementResponseDTO {
          * cannot mirror the server's rule and would hide a control the server would have allowed.
          */
         private Long requesterId;
+        /** Their name, for the movement report's "Requested By" - the id alone cannot be shown. */
+        private String requesterName;
     }
 
     @Data
@@ -171,6 +173,8 @@ public class MovementResponseDTO {
         private String serialNumber;
         private String make;
         private String model;
+        /** The asset's category - the movement report's Category column, which read "—" without it. */
+        private String assetTypeName;
     }
 
     @Data
@@ -181,6 +185,8 @@ public class MovementResponseDTO {
         private Long id;
         private String name;
         private String groupName;
+        /** The commodity's category, for the same column. */
+        private String assetTypeName;
     }
 
     /** One line on the movement — exactly one of {@code asset} / {@code commodity} is set. */

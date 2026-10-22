@@ -113,7 +113,29 @@ public final class StockTakeDTOs {
         private int netUnitVariance;
         private boolean readyToSubmit;
 
+        /** The branch the counted store stands at - so Head Office, viewing every branch, can tell them apart. */
+        private String storeBranchName;
+        /**
+         * Whether the caller may act on this count at all: the store is at their own branch (or they
+         * are the super administrator). Viewing reaches further than acting - Head Office reads every
+         * branch's counts - so the page needs the server's answer rather than a guess from scope.
+         */
+        private boolean actionable;
+
         private List<CountLineView> lines;
+    }
+
+    /** A store the caller may open a count for, with how many lines a sheet for it would hold. */
+    @Data
+    @Builder
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class CountableStore {
+        private Long id;
+        private String name;
+        private String storeType;
+        private String branchName;
+        private int lineCount;
     }
 
     /** One posted adjustment, for the variance report. */

@@ -174,10 +174,16 @@ public class MovementController {
             @RequestParam(required = false) String source,
             @RequestParam(required = false) String destination,
             @RequestParam(required = false) String courier,
-            @RequestParam(required = false) String initiator
+            @RequestParam(required = false) String initiator,
+            // The reports page's filters. branchId: any of the four ends (refused below ALL unless
+            // it is the caller's own). assetTypeId: any line's asset or commodity category.
+            @RequestParam(required = false) Long branchId,
+            @RequestParam(required = false) Long assetTypeId
     ) {
         MovementSearchCriteria criteria = criteria(dateFrom, dateTo, movementType, movementCategory,
                 status, receiptStatus, trackingNumber, source, destination, courier, initiator);
+        criteria.setBranchId(branchId);
+        criteria.setAssetTypeId(assetTypeId);
 
         Pageable pageable = page(pageNumber, pageSize, sort(sortBy, sortDirection));
         return new ResponseEntity<>(

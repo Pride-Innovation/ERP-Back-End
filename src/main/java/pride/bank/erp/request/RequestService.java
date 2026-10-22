@@ -427,12 +427,14 @@ public class RequestService {
             Long requesterId,
             Long approverId,
             Long requesterDepartmentId,
+            Long requesterBranchId,
             Boolean deleted,
             LocalDateTime startDate,
             LocalDateTime endDate,
             Long currentApproverId
     ) {
         try {
+            requireBranchFilterInReach(requesterBranchId);
             log.debug("Fetching requests with filters - page: {}, statusIds: {}", pageNumber, statusIds);
 
             RequestPage requestPage = RequestPage.builder()
@@ -456,6 +458,8 @@ public class RequestService {
                     .raisedByUserId(requesterId)
                     .approverId(approverId)
                     .requesterDepartmentId(requesterDepartmentId)
+                    // The same LEFT-joined predicate the dashboard's branch filter uses.
+                    .requesterBranchId(requesterBranchId)
                     .deleted(deleted)
                     .timeOfSubmissionOfRequest(timeOfSubmissionOfRequest)
                     .startDate(startDate)
@@ -1407,6 +1411,25 @@ public class RequestService {
                 pride.bank.erp.workflow.StepType.REQUEST_APPROVAL.equals(stepType)
                         && pride.bank.erp.workflow.ApproverSubject.ISSUER.equals(approverSubject);
         return issuerApproval ? "ISSUANCE_APPROVAL" : stepType.toString();
+    }
+
+    /**
+     * A branch named in the Branch filter must be one the caller may see.
+     *
+     * <p>The filter narrows within {@link #requestersList()}, so naming another branch could not
+     * widen anything - it would return an empty page. Refused instead, because an empty page reads
+     * as "that branch raised nothing", which is a statement about data the caller may not look at.
+     */
+    private void requireBranchFilterInReach(Long requesterBranchId) {
+        if (requesterBranchId == null) return;
+        if (accessScopeService.scopeFor(pride.bank.erp.access.ScopeSubject.REQUESTS,
+                pride.bank.erp.access.ScopeAction.VIEW) == pride.bank.erp.dashboard.DashboardScope.ALL) {
+            return;
+        }
+        if (!requesterBranchId.equals(currentUserBranchId())) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "You can only view requests for your own branch.");
+        }
     }
 
     private List<Long> requestersList() {

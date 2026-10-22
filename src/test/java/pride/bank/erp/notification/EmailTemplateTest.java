@@ -46,7 +46,7 @@ class EmailTemplateTest {
     @Test
     void everyTemplateSharesOneFrameAndNamesTheApplication() throws Exception {
         Map<String, String> rendered = renderAll();
-        assertThat(rendered).hasSize(9);
+        assertThat(rendered).hasSize(10);
 
         Path out = Path.of("target", "email-previews");
         Files.createDirectories(out);
@@ -125,7 +125,20 @@ class EmailTemplateTest {
         out.put("movement-approval", email.getMovementEmailContent("Moses", 70L, "Transfer",
                 "Gulu Admin Store → Head Office IT Store", "https://erp.example/assets-mgt/movement/view/70",
                 false, false, null));
+        out.put("stock-count-approval", email.getStockCountApprovalEmailContent("Moses", "SC/2026/000014",
+                "Gulu Admin Store", "Gulu Branch", "Jane Akello", 18, 2,
+                "https://erp.example/assets-mgt/store/stock-take/14"));
         return out;
+    }
+
+    /** Names in the stock-count mail are text, and are escaped exactly once. */
+    @Test
+    void theStockCountMailEscapesOnceAndOpensTheCount() {
+        String html = email.getStockCountApprovalEmailContent("Moses", "SC/2026/000014",
+                "Tom & Jerry <Store>", "Gulu Branch", "Jane", 3, 0, "https://erp.example/assets-mgt/store/stock-take/14");
+        assertThat(html).contains("Tom &amp; Jerry &lt;Store&gt;").doesNotContain("&amp;amp;")
+                .contains("https://erp.example/assets-mgt/store/stock-take/14")
+                .contains("Approval required");
     }
 
     private static Request request() {

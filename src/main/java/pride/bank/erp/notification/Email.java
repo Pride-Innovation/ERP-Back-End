@@ -200,6 +200,62 @@ public class Email {
     }
 
     /**
+     * A submitted stock count, to an approver who may review it.
+     *
+     * <p>Primitives only and never throws, like {@link #sendMovementEmail}: the count has been
+     * submitted by the time this runs, the in-app notification is the authoritative prompt, and a
+     * submission must not appear to fail because an SMTP host is unreachable.
+     */
+    public boolean sendStockCountApprovalEmail(
+            String recipientEmail,
+            String recipientName,
+            String reference,
+            String storeName,
+            String branchName,
+            String submittedBy,
+            int lines,
+            int linesWithVariance,
+            String link
+    ) {
+        if (recipientEmail == null || recipientEmail.isBlank()) {
+            logger.warn("No email address for stock count {} approval mail - skipping", reference);
+            return false;
+        }
+        try {
+            mailDispatcher.send(cleanRecipient(recipientEmail),
+                    format("Approval needed - Stock count %s", reference),
+                    getStockCountApprovalEmailContent(recipientName, reference, storeName, branchName,
+                            submittedBy, lines, linesWithVariance, link),
+                    "stock-count");
+            return true;
+        } catch (Exception e) {
+            logger.error("Failed to build stock count email for {} ({})", recipientEmail, reference, e);
+            return false;
+        }
+    }
+
+    String getStockCountApprovalEmailContent(String recipientName, String reference, String storeName,
+                                             String branchName, String submittedBy, int lines,
+                                             int linesWithVariance, String link) {
+        // strong(), details() and page() escape what they are given; only paragraph() takes markup.
+        String title = "A stock count needs your approval";
+        String body = greeting(recipientName)
+                + paragraph("Stock count " + strong(reference) + " has been submitted and is waiting for "
+                + "review. No stock changes until it is approved and posted.")
+                + details("Count details", List.of(
+                new String[]{"Reference", reference},
+                new String[]{"Store", storeName},
+                new String[]{"Branch", branchName},
+                new String[]{"Submitted by", submittedBy},
+                new String[]{"Lines counted", String.valueOf(lines)},
+                new String[]{"Lines with a difference", String.valueOf(linesWithVariance)}))
+                + callout(null, "Any approver at this branch except the person who opened the count can "
+                + "approve it or send it back. The first to act decides it.", Tone.INFO);
+        return page(title, Tone.ACTION, "Approval required",
+                format("Stock count %s - approval required", reference), body, "Review the count", link);
+    }
+
+    /**
      * Account creation and password reset. The {@code reason} parameter is dual-purpose:
      * {@code "reset"} produces a password-reset link; any other text is the recipient's full name
      * for the greeting; null gives a generic greeting and the standard verify link.

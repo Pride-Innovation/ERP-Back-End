@@ -47,6 +47,7 @@ public class RepairService {
     private final pride.bank.erp.auditing.trail.AuditService auditService;
     private final pride.bank.erp.user.UserRepository userRepository;
     private final pride.bank.erp.consultant.ConsultantRepository consultantRepository;
+    private final pride.bank.erp.branch.BranchRepository branchRepository;
 
     /** The one resolver for how far a person may see — see AccessScopeService. */
     private final pride.bank.erp.access.AccessScopeService accessScopeService;
@@ -362,17 +363,68 @@ public class RepairService {
      * Repairs across every asset, for the maintenance report. Each filter is optional.
      *
      * <p>Branch-scoped from the caller's permissions rather than from the request, so the report
-     * answers "what has been repaired that I may see" rather than "what has been repaired". Null
-     * from the resolver means ALL scope and no restriction.
+     * answers "what has been repaired that I may see" rather than "what has been repaired". A repair
+     * is the branch's that sent the asset (see {@code RepairRepository#findForReport}).
+     *
+     * <p>{@code branchId} is the Branch filter, offered only to callers who see every branch; the
+     * resolver refuses anyone else naming a branch not theirs. Null from it means ALL scope and no
+     * restriction - <b>but also</b> a caller below ALL with no branch on record, which downstream
+     * reads as "no restriction" and handed such an account every branch's repairs. That caller gets
+     * nothing, as the movements register already does.
+     *
+     * @param repairedBy {@code INTERNAL}, {@code EXTERNAL}, {@code NONE} (no technician recorded yet),
+     *                   or null for all
      */
     public Page<RepairDTO> listAllRepairs(
             String status, Long assetTypeId,
             java.time.LocalDateTime from, java.time.LocalDateTime to,
+            Long branchId, String repairedBy,
             Pageable pageable) {
         Long scopedBranchId = accessScopeService.resolveBranch(
-                pride.bank.erp.access.ScopeSubject.ASSETS, null);
-        return repairRepository.findForReport(status, assetTypeId, from, to, scopedBranchId, pageable)
-                .map(this::convertToDTO);
+                pride.bank.erp.access.ScopeSubject.ASSETS, branchId);
+        boolean seesEveryBranch = accessScopeService.scopeFor(
+                pride.bank.erp.access.ScopeSubject.ASSETS, pride.bank.erp.access.ScopeAction.VIEW)
+                == pride.bank.erp.dashboard.DashboardScope.ALL;
+        if (scopedBranchId == null && !seesEveryBranch) {
+            return Page.empty(pageable);
+        }
+
+        TechnicianType technicianType = null;
+        boolean unrecorded = false;
+        if (repairedBy != null && !repairedBy.isBlank()) {
+            if ("NONE".equalsIgnoreCase(repairedBy)) {
+                unrecorded = true;
+            } else {
+                // An unknown value is a 400, not "no filter" - quietly ignoring it returns everything.
+                technicianType = TechnicianType.valueOf(repairedBy.trim().toUpperCase(java.util.Locale.ROOT));
+            }
+        }
+
+        Page<Repair> page = repairRepository.findForReport(
+                status, assetTypeId, from, to, technicianType, unrecorded, scopedBranchId, pageable);
+
+        java.util.Map<Long, Long> owners = new java.util.HashMap<>();
+        if (!page.isEmpty()) {
+            for (Object[] row : repairRepository.findOwningBranches(page.map(Repair::getId).getContent())) {
+                owners.putIfAbsent((Long) row[0], (Long) row[1]);
+            }
+        }
+        java.util.Map<Long, pride.bank.erp.branch.Branch> branches = new java.util.HashMap<>();
+        if (!owners.isEmpty()) {
+            branchRepository.findAllById(new java.util.HashSet<>(owners.values()))
+                    .forEach(b -> branches.put(b.getId(), b));
+        }
+
+        return page.map(repair -> {
+            RepairDTO dto = convertToDTO(repair);
+            pride.bank.erp.branch.Branch owner = branches.get(owners.get(repair.getId()));
+            if (owner == null) owner = repair.getAsset() != null ? repair.getAsset().getBranch() : null;
+            if (owner != null) {
+                dto.setSentFromBranchId(owner.getId());
+                dto.setSentFromBranchName(owner.getName());
+            }
+            return dto;
+        });
     }
 
     private RepairDTO convertToDTO(Repair repair) {

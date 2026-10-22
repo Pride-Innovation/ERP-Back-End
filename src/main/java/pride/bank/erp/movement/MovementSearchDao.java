@@ -56,7 +56,7 @@ public class MovementSearchDao {
         Root<Movement> root = query.from(Movement.class);
         Joins joins = new Joins(root);
 
-        query.where(predicate(criteria, root, joins));
+        query.where(predicate(criteria, query, root, joins));
         query.distinct(true);
         order(query, root, pageable);
 
@@ -83,7 +83,7 @@ public class MovementSearchDao {
         Joins joins = new Joins(root);
 
         Path<MovementStatus> status = root.get("status");
-        query.where(predicate(criteria, root, joins));
+        query.where(predicate(criteria, query, root, joins));
         // countDistinct, because the destination and courier predicates can join to several rows.
         query.multiselect(status, cb.countDistinct(root.get("id")));
         query.groupBy(status);
@@ -121,7 +121,8 @@ public class MovementSearchDao {
 
     // ── predicate ───────────────────────────────────────────────────────────
 
-    private Predicate predicate(MovementSearchCriteria c, Root<Movement> root, Joins joins) {
+    private Predicate predicate(MovementSearchCriteria c, jakarta.persistence.criteria.AbstractQuery<?> query,
+                                Root<Movement> root, Joins joins) {
         List<Predicate> predicates = new ArrayList<>();
 
         if (Objects.nonNull(c.getDateFrom())) {
@@ -162,6 +163,34 @@ public class MovementSearchDao {
         }
 
         /*
+         * Branch filter (the report's, for callers who see every branch): the same four ends as the
+         * scope below, so "Gulu's movements" means exactly what Gulu itself is shown. The service has
+         * already refused a branch the caller may not name.
+         */
+        if (Objects.nonNull(c.getBranchId())) {
+            predicates.add(touchesBranch(joins, c.getBranchId()));
+        }
+
+        /*
+         * Asset category: a movement matches when any line carries an asset of that category or a
+         * commodity under it. An EXISTS subquery rather than a join on the lines - a join would repeat
+         * a movement once per matching line, inflating the page and the count the pager is built on.
+         */
+        if (Objects.nonNull(c.getAssetTypeId())) {
+            jakarta.persistence.criteria.Subquery<Long> lines = query.subquery(Long.class);
+            Root<MovementItem> item = lines.from(MovementItem.class);
+            Join<?, ?> asset = item.join("asset", jakarta.persistence.criteria.JoinType.LEFT);
+            Join<?, ?> assetType = asset.join("assetType", jakarta.persistence.criteria.JoinType.LEFT);
+            Join<?, ?> commodity = item.join("commodity", jakarta.persistence.criteria.JoinType.LEFT);
+            Join<?, ?> commodityType = commodity.join("assetType", jakarta.persistence.criteria.JoinType.LEFT);
+            lines.select(item.get("id")).where(
+                    cb.equal(item.get("movement"), root),
+                    cb.or(cb.equal(assetType.get("id"), c.getAssetTypeId()),
+                            cb.equal(commodityType.get("id"), c.getAssetTypeId())));
+            predicates.add(cb.exists(lines));
+        }
+
+        /*
          * Scope: any one of the movement's four ends being the caller's branch puts it in reach.
          *
          * Mirrors MovementRepository#findForBranch deliberately. A guard or a listing that computed
@@ -169,12 +198,7 @@ public class MovementSearchDao {
          * either rule on its own.
          */
         if (Objects.nonNull(c.getScopedBranchId())) {
-            Long branch = c.getScopedBranchId();
-            predicates.add(cb.or(
-                    cb.equal(joins.sourceStoreLocation().get("id"), branch),
-                    cb.equal(joins.destStoreLocation().get("id"), branch),
-                    cb.equal(joins.sourceUserBranch().get("id"), branch),
-                    cb.equal(joins.recipientUserBranch().get("id"), branch)));
+            predicates.add(touchesBranch(joins, c.getScopedBranchId()));
         }
 
         /*
@@ -203,6 +227,19 @@ public class MovementSearchDao {
         return predicates.isEmpty()
                 ? cb.conjunction()
                 : cb.and(predicates.toArray(new Predicate[0]));
+    }
+
+    /**
+     * Any of the movement's four ends at this branch. One definition for the scope and the report's
+     * Branch filter, so a filter can never claim a branch's movements differently from how that
+     * branch is shown them.
+     */
+    private Predicate touchesBranch(Joins joins, Long branch) {
+        return cb.or(
+                cb.equal(joins.sourceStoreLocation().get("id"), branch),
+                cb.equal(joins.destStoreLocation().get("id"), branch),
+                cb.equal(joins.sourceUserBranch().get("id"), branch),
+                cb.equal(joins.recipientUserBranch().get("id"), branch));
     }
 
     /**
@@ -239,7 +276,7 @@ public class MovementSearchDao {
         Joins joins = new Joins(root);
 
         query.select(cb.countDistinct(root.get("id")));
-        query.where(predicate(criteria, root, joins));
+        query.where(predicate(criteria, query, root, joins));
 
         Long total = entityManager.createQuery(query).getSingleResult();
         return total != null ? total : 0L;
@@ -282,7 +319,7 @@ public class MovementSearchDao {
         Expression<String> value = of.apply(root, joins);
         query.select(value).distinct(true);
 
-        Predicate scoped = predicate(criteria, root, joins);
+        Predicate scoped = predicate(criteria, query, root, joins);
         query.where(cb.and(scoped, cb.isNotNull(value)));
         query.orderBy(cb.asc(value));
 

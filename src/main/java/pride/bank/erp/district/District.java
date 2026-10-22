@@ -29,7 +29,18 @@ public class District {
     private Long id;
     private String name;
 
+    /*
+     * Out of equals/hashCode/toString, like Region.branches and Title.users.
+     *
+     * Branch hashes its district, and @Data would hash this collection back - so hashing any branch
+     * in a district loaded the whole set, and outside a session threw LazyInitializationException.
+     * It lay dormant while no branch had a district; the first one assigned made saving a stocking
+     * rule naming that branch fail (StockingRuleService builds a Set<Branch>). Already @JsonIgnore,
+     * so excluding it cannot expose a JSON loop.
+     */
     @OneToMany(mappedBy = "district", cascade = CascadeType.PERSIST)
     @JsonIgnore
+    @lombok.EqualsAndHashCode.Exclude
+    @lombok.ToString.Exclude
     private Set<Branch> branches;
 }

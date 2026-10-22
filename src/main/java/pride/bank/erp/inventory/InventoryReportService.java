@@ -107,12 +107,6 @@ public class InventoryReportService {
         return assetRepository.findByOrganisationScope(branchId, departmentId, unitId);
     }
 
-    /** Everything a given person is currently holding. */
-    @Transactional(readOnly = true)
-    public List<Asset> assetsHeldBy(Long userId) {
-        return assetRepository.findByAssignedTo_IdAndDisposedFalse(userId);
-    }
-
     @Transactional(readOnly = true)
     public List<StoreBalanceView> balancesByStoreType(StoreType storeType) {
         return storeBalanceRepository.findByStore_StoreType(storeType).stream().map(this::toBalanceView).toList();
@@ -156,15 +150,94 @@ public class InventoryReportService {
                 .toList();
     }
 
-    /** Serialized assets currently held by a store — e.g. items in the IT or Disposal store. */
+    /**
+     * Serialized assets currently held by a store — e.g. items in the IT or Disposal store.
+     *
+     * <p>Soft-deleted assets are left out. These two finders are derived queries and never carried
+     * the {@code deleted} exclusion every other asset read has, so a record deleted as a mistake still
+     * sat in its store's "Assets Held" table and in the movement form's picker. Deleted reads as not
+     * found everywhere else; it does here too now.
+     */
     @Transactional(readOnly = true)
     public List<Asset> assetsInStore(Long storeId) {
-        return assetRepository.findByCurrentStore_Id(storeId);
+        return notDeleted(assetRepository.findByCurrentStore_Id(storeId));
     }
 
     @Transactional(readOnly = true)
     public List<Asset> assetsByStoreType(StoreType storeType) {
-        return assetRepository.findByCurrentStore_StoreType(storeType);
+        return notDeleted(assetRepository.findByCurrentStore_StoreType(storeType));
+    }
+
+    private static List<Asset> notDeleted(List<Asset> assets) {
+        return assets.stream().filter(a -> !Boolean.TRUE.equals(a.getDeleted())).toList();
+    }
+
+    /** The kind of store, or null when there is no such store. */
+    @Transactional(readOnly = true)
+    public StoreType storeTypeOf(Long storeId) {
+        return storeRepository.findById(storeId).map(Store::getStoreType).orElse(null);
+    }
+
+    /**
+     * The Head Office location-level Admin store: where ADMIN-routed and EXTERNAL repairs are held.
+     *
+     * <p>Resolved the way {@code RepairMovementService#headOfficeAdminStore} resolves it - the branch
+     * flagged Head Office, its ADMIN store with no department - so this always names the store repairs
+     * actually go to. Read-only: unlike {@code StoreService#resolveAdminStore} it never creates one.
+     */
+    @Transactional(readOnly = true)
+    public java.util.Optional<StoreView> headOfficeAdminStore() {
+        return branchRepository.findFirstByIsHeadOfficeTrue()
+                .flatMap(ho -> storeRepository.findByLocation_IdAndStoreTypeAndDepartmentIsNull(ho.getId(), StoreType.ADMIN))
+                .map(this::toStoreView);
+    }
+
+    /**
+     * For a branch's own Admin store: the Head Office Admin store, and the branch, whose away assets
+     * belong in the same "Assets Held" table. Empty for any other store - Head Office's own Admin
+     * store already <em>is</em> that store, and the IT / Disposal pages read the shared store itself.
+     *
+     * @param headOfficeAdminStoreId where ADMIN-routed and external repairs are held
+     * @param branchId               the branch the page's store stands at; only assets it sent count
+     */
+    public record AwayCompanion(Long headOfficeAdminStoreId, Long branchId) {
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.Optional<AwayCompanion> awayCompanionFor(Long storeId) {
+        return storeRepository.findById(storeId)
+                .filter(s -> s.getStoreType() == StoreType.ADMIN && s.getDepartment() == null
+                        && s.getLocation() != null && !s.getLocation().isHeadOffice())
+                .flatMap(s -> headOfficeAdminStore()
+                        .map(ho -> new AwayCompanion(ho.getId(), s.getLocation().getId())));
+    }
+
+    /**
+     * Whether a store is where other branches' assets are sent - for repair or for write-off.
+     *
+     * <p>The bank-wide IT and Disposal stores, and the Head Office Admin store, which holds every
+     * ADMIN-routed and EXTERNAL repair. In these an asset's {@code branch} reads Head Office while it
+     * belongs elsewhere, so "where was it sent from" is a question worth a column. In a branch's own
+     * Admin store it is not: what is there is that branch's.
+     */
+    @Transactional(readOnly = true)
+    public boolean receivesAssetsFromOtherBranches(Long storeId) {
+        return storeRepository.findById(storeId).map(store -> {
+            if (store.getStoreType() == StoreType.IT || store.getStoreType() == StoreType.DISPOSAL) return true;
+            return store.getStoreType() == StoreType.ADMIN
+                    && store.getDepartment() == null
+                    && store.getLocation() != null
+                    && store.getLocation().isHeadOffice();
+        }).orElse(false);
+    }
+
+    /** Branch names by id, in one query - for labelling where a page of assets came from. */
+    @Transactional(readOnly = true)
+    public Map<Long, String> branchNames(java.util.Collection<Long> branchIds) {
+        if (branchIds == null || branchIds.isEmpty()) return Map.of();
+        Map<Long, String> names = new HashMap<>();
+        branchRepository.findAllById(branchIds).forEach(b -> names.put(b.getId(), b.getName()));
+        return names;
     }
 
     // ── mapping ───────────────────────────────────────────────────────────────

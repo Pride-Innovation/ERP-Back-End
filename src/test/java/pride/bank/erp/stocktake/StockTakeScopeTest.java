@@ -92,12 +92,13 @@ class StockTakeScopeTest {
 
     /** Segregation of duties predates this work and must survive it. */
     @Test
-    void aCountStillCannotBeApprovedByWhoeverCountedIt() {
-        assertThat(bodyOf(
-                readSource("src/main/java/pride/bank/erp/stocktake/StockTakeService.java"), "approve"))
+    void aCountStillCannotBeApprovedByWhoeverOpenedIt() {
+        String service = readSource("src/main/java/pride/bank/erp/stocktake/StockTakeService.java");
+        assertThat(bodyOf(service, "approve"))
                 .as("branch-level approval is only safe because a second pair of eyes is required; "
                         + "that rule is what makes Head-Office-only approval unnecessary")
-                .contains("cannot be approved by the person who counted it");
+                .contains("requireNotTheCreator");
+        assertThat(bodyOf(service, "sendBack")).contains("requireNotTheCreator");
     }
 
     /**

@@ -165,6 +165,9 @@ public class MovementMapper {
                 .name(r.getName())
                 .status(r.getStatus() == null ? null : r.getStatus().getStatus())
                 .requesterId(r.getRequester() == null ? null : r.getRequester().getId())
+                .requesterName(r.getRequester() == null ? null
+                        : (java.util.Objects.toString(r.getRequester().getFirstName(), "") + " "
+                        + java.util.Objects.toString(r.getRequester().getLastName(), "")).trim())
                 .build();
     }
 
@@ -190,6 +193,7 @@ public class MovementMapper {
                 .serialNumber(a.getSerialNumber())
                 .make(a.getMake())
                 .model(a.getModel())
+                .assetTypeName(a.getAssetType() == null ? null : a.getAssetType().getName())
                 .build();
     }
 
@@ -201,6 +205,7 @@ public class MovementMapper {
                 .id(c.getId())
                 .name(c.getName())
                 .groupName(c.getGroupName())
+                .assetTypeName(c.getAssetType() == null ? null : c.getAssetType().getName())
                 .build();
     }
 

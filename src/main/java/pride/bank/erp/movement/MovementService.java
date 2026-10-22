@@ -751,7 +751,15 @@ public class MovementService {
                 pride.bank.erp.access.ScopeAction.VIEW);
 
         if (scope == pride.bank.erp.dashboard.DashboardScope.ALL) {
-            return;   // legitimately every branch
+            return;   // legitimately every branch, and any branch may be asked for
+        }
+
+        // A branch asked for by name (the report's filter) narrows within the scope - it is refused,
+        // not quietly ignored, when it is not the caller's own, as the maintenance report does.
+        if (criteria.getBranchId() != null
+                && !criteria.getBranchId().equals(accessScopeService.currentUserBranchId())) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "You can only view movements for your own branch.");
         }
 
         if (scope == pride.bank.erp.dashboard.DashboardScope.SELF) {
@@ -980,6 +988,50 @@ public class MovementService {
      *
      * @return the branch id, or null when this asset has never been sent away
      */
+    /**
+     * Whose write-off each asset was - the branch on its newest disposal transfer, else that
+     * transfer's source store's branch - for a page of assets in one query. Assets with no disposal
+     * transfer are absent from the map.
+     */
+    @Transactional(readOnly = true)
+    public java.util.Map<Long, Long> disposingBranches(java.util.Collection<Long> assetIds) {
+        java.util.Map<Long, Long> owners = new java.util.HashMap<>();
+        if (assetIds == null || assetIds.isEmpty()) return owners;
+        java.util.Set<Long> seen = new java.util.HashSet<>();
+        for (Object[] row : movementRepository.findDisposingBranchesForAssets(assetIds)) {
+            // Newest first, and the newest decides - as in AssetSearchDao#disposedFrom - even when it
+            // names no branch; an older disposal does not answer for it.
+            if (!seen.add((Long) row[0])) continue;
+            if (row[1] != null) owners.put((Long) row[0], (Long) row[1]);
+        }
+        return owners;
+    }
+
+    /**
+     * Who handed this asset over on its newest repair or disposal transfer: the person, beside
+     * {@link #branchLastSentAwayFrom}'s branch.
+     *
+     * <p>Read from {@code originHolder}, which the repair transfer captures from the active assignment
+     * and which the return leg aims at. The assignment itself is closed when Head Office receives the
+     * asset, so by then it no longer says who had it. Measured when this was written: set on all 25
+     * repair transfers, and equal to the last assignment's holder on every asset away.
+     *
+     * <p>Like the branch, it answers only while the caller has checked the asset is away
+     * ({@code AssetService.isAwayFromItsBranch}). A past transfer must not let somebody read an asset
+     * for good because they once sent it for repair.
+     */
+    @Transactional(readOnly = true)
+    public Long holderLastSentAwayFrom(Long assetId) {
+        if (assetId == null) return null;
+        return movementRepository
+                .findFirstByItems_Asset_IdAndMovementTypeInOrderByIdDesc(
+                        assetId,
+                        java.util.List.of(MovementType.REPAIR_TRANSFER, MovementType.DISPOSAL_TRANSFER))
+                .map(Movement::getOriginHolder)
+                .map(pride.bank.erp.user.User::getId)
+                .orElse(null);
+    }
+
     @Transactional(readOnly = true)
     public Long branchLastSentAwayFrom(Long assetId) {
         if (assetId == null) return null;

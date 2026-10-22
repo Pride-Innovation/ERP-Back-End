@@ -28,6 +28,8 @@ public class InventoryReportController {
     private final CurrentUserService currentUserService;
     private final BranchScopeService branchScope;
     private final pride.bank.erp.movement.MovementRepository movementRepository;
+    private final pride.bank.erp.movement.LoanerAvailability loanerAvailability;
+    private final MyItemsService myItemsService;
 
     /**
      * Consumable balances. With no params returns every location's balances; otherwise filters by
@@ -90,14 +92,13 @@ public class InventoryReportController {
                 HttpStatus.OK);
     }
 
-    /** What the signed-in user is currently holding — their "My Items" view. */
+    /**
+     * The signed-in person's "My Items": what they hold, what of theirs is away, and what is on its
+     * way to them. Authentication alone - it can only ever describe the caller.
+     */
     @GetMapping("/inventory/my-items")
-    public ResponseEntity<List<Asset>> myItems() {
-        User current = currentUserService.getCurrentUser();
-        if (current == null) {
-            return new ResponseEntity<>(List.of(), HttpStatus.OK);
-        }
-        return new ResponseEntity<>(reportService.assetsHeldBy(current.getId()), HttpStatus.OK);
+    public ResponseEntity<MyItemsView> myItems() {
+        return new ResponseEntity<>(myItemsService.forUser(currentUserService.getCurrentUser()), HttpStatus.OK);
     }
 
     /**
@@ -247,12 +248,121 @@ public class InventoryReportController {
      * is a legitimate reason to need to know what stores exist; together they still exclude a
      * signed-in user with none of them, which is the gap that was actually open.
      */
-    @PreAuthorize("hasAnyAuthority('" + Constants.READ_STORE + "', '" + Constants.READ_INVENTORY
-            + "', '" + Constants.RECEIVE_ASSET_IN_STORE + "', '" + Constants.CREATE_MOVEMENT
-            + "', '" + Constants.PERFORM_STOCK_TAKE + "')")
+    @PreAuthorize(STORE_ASSET_READERS)
     @GetMapping("/inventory/stores/{storeId}/assets")
     public ResponseEntity<List<Asset>> assetsInStore(@PathVariable Long storeId) {
         return new ResponseEntity<>(scopeAssets(reportService.assetsInStore(storeId)), HttpStatus.OK);
+    }
+
+    /**
+     * Who may read what a store holds. One constant for the full listing, the paged table and its
+     * filter options, so the three cannot drift into admitting different people to the same rows.
+     */
+    static final String STORE_ASSET_READERS = "hasAnyAuthority('" + Constants.READ_STORE + "', '"
+            + Constants.READ_INVENTORY + "', '" + Constants.RECEIVE_ASSET_IN_STORE + "', '"
+            + Constants.CREATE_MOVEMENT + "', '" + Constants.PERFORM_STOCK_TAKE + "')";
+
+    /**
+     * One page of a store's "Assets Held" table, filtered and sorted on the server.
+     *
+     * <p>Beside {@link #assetsInStore}, not instead of it: the movement form's picker reads the full
+     * list and must keep doing so.
+     *
+     * <p>Scoping runs <b>first</b>, through the same {@code scopeAssets} the full listing uses, and the
+     * page is cut from what survives - see {@link StoreAssetListing} for why that order is the only
+     * one that neither leaks nor miscounts. The totals are over the filtered set, not the page, so the
+     * table's header counts stay true on every page.
+     *
+     * <p>{@code includeAwayForRepair}: on a branch's own Admin store, also list that branch's assets
+     * held in the Head Office Admin store for repair - see {@link #visibleStoreAssetRows}.
+     */
+    @PreAuthorize(STORE_ASSET_READERS)
+    @GetMapping("/inventory/stores/{storeId}/assets/page")
+    public ResponseEntity<StoreAssetListing.Page> assetsInStorePage(
+            @PathVariable Long storeId,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) Long assetTypeId,
+            @RequestParam(required = false) String statusCode,
+            @RequestParam(required = false) Boolean loanable,
+            @RequestParam(required = false) Long originBranchId,
+            @RequestParam(defaultValue = "0") int pageNumber,
+            @RequestParam(defaultValue = "25") int pageSize,
+            @RequestParam(defaultValue = "assetName") String sortBy,
+            @RequestParam(defaultValue = "ASC") String sortDirection,
+            @RequestParam(defaultValue = "false") boolean includeAwayForRepair
+    ) {
+        List<StoreAssetRow> filtered = StoreAssetListing.filter(
+                visibleStoreAssetRows(storeId, includeAwayForRepair),
+                new StoreAssetListing.Criteria(search, assetTypeId, statusCode, loanable, originBranchId));
+        return ResponseEntity.ok(StoreAssetListing.page(filtered, pageNumber, pageSize, sortBy, sortDirection));
+    }
+
+    /**
+     * What the table's dropdowns may offer: values present among the rows the caller can see.
+     * Deliberately not narrowed by the active filters - picking a category must not empty the status
+     * list, or the panel could never be widened again.
+     *
+     * <p>"Sent From" applies to the stores other branches send assets into - the bank-wide IT and
+     * Disposal stores and the Head Office Admin store, which holds ADMIN-routed and external repairs
+     * ({@code originColumn}). In a branch's own Admin store everything is that branch's, so the column
+     * would only repeat it. The <em>filter</em> is narrower still: only a caller who sees every branch
+     * gets it, since a branch caller could only ever pick their own.
+     */
+    @PreAuthorize(STORE_ASSET_READERS)
+    @GetMapping("/inventory/stores/{storeId}/assets/filter-options")
+    public ResponseEntity<StoreAssetListing.FilterOptions> storeAssetFilterOptions(
+            @PathVariable Long storeId,
+            @RequestParam(defaultValue = "false") boolean includeAwayForRepair) {
+        boolean originColumn = reportService.receivesAssetsFromOtherBranches(storeId);
+        boolean offerOrigins = originColumn && branchScope.canViewAllBranches();
+        boolean awayIncluded = includeAwayForRepair && reportService.awayCompanionFor(storeId).isPresent();
+        return ResponseEntity.ok(StoreAssetListing.options(
+                visibleStoreAssetRows(storeId, includeAwayForRepair), originColumn, offerOrigins, awayIncluded));
+    }
+
+    /**
+     * The store's assets the caller may see, as table rows - scoped by {@code scopeAssets} and
+     * labelled with where each came from by {@code originLocations}, the two functions the full
+     * listing already uses. Reused rather than restated, so this table can never show a row the
+     * listing would hide, or the other way round.
+     *
+     * <h2>A branch's Admin store, and its repairs away at Head Office</h2>
+     * ADMIN-routed and external repairs are held in the Head Office Admin store, so a branch's chairs
+     * leave its own Admin store for one it cannot open - the IT store page shows a branch its laptops
+     * on the bench, and nothing showed it its chairs. With {@code includeAwayForRepair}, a branch's
+     * own Admin store lists them too: the Head Office Admin store's rows, through the same
+     * {@code scopeAssets}, narrowed to those sent from <b>this store's branch</b>. The narrowing is
+     * what keeps an all-branches viewer on Gulu's page from seeing every branch's repairs under
+     * Gulu's heading; for a branch viewer the scope already gives only what they sent. And because a
+     * sender is only recorded while the asset is away, a repaired chair leaves this list the moment
+     * it is back.
+     *
+     * <p>Not done by widening the store directory, which would also put the Head Office Admin store in
+     * every branch's movement destination pickers.
+     */
+    private List<StoreAssetRow> visibleStoreAssetRows(Long storeId, boolean includeAwayForRepair) {
+        List<Asset> visible = new java.util.ArrayList<>(scopeAssets(reportService.assetsInStore(storeId)));
+        Long awayFrom = null;
+        if (includeAwayForRepair) {
+            java.util.Optional<InventoryReportService.AwayCompanion> companion = reportService.awayCompanionFor(storeId);
+            if (companion.isPresent()) {
+                visible.addAll(scopeAssets(reportService.assetsInStore(companion.get().headOfficeAdminStoreId())));
+                awayFrom = companion.get().branchId();
+            }
+        }
+        Map<Long, Long> originByAsset = originLocations(visible);
+        Map<Long, String> names = reportService.branchNames(new java.util.HashSet<>(originByAsset.values()));
+        final Long ownStore = storeId;
+        final Long sentFrom = awayFrom;
+        return visible.stream()
+                // The page's own store in full; from the Head Office Admin store, only what this branch sent.
+                .filter(a -> a.getCurrentStore() != null && ownStore.equals(a.getCurrentStore().getId())
+                        || (sentFrom != null && sentFrom.equals(originByAsset.get(a.getId()))))
+                .map(a -> {
+                    Long origin = originByAsset.get(a.getId());
+                    return StoreAssetRow.of(a, origin, origin == null ? null : names.get(origin));
+                })
+                .toList();
     }
 
     /** Serialized assets held by any store of a given type across locations. */
@@ -268,6 +378,11 @@ public class InventoryReportController {
      * category's repair routing, so both are searched. Filtered here rather than in the browser —
      * the picker used to fetch every IT and Admin asset and filter client-side, which silently
      * returned an incomplete pool as soon as the listing exceeded one page.
+     *
+     * <p><b>Only what may be lent now</b> ({@code LoanerAvailability}, the rule the server applies when
+     * the loan is made): not already on a movement awaiting dispatch or delivery - a temporary
+     * replacement names its loaner long before anything on the asset changes, so the next one was
+     * offered the same chair - and in a lendable status, not under repair itself.
      */
     @GetMapping("/inventory/assets/temporary-pool")
     public ResponseEntity<List<Asset>> temporaryPoolAssets() {
@@ -277,7 +392,7 @@ public class InventoryReportController {
                 .filter(Asset::isTemporaryPool)
                 .filter(a -> a.getAssignedTo() == null)
                 .toList();
-        return new ResponseEntity<>(scopeAssets(assets), HttpStatus.OK);
+        return new ResponseEntity<>(scopeAssets(loanerAvailability.lendable(assets)), HttpStatus.OK);
     }
 
     /**
@@ -352,13 +467,20 @@ public class InventoryReportController {
     }
 
     /**
-     * The branch each asset was last sent from, in one query rather than one per row.
+     * The branch each asset was sent away from, in one query rather than one per row.
      *
-     * <p>Only the newest movement counts, so an asset repaired twice is not claimed by whoever owned
-     * it two repairs ago. The query returns newest first and the first row per asset wins.
+     * <p><b>Only for assets that are away now</b> - in maintenance or pending disposal - which is the
+     * rule {@code AssetService} applies to the detail page. Without that gate an asset kept the branch
+     * of its last repair after it had come home, so that branch could still list it wherever it went
+     * next and then be refused the record: a row in the list that will not open.
+     *
+     * <p>Only the newest send-away movement counts, so an asset repaired twice is not claimed by
+     * whoever owned it two repairs ago. The query returns newest first and the first row per asset wins.
      */
     private Map<Long, Long> originLocations(List<Asset> assets) {
-        List<Long> ids = assets.stream().map(Asset::getId).filter(java.util.Objects::nonNull).toList();
+        List<Long> ids = assets.stream()
+                .filter(pride.bank.erp.asset.AssetService::isAwayFromItsBranch)
+                .map(Asset::getId).filter(java.util.Objects::nonNull).toList();
         if (ids.isEmpty()) return Map.of();
 
         Map<Long, Long> newestFirst = new java.util.HashMap<>();

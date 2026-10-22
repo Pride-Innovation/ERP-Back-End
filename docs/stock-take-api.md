@@ -84,7 +84,8 @@ On submission the system quantities and variances are revealed.
 
 ### Step 4 — Approve (or send back)
 
-**The person who counted cannot approve their own count.** Approving records who accepted the
+**The person who opened the count cannot approve it or send it back.** Any other holder of
+`APPROVE_STOCK_TAKE` at the branch may, and each of them is notified on submit. Approving records who accepted the
 variances — the accountable party — and still changes no stock.
 
 `send-back` returns the sheet to `IN_PROGRESS` with mandatory remarks so the counter knows what to

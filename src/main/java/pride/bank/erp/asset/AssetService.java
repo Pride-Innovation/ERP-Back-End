@@ -145,8 +145,31 @@ public class AssetService {
             Boolean includeDeleted,
             Long branchId,
             LocalDateTime disposedFrom,
-            LocalDateTime disposedTo
+            LocalDateTime disposedTo,
+            Boolean includeAwayFromBranch,
+            Boolean byDisposingBranch
     ) {
+        // Whose write-off it was only means something on the disposed register.
+        boolean disposalOwnership = Boolean.TRUE.equals(byDisposingBranch) && Boolean.TRUE.equals(disposed);
+        /*
+         * Resolved before the try below, whose catch-all turns every exception into `null` - a
+         * refusal must reach the caller as a refusal, not as an empty success.
+         */
+        pride.bank.erp.dashboard.DashboardScope scope = accessScopeService.scopeFor(
+                pride.bank.erp.access.ScopeSubject.ASSETS, pride.bank.erp.access.ScopeAction.VIEW);
+        Long scopedBranchId = accessScopeService.resolveBranch(pride.bank.erp.access.ScopeSubject.ASSETS, null);
+        Long scopedOwnerId = accessScopeService.resolveOwner(pride.bank.erp.access.ScopeSubject.ASSETS);
+        if (scope != pride.bank.erp.dashboard.DashboardScope.ALL && scopedBranchId == null && scopedOwnerId == null) {
+            // Null means both "every branch" and "no branch on record", and downstream null reads as
+            // no restriction - so an unconfigured account was handed the whole register.
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Your account is not attached to a branch, so assets cannot be shown. "
+                            + "Ask an administrator to set your branch.");
+        }
+        // Only at BRANCH scope: an officer at SELF sees what is in their hands, and an away asset has
+        // no holder. Only when asked - the reports page asks, the assets page does not.
+        Long awayFromBranchId = Boolean.TRUE.equals(includeAwayFromBranch)
+                && scope == pride.bank.erp.dashboard.DashboardScope.BRANCH ? scopedBranchId : null;
 
         try {
             AssetPage assetPage = AssetPage.builder()
@@ -178,10 +201,10 @@ public class AssetService {
                     // at ALL scope (the multiplier a unit confers), the caller's own branch below
                     // that, and an owner id only at SELF — which is how an officer's listing became
                     // "what is in my hands" rather than "everything at my branch".
-                    .scopedBranchId(accessScopeService.resolveBranch(
-                            pride.bank.erp.access.ScopeSubject.ASSETS, null))
-                    .scopedOwnerId(accessScopeService.resolveOwner(
-                            pride.bank.erp.access.ScopeSubject.ASSETS))
+                    .scopedBranchId(scopedBranchId)
+                    .scopedOwnerId(scopedOwnerId)
+                    .awayFromBranchId(awayFromBranchId)
+                    .byDisposingBranch(disposalOwnership)
                     .includeDeleted(includeDeleted)
                     .build();
 
@@ -208,9 +231,37 @@ public class AssetService {
 
             Page<Asset> assetPageResult = assetSearchDao.findAllWithFilters(assetPage, assetSearchCriteria);
             List<AssetDAO> dtoList = mapToDTOList(assetPageResult.getContent());
+            if (disposalOwnership) {
+                labelDisposingBranch(assetPageResult.getContent(), dtoList);
+            }
             return new PageImpl<>(dtoList, assetPageResult.getPageable(), assetPageResult.getTotalElements());
         } catch (Exception e) {
             return null;
+        }
+    }
+
+    /**
+     * "Disposed From" for a page of the Disposal report, by the rule its scope and Branch filter use:
+     * the newest disposal transfer's branch, else - no transfer at all - where the asset stands.
+     */
+    private void labelDisposingBranch(List<Asset> assets, List<AssetDAO> dtos) {
+        Map<Long, Long> owners = movementService.disposingBranches(
+                assets.stream().map(Asset::getId).toList());
+        Map<Long, Branch> branches = new HashMap<>();
+        branchRepository.findAllById(new java.util.HashSet<>(owners.values()))
+                .forEach(b -> branches.put(b.getId(), b));
+        Map<Long, Asset> byId = new HashMap<>();
+        assets.forEach(a -> byId.put(a.getId(), a));
+
+        for (AssetDAO dto : dtos) {
+            Asset asset = byId.get(dto.getId());
+            Branch owner = owners.containsKey(dto.getId())
+                    ? branches.get(owners.get(dto.getId()))
+                    : (asset != null ? asset.getBranch() : null);
+            if (owner != null) {
+                dto.setDisposedFromBranchId(owner.getId());
+                dto.setDisposedFromBranchName(owner.getName());
+            }
         }
     }
 
@@ -381,8 +432,12 @@ public class AssetService {
      * <p>One asset is in maintenance with <b>no transfer movement at all</b>, so nothing ever
      * recorded where it came from and no rule can reach it for its home branch. Named here rather
      * than papered over: the answer to that one is a data correction, not a scoping change.
+     *
+     * <p>Public and static because the store listings ({@code InventoryReportController}) ask the same
+     * question before reading where an asset was sent from. One rule, or the listing shows a row the
+     * detail page then refuses to open.
      */
-    private boolean isAwayFromItsBranch(Asset asset) {
+    public static boolean isAwayFromItsBranch(Asset asset) {
         return asset.getAssetStatus() != null
                 && AWAY_FROM_BRANCH_CODES.contains(asset.getAssetStatus().getStatus());
     }
@@ -397,7 +452,7 @@ public class AssetService {
      * <p>Both put it in a store held at Head Office, and both are why a branch would need to look at
      * a record that no longer reads as theirs.
      */
-    private static final java.util.Set<String> AWAY_FROM_BRANCH_CODES =
+    public static final java.util.Set<String> AWAY_FROM_BRANCH_CODES =
             java.util.Set.of("inMaintenance", "pendingDisposal");
 
     private void requireAssetInScope(Asset asset, pride.bank.erp.access.ScopeAction action) {
@@ -431,10 +486,24 @@ public class AssetService {
              *       a past transfer, so the reach lasts exactly as long as the item is out of the
              *       branch's hands. Widening on a historical event would let a branch read an asset
              *       forever because it once sent it for repair.</li>
-             *   <li><b>The holder list is unchanged</b>, so SELF is untouched: this adds one branch
-             *       and nothing else.</li>
+             *   <li><b>One person is added: whoever handed it over</b> on that same transfer
+             *       ({@code holderLastSentAwayFrom}). The transfer closes their assignment when Head
+             *       Office receives the asset, so at SELF they would otherwise be refused the laptop
+             *       My Items lists as theirs while it is on the bench. It lapses with the branch, the
+             *       moment the asset comes home.</li>
              * </ol>
+             *
+             * <p>The person is a limb of its own, and deliberately <b>not</b> put into the owner list.
+             * At SELF an owner list that names somebody admits only them, while an empty one falls
+             * through to the branch, which is how a Head Office officer at SELF opens an unassigned
+             * asset on their own bench. Naming the sender there would quietly refuse that officer.
+             * As a separate limb it can only widen, and only by one person.
              */
+            Long sentBy = movementService.holderLastSentAwayFrom(asset.getId());
+            User viewer = sentBy != null ? currentUserService.getCurrentUser() : null;
+            if (viewer != null && sentBy.equals(viewer.getId())) {
+                return;
+            }
             accessScopeService.requireCanViewAnyOf(
                     pride.bank.erp.access.ScopeSubject.ASSETS,
                     java.util.Arrays.asList(branchId, movementService.branchLastSentAwayFrom(asset.getId())),

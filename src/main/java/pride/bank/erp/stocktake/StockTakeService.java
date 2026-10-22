@@ -62,6 +62,7 @@ public class StockTakeService {
     private final CurrentUserService currentUserService;
     private final StockTakePostingService postingService;
     private final AuditService auditService;
+    private final StockCountApprovalNotifier approvalNotifier;
 
     /** The one resolver for how far a person may reach — see AccessScopeService. */
     private final pride.bank.erp.access.AccessScopeService accessScopeService;
@@ -91,12 +92,76 @@ public class StockTakeService {
                 ? store.getLocation().getId() : null;
 
         if (action == pride.bank.erp.access.ScopeAction.MANAGE) {
-            accessScopeService.requireCanManage(
-                    pride.bank.erp.access.ScopeSubject.INVENTORY, locationId, null);
+            if (!canActAt(store)) {
+                throw new AccessDeniedException(
+                        "A stock take is done by the staff at the shelves: you can open, count, approve "
+                                + "and post counts only for stores at your own branch.");
+            }
         } else {
             accessScopeService.requireCanView(
                     pride.bank.erp.access.ScopeSubject.INVENTORY, locationId, null);
         }
+    }
+
+    /**
+     * Whether the caller may act on a count of this store: it stands at their own branch.
+     *
+     * <h2>Not the inventory MANAGE scope, deliberately</h2>
+     * Counting is a physical act at a physical place, so acting on a count belongs to the people at
+     * that branch. The general inventory reach would have let anyone holding
+     * {@code MANAGE_ALL_BRANCH_INVENTORY} - the Admin and Infra units, for their stock-order work -
+     * open, approve and post counts at every branch once granted the stock-take permissions. Viewing
+     * still follows that reach: Head Office reads every branch's counts, and acts only at its own.
+     *
+     * <p>The super administrator bypasses it, as it bypasses every check.
+     */
+    private boolean canActAt(Store store) {
+        User caller = currentUserService.getCurrentUser();
+        if (isSuperAdmin(caller)) return true;
+        Long own = caller != null && caller.getBranch() != null ? caller.getBranch().getId() : null;
+        Long locationId = store != null && store.getLocation() != null ? store.getLocation().getId() : null;
+        return own != null && own.equals(locationId);
+    }
+
+    private static boolean isSuperAdmin(User user) {
+        if (user == null) return false;
+        java.util.stream.Stream<pride.bank.erp.role.Role> roles = java.util.stream.Stream.concat(
+                java.util.stream.Stream.of(user.getTitle() != null ? user.getTitle().getRole() : null),
+                java.util.stream.Stream.concat(
+                        user.getAdditionalRoles() != null ? user.getAdditionalRoles().stream() : java.util.stream.Stream.empty(),
+                        user.getUnit() != null && user.getUnit().getRoles() != null
+                                ? user.getUnit().getRoles().stream() : java.util.stream.Stream.empty()));
+        return roles.anyMatch(r -> r != null && Constants.SUPER_ADMIN.equals(r.getName()));
+    }
+
+    /**
+     * The stores the caller may open a count for: at their own branch, not a courier, and holding at
+     * least one stock line - the IT and Disposal stores hold only serialized assets, which a stock take
+     * does not count, so a sheet for them would be empty.
+     */
+    @Transactional(readOnly = true)
+    public List<CountableStore> countableStores() {
+        User caller = currentUserService.getCurrentUser();
+        List<Store> candidates;
+        if (isSuperAdmin(caller)) {
+            candidates = storeRepository.findAll();
+        } else if (caller != null && caller.getBranch() != null) {
+            candidates = storeRepository.findByLocation_Id(caller.getBranch().getId());
+        } else {
+            candidates = List.of();
+        }
+        return candidates.stream()
+                .filter(s -> s.getStoreType() != StoreType.COURIER)
+                .map(s -> CountableStore.builder()
+                        .id(s.getId())
+                        .name(s.getName())
+                        .storeType(s.getStoreType() != null ? s.getStoreType().name() : null)
+                        .branchName(s.getLocation() != null ? s.getLocation().getName() : null)
+                        .lineCount(storeBalanceRepository.findByStore_Id(s.getId()).size())
+                        .build())
+                .filter(s -> s.getLineCount() > 0)
+                .sorted(java.util.Comparator.comparing(CountableStore::getName, java.util.Comparator.nullsLast(String::compareTo)))
+                .toList();
     }
 
     /** As above, for an action reached through the count rather than the store. */
@@ -146,6 +211,25 @@ public class StockTakeService {
                             "Asset category " + request.getAssetTypeId() + " not found"));
         }
 
+        // The lines this sheet will hold, decided before anything is saved.
+        final AssetType scope = assetType;
+        List<StoreBalance> toCount = storeBalanceRepository.findByStore_Id(store.getId()).stream()
+                .filter(balance -> {
+                    if (scope == null) return true;
+                    AssetType lineType = balance.getCommodity() != null ? balance.getCommodity().getAssetType() : null;
+                    return lineType != null && lineType.getId().equals(scope.getId());
+                })
+                .toList();
+
+        // An empty sheet counts nothing and would sit in the store's one open slot. Refused before the
+        // count is created, so nothing is left behind - not even inside a caller's transaction.
+        if (toCount.isEmpty()) {
+            throw new IllegalArgumentException(store.getName() + " holds no stock lines"
+                    + (assetType != null ? " in " + assetType.getName() : "")
+                    + " to count. A stock take counts consumable stock; serialized assets such as "
+                    + "laptops are not counted here.");
+        }
+
         StockCount count = countRepository.save(StockCount.builder()
                 .store(store)
                 .assetType(assetType)
@@ -157,14 +241,8 @@ public class StockTakeService {
         count.setReference(String.format("SC/%d/%06d", LocalDateTime.now().getYear(), count.getId()));
         count = countRepository.save(count);
 
-        List<StoreBalance> balances = storeBalanceRepository.findByStore_Id(store.getId());
-        final AssetType scope = assetType;
         int created = 0;
-        for (StoreBalance balance : balances) {
-            if (scope != null) {
-                AssetType lineType = balance.getCommodity() != null ? balance.getCommodity().getAssetType() : null;
-                if (lineType == null || !lineType.getId().equals(scope.getId())) continue;
-            }
+        for (StoreBalance balance : toCount) {
             lineRepository.save(StockCountLine.builder()
                     .stockCount(count)
                     .commodity(balance.getCommodity())
@@ -237,6 +315,11 @@ public class StockTakeService {
         requireStatus(count, "submit", StockCountStatus.DRAFT, StockCountStatus.IN_PROGRESS);
 
         List<StockCountLine> lines = lines(countId);
+        // The screen blocked an empty sheet; the server did not, so one could be submitted, approved
+        // and "posted" having counted nothing.
+        if (lines.isEmpty()) {
+            throw new IllegalArgumentException("This count sheet has no lines, so there is nothing to submit.");
+        }
         List<String> uncounted = lines.stream()
                 .filter(l -> l.getCountedQuantity() == null)
                 .map(l -> l.getCommodity().getName())
@@ -274,7 +357,12 @@ public class StockTakeService {
         log.info("Stock count {} submitted for review", count.getReference());
         audit(AuditEventType.UPDATED, "STOCK_COUNT_SUBMITTED", AuditSeverity.INFO, count,
                 String.format("Submitted stock count %s for review", count.getReference()));
-        return toView(countRepository.save(count), true);
+        CountView view = toView(countRepository.save(count), true);
+        // Sent once the submission commits; see the notifier for who is told and why.
+        approvalNotifier.onSubmitted(count,
+                new StockCountApprovalNotifier.CountViewSummary(view.getTotalLines(), view.getLinesWithVariance()),
+                currentUserService.getCurrentUser());
+        return view;
     }
 
     // ── Review ──────────────────────────────────────────────────────────────
@@ -287,11 +375,7 @@ public class StockTakeService {
         requireStatus(count, "approve", StockCountStatus.SUBMITTED);
 
         User approver = currentUserService.getCurrentUser();
-        if (approver != null && count.getCountedBy() != null
-                && approver.getId().equals(count.getCountedBy().getId())) {
-            throw new IllegalArgumentException(
-                    "A count cannot be approved by the person who counted it.");
-        }
+        requireNotTheCreator(count, approver);
 
         count.setStatus(StockCountStatus.APPROVED);
         count.setApprovedBy(approver);
@@ -303,12 +387,33 @@ public class StockTakeService {
         return toView(countRepository.save(count), true);
     }
 
+    /**
+     * Maker-checker: whoever opened the count may not decide it, whatever they hold.
+     *
+     * <p>{@code countedBy} is the person who opened the sheet, set once and never moved. The decision
+     * belongs to <b>any other</b> holder of APPROVE_STOCK_TAKE at the branch - deliberately not also
+     * excluding whoever entered figures or submitted. A branch is staffed with two of them (BM and BOM);
+     * if one opens and the other counts, a wider rule would leave nobody able to approve.
+     *
+     * <p>Applies to approving and to sending back alike, since both are the reviewer's decision. There
+     * is no exemption, the super administrator included.
+     */
+    private static void requireNotTheCreator(StockCount count, User reviewer) {
+        if (reviewer != null && count.getCountedBy() != null
+                && reviewer.getId().equals(count.getCountedBy().getId())) {
+            throw new IllegalArgumentException(
+                    "A count cannot be approved or sent back by the person who opened it. "
+                            + "Any other approver at this branch can review it.");
+        }
+    }
+
     /** Sends the sheet back to be counted again. */
     @Transactional
     public CountView sendBack(Long countId, ReviewRequest request) throws NotFoundException {
         StockCount count = find(countId);
         requireCountInScope(count, pride.bank.erp.access.ScopeAction.MANAGE);
         requireStatus(count, "send back", StockCountStatus.SUBMITTED);
+        requireNotTheCreator(count, currentUserService.getCurrentUser());
 
         if (request == null || isBlank(request.getRemarks())) {
             throw new IllegalArgumentException("Say why the sheet is going back, so it can be corrected");
@@ -572,6 +677,8 @@ public class StockTakeService {
                 .linesWithVariance(withVariance)
                 .netUnitVariance(net)
                 .readyToSubmit(!lines.isEmpty() && counted == lines.size())
+                .storeBranchName(count.getStore().getLocation() != null ? count.getStore().getLocation().getName() : null)
+                .actionable(canActAt(count.getStore()))
                 .lines(lineViews)
                 .build();
     }
