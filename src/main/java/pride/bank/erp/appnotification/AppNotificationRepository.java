@@ -17,6 +17,9 @@ public interface AppNotificationRepository extends JpaRepository<AppNotification
 
     long countByRecipientIdAndIsRead(Long recipientId, boolean isRead);
 
+    /** Whether this person was already told this about this record - so a notice goes out once. */
+    boolean existsByRecipientIdAndTypeAndEntityId(Long recipientId, String type, Long entityId);
+
     @Modifying
     @Query("UPDATE AppNotification n SET n.isRead = true WHERE n.recipient.id = :recipientId AND n.isRead = false")
     void markAllReadByRecipientId(@Param("recipientId") Long recipientId);

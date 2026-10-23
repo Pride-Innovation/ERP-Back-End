@@ -64,9 +64,10 @@ public class ApprovalWorkflowController {
     public ResponseEntity<ResolvedApprovalWorkflowDTO> resolve(
             @RequestParam("categoryId") Long categoryId,
             @RequestParam(value = "branchId", required = false) Long branchId,
-            @RequestParam(value = "requesterId", required = false) Long requesterId
+            @RequestParam(value = "requesterId", required = false) Long requesterId,
+            @RequestParam(value = "restock", required = false, defaultValue = "false") boolean restock
     ) {
-        return ResponseEntity.ok(resolveService.resolve(categoryId, branchId, requesterId));
+        return ResponseEntity.ok(resolveService.resolve(categoryId, branchId, requesterId, restock));
     }
 
     @PreAuthorize("hasAuthority('" + Constants.READ_SETTING + "')")

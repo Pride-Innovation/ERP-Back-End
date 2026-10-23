@@ -137,6 +137,24 @@ public class RequestService {
         Long requesterBranchId = requester.getBranch().getId();
         boolean isHeadOfficeUser = requester.getBranch().isHeadOffice();
 
+        /*
+         * A store restock is asked for deliberately, not guessed from who is asking. It needs
+         * RESTOCK_STORE, and only a branch can ask: Head Office is where restocks come from, and it
+         * fills its own store through stock orders.
+         */
+        if (body.isForStoreRestock()) {
+            boolean mayRestock = requester.getAuthorities().stream()
+                    .anyMatch(a -> Constants.RESTOCK_STORE.equals(a.getAuthority()));
+            if (!mayRestock) {
+                throw new org.springframework.security.access.AccessDeniedException(
+                        "Restocking the branch store needs the Restock Store permission.");
+            }
+            if (isHeadOfficeUser) {
+                throw new BusinessRuleException("Head Office restocks its store through stock orders, "
+                        + "not requests. A store-restock request is raised by a branch.");
+            }
+        }
+
         log.info("Request from user at branch ID: {}, isHeadOfficeUser: {}", requesterBranchId, isHeadOfficeUser);
 
         // Track Branch Stationery and Non stationery request
@@ -1001,6 +1019,7 @@ public class RequestService {
                 .description(body.getDescription())
                 .isBranchStationery(isBranchStationeryRequest)
                 .isBranchNonStationery(isBranchNonStationeryRequest)
+                .forStoreRestock(body.isForStoreRestock())
                 .deleted(false)
                 .build();
     }
@@ -1491,6 +1510,7 @@ public class RequestService {
                 .requester(request.getRequester())
                 .currentApprover(request.getCurrentApprover())
                 .currentUnit(request.getCurrentUnit())
+                .forStoreRestock(request.isForStoreRestock())
                 .commodities(getRequestCommodities(request))
                 .requestReports(request.getRequestReportDAOS())
                 .assetTypeId(request.getAssetType() != null ? request.getAssetType().getId() : null)
@@ -1565,6 +1585,7 @@ public class RequestService {
                         userBuilder.builder(request.getCurrentApprover()) : null)
                 // Needed by the detail page to know a group step is its viewer's to take.
                 .currentUnit(request.getCurrentUnit())
+                .forStoreRestock(request.isForStoreRestock())
                 // And what kind of action is due, so the page offers that one and no other.
                 .currentStepType(currentStepTypes(List.of(request)).get(request.getId()))
                 .assetTypeId(request.getAssetType() != null ? request.getAssetType().getId() : null)

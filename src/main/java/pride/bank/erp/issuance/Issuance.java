@@ -64,6 +64,16 @@ public class Issuance {
     @NotAudited
     private User issuer;
 
+    /**
+     * Whether this issuance's stock is accounted for: debited from the store at approval (a direct,
+     * same-location issuance), or handed to the fulfilment movement (cross-location). False from
+     * issue until approval, which is the window a rejection must leave untouched. V29 sets every
+     * issuance that existed before this rule to true, since those were settled under the old one.
+     */
+    @Builder.Default
+    @Column(name = "stock_settled", nullable = false)
+    private boolean stockSettled = false;
+
     @CreatedDate
     @Column(nullable = false, updatable = false)
     private LocalDateTime createDate;

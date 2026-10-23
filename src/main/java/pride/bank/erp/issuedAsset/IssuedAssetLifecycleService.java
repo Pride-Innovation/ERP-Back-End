@@ -79,6 +79,13 @@ public class IssuedAssetLifecycleService {
         if (request == null || request.getRequester() == null) {
             return;
         }
+        // A store restock's assets belong to the branch store, not to whoever asked for them. Its
+        // movement put them on the shelf as stock ready to issue; acknowledging receipt confirms the
+        // delivery and must not hand them to the requester.
+        if (request.isForStoreRestock()) {
+            log.info("Request {} restocked its branch store; issued assets stay in the store", request.getId());
+            return;
+        }
         User requester = request.getRequester();
         Status assigned = statusService.findByStatusCode(CODE_ASSET_ASSIGNED);
 

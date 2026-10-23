@@ -15,7 +15,6 @@ import pride.bank.erp.requestCommodity.RequestCommodity;
 import pride.bank.erp.requestCommodity.RequestCommodityRepository;
 import pride.bank.erp.store.Store;
 import pride.bank.erp.store.StoreService;
-import pride.bank.erp.user.User;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -141,43 +140,38 @@ public class FulfillmentService {
         }
         if (items.isEmpty()) return;
 
-        MovementType type = isReplenishment(request.getRequester())
-                ? MovementType.REPLENISHMENT
-                : MovementType.ISSUANCE_FULFILLMENT;
-
-        // Destination is the requester, not the branch store.
-        //
-        // This movement used to end at the destination's Admin store, which meant it could only ever
-        // describe half the journey; a second movement was then created automatically once it was
-        // received, to carry the goods the last step from that store to the person who asked for
-        // them. One request, two rows, the second appearing on its own.
-        //
-        // The custody stop has not been lost — it belongs to the Consignment this movement travels
-        // on. Arrival credits the branch store, and this movement completes when the requester
-        // signs, drawing its items back out of it. A replenishment, whose requester is the branch's
-        // own Operations Manager, still ends with a person for the same reason: somebody signs for
-        // the stock.
-        MovementDTO dto = MovementDTO.builder()
-                .movementType(type)
+        /*
+         * Where the goods go depends on what the request is for, chosen on the request (V30).
+         *
+         * A store restock ends in the requester's branch Admin store: consumables are credited there
+         * and assets land as stock ready to issue ("Available for Issuance", via restoreStatusCode),
+         * not with anybody. This replaced a guess - a request from the branch's designated BOM was a
+         * "replenishment" - which still delivered to the BOM as a person, so restocked consumables
+         * counted as used on arrival and the store never saw them.
+         *
+         * A personal request ends with the requester. The custody stop belongs to the Consignment
+         * this movement travels on: arrival credits the branch store, and the movement completes when
+         * the requester signs, drawing its items back out of it.
+         */
+        MovementDTO.MovementDTOBuilder dto = MovementDTO.builder()
                 .sourceStoreId(sourceStore.getId())
-                .recipientUserId(request.getRequester().getId())
                 .requestId(request.getId())
-                .remarks("Auto-created at issuance approval for cross-location fulfilment")
-                .items(items)
-                .build();
+                .items(items);
+        if (request.isForStoreRestock()) {
+            dto.movementType(MovementType.REPLENISHMENT)
+                    .destStoreId(destStore.getId())
+                    .restoreStatusCode("issuanceAvailable")
+                    .remarks("Auto-created at issuance approval to restock " + destStore.getName());
+        } else {
+            dto.movementType(MovementType.ISSUANCE_FULFILLMENT)
+                    .recipientUserId(request.getRequester().getId())
+                    .remarks("Auto-created at issuance approval for cross-location fulfilment");
+        }
+        MovementType type = request.isForStoreRestock() ? MovementType.REPLENISHMENT : MovementType.ISSUANCE_FULFILLMENT;
 
-        Movement movement = movementService.createMovement(dto);
-        log.info("Created fulfilment movement {} for request {} ({} → {} for {})",
-                movement.getId(), request.getId(), source.getName(), destination.getName(),
-                request.getRequester().getId());
-    }
-
-    /** A request raised by a branch's BOM is a stock replenishment rather than a personal issuance. */
-    private boolean isReplenishment(User requester) {
-        return requester != null
-                && requester.getBranch() != null
-                && requester.getBranch().getBranchOperationsManager() != null
-                && requester.getId() != null
-                && requester.getId().equals(requester.getBranch().getBranchOperationsManager().getId());
+        Movement movement = movementService.createMovement(dto.build());
+        log.info("Created {} movement {} for request {} ({} → {}{})",
+                type, movement.getId(), request.getId(), source.getName(), destination.getName(),
+                request.isForStoreRestock() ? " store" : " for " + request.getRequester().getId());
     }
 }

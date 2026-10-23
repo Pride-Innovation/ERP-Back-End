@@ -49,6 +49,7 @@ public class ApprovalWorkflowService {
                 .assetTypes(loadAssetTypes(dto.getAssetTypeIds()))
                 .branchId(dto.getBranchId())
                 .branchScope(dto.getBranchScope() != null ? dto.getBranchScope() : WorkflowBranchScope.ALL)
+                .appliesTo(dto.getAppliesTo() != null ? dto.getAppliesTo() : WorkflowPurpose.BOTH)
                 .active(dto.isActive())
                 .priority(dto.getPriority() > 0 ? dto.getPriority() : 100)
                 .requesterRoles(loadRoles(dto.getRequesterRoleIds()))
@@ -67,6 +68,7 @@ public class ApprovalWorkflowService {
         workflow.setAssetTypes(loadAssetTypes(dto.getAssetTypeIds()));
         workflow.setBranchId(dto.getBranchId());
         workflow.setBranchScope(dto.getBranchScope() != null ? dto.getBranchScope() : WorkflowBranchScope.ALL);
+        workflow.setAppliesTo(dto.getAppliesTo() != null ? dto.getAppliesTo() : WorkflowPurpose.BOTH);
         workflow.setActive(dto.isActive());
         workflow.setPriority(dto.getPriority() > 0 ? dto.getPriority() : 100);
         workflow.setRequesterRoles(loadRoles(dto.getRequesterRoleIds()));
@@ -204,6 +206,7 @@ public class ApprovalWorkflowService {
                 .assetTypeNames(assetTypeNames)
                 .branchId(w.getBranchId())
                 .branchScope(w.getBranchScope())
+                .appliesTo(w.getAppliesTo() != null ? w.getAppliesTo() : WorkflowPurpose.BOTH)
                 .active(w.isActive())
                 .priority(w.getPriority())
                 .requesterRoleIds(requesterRoleIds)

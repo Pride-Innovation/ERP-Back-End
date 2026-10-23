@@ -186,6 +186,50 @@ public interface MovementRepository extends JpaRepository<Movement, Long> {
             + "ORDER BY m.id DESC")
     List<Movement> findOpenMovementsComingTo(@Param("userId") Long userId);
 
+    /**
+     * Consumables promised out of a store by movements that have not drawn them yet, per commodity.
+     *
+     * <p>A movement draws from its source store at custody handoff (inter-location) or at completion
+     * (intra-location), so until {@code custodyTransferSettled} its quantity is still on that store's
+     * shelf and spoken for. Mirrors where {@code InventoryService} will debit, so "available" and the
+     * debit can never disagree.
+     *
+     * @return rows of {@code [commodityId, quantity]}
+     */
+    @Query("SELECT i.commodity.id, SUM(i.quantity) FROM Movement m JOIN m.items i "
+            + "WHERE m.sourceStore.id = :storeId "
+            + "AND m.custodyTransferSettled = false AND m.inventorySettled = false "
+            + "AND m.status NOT IN (pride.bank.erp.movement.MovementStatus.COMPLETED, "
+            + "                     pride.bank.erp.movement.MovementStatus.CANCELLED) "
+            + "GROUP BY i.commodity.id")
+    List<Object[]> findPromisedFromSource(@Param("storeId") Long storeId);
+
+    /**
+     * Consumables landed in a store by a consignment and waiting for their recipient to sign:
+     * {@code applyConsignmentArrival} credited them, and completion will draw them back out
+     * ({@code MovementService#debitSourceFor}). Spoken for in the meantime.
+     *
+     * @return rows of {@code [commodityId, quantity]}
+     */
+    @Query("SELECT i.commodity.id, SUM(i.quantity) FROM Movement m JOIN m.items i JOIN m.consignment c "
+            + "WHERE c.landingStore.id = :storeId "
+            + "AND c.status = pride.bank.erp.consignment.ConsignmentStatus.ARRIVED "
+            + "AND m.inventorySettled = false "
+            + "AND m.status NOT IN (pride.bank.erp.movement.MovementStatus.COMPLETED, "
+            + "                     pride.bank.erp.movement.MovementStatus.CANCELLED) "
+            + "GROUP BY i.commodity.id")
+    List<Object[]> findPromisedAtLanding(@Param("storeId") Long storeId);
+
+    /**
+     * Movements not yet completed or cancelled carrying any of these assets, as
+     * {@code [assetId, movementId]} - so a refusal can name the movement an asset is already on.
+     */
+    @Query("SELECT a.id, m.id FROM Movement m JOIN m.items i JOIN i.asset a "
+            + "WHERE a.id IN :assetIds "
+            + "AND m.status NOT IN (pride.bank.erp.movement.MovementStatus.COMPLETED, "
+            + "                     pride.bank.erp.movement.MovementStatus.CANCELLED)")
+    List<Object[]> findOpenMovementsCarrying(@Param("assetIds") java.util.Collection<Long> assetIds);
+
     @Query("SELECT DISTINCT a.id FROM Movement m JOIN m.items i JOIN i.asset a "
             + "WHERE a.id IN :assetIds "
             + "AND m.status NOT IN (pride.bank.erp.movement.MovementStatus.COMPLETED, "

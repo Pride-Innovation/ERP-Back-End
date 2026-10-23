@@ -148,6 +148,9 @@ public class DataInitializer {
     private final AssetTrailPermissionSeeder assetTrailPermissionSeeder;
     private final UserAccessPermissionSeeder userAccessPermissionSeeder;
     private final RepairPermissionSeeder repairPermissionSeeder;
+    private final RestockPermissionSeeder restockPermissionSeeder;
+    private final IssueWithoutRequestPermissionSeeder issueWithoutRequestPermissionSeeder;
+    private final WorkflowSeeder workflowSeeder;
     private final TitleSeeder titleSeeder;
     private final BranchHeadOfficeSeeder branchHeadOfficeSeeder;
     private final AssetCategoryFeatureSeeder assetCategoryFeatureSeeder;
@@ -231,6 +234,12 @@ public class DataInitializer {
              * OneTimeSeed for its marker instead.
              */
             repairPermissionSeeder.seedRepairPermission();
+            // Same shape: RESTOCK_STORE exists from initializePermissions() above, and is handed to
+            // BM and BOM once through OneTimeSeed.
+            restockPermissionSeeder.seedRestockPermission();
+            // And ISSUE_WITHOUT_REQUEST, once, to every role that held CREATE_MOVEMENT - nobody who
+            // could hand stock to a person yesterday loses it today.
+            issueWithoutRequestPermissionSeeder.seed();
             // After the roles exist and before titles are wired: gives Admin and Infra their
             // standing, and pins every seeded role to an explicit dashboard scope.
             unitRoleSeeder.seedUnitRoles();
@@ -245,6 +254,10 @@ public class DataInitializer {
 
             // Phase 1 (Store foundation): typed stores per location + legacy balance backfill.
             storeSeeder.seedStoresAndMigrateBalances();
+
+            // Last: a workflow points at categories, units and roles, all seeded above. Writes only
+            // into an empty workflow table, once - an existing environment's workflows are its own.
+            workflowSeeder.seedWorkflows();
         };
     }
 
@@ -300,6 +313,12 @@ public class DataInitializer {
                  * the right default for a permission that suspends somebody's access.
                  */
                 ensurePermission(MANAGE_USER_ACCESS),
+                // The store-restock checkbox on a request. Granted once to BM and BOM by
+                // RestockPermissionSeeder; who holds it afterwards is Settings' decision.
+                ensurePermission(pride.bank.erp.helper.Constants.RESTOCK_STORE),
+                // Giving stock to a person with no request. Granted once to the roles that could do
+                // it the day it shipped (IssueWithoutRequestPermissionSeeder).
+                ensurePermission(pride.bank.erp.helper.Constants.ISSUE_WITHOUT_REQUEST),
                 // Audit Trails
                 ensurePermission(READ_AUDIT),
                 ensurePermission(CREATE_AUDIT),

@@ -391,6 +391,10 @@ public class InventoryService {
                     // moved it, leaving the previous holder still recorded — the asset then read as
                     // both "in the Admin store" and "assigned to Jane" at the same time.
                     returnAssetToStore(asset, dest);
+                    // A store restock carries "issuanceAvailable": the asset was stamped Issued when
+                    // Head Office issued it, and lands on the branch shelf as stock ready to issue.
+                    // No other movement of these types carries a restore status.
+                    applyRestoreStatus(movement, asset);
                 }
             }
         }

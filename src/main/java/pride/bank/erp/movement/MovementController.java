@@ -36,7 +36,9 @@ public class MovementController {
     @PreAuthorize("hasAuthority('" + Constants.CREATE_MOVEMENT + "')")
     @PostMapping("/movements")
     public ResponseEntity<MovementResponseDTO> createMovement(@RequestBody MovementDTO dto) throws NotFoundException {
-        return new ResponseEntity<>(movementMapper.toDto(movementService.createMovement(dto)), HttpStatus.CREATED);
+        // The form's path: it adds the rules a person creating a movement must meet. The system's own
+        // flows call createMovement directly, with their own checks.
+        return new ResponseEntity<>(movementMapper.toDto(movementService.createFromForm(dto)), HttpStatus.CREATED);
     }
 
     /** Approve the current tier of a standalone movement's approval ladder. */

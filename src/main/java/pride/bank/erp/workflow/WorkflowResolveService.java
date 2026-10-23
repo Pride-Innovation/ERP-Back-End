@@ -48,6 +48,12 @@ public class WorkflowResolveService {
 
     @Transactional(readOnly = true)
     public ResolvedApprovalWorkflowDTO resolve(Long categoryId, Long branchId, Long requesterId) {
+        return resolve(categoryId, branchId, requesterId, false);
+    }
+
+    /** As above, for a personal request or a store restock - which can match different workflows. */
+    @Transactional(readOnly = true)
+    public ResolvedApprovalWorkflowDTO resolve(Long categoryId, Long branchId, Long requesterId, boolean restock) {
         AssetType category = assetTypeRepository.findById(categoryId)
                 .orElseThrow(() -> new NotFoundException("Asset category " + categoryId + " not found"));
 
@@ -69,7 +75,7 @@ public class WorkflowResolveService {
         Long effectiveBranchId = branch != null ? branch.getId() : null;
 
         List<ApprovalWorkflow> candidates = workflowRepository.findActiveWorkflowsForRequest(
-                effectiveBranchId, categoryId, scope, requesterRoleIds);
+                effectiveBranchId, categoryId, scope, requesterRoleIds, WorkflowPurpose.of(restock));
 
         if (candidates.isEmpty()) {
             return ResolvedApprovalWorkflowDTO.builder()

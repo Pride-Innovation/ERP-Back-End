@@ -31,6 +31,7 @@ public class StoreService {
     private final CurrentUserService currentUserService;
     private final InventoryService inventoryService;
     private final pride.bank.erp.config.BranchScopeService branchScope;
+    private final pride.bank.erp.inventory.IssueStockCheckService issueStockCheckService;
 
     /**
      * Adds or updates commodities in the ADMIN store of a specific branch.
@@ -62,6 +63,10 @@ public class StoreService {
         // going through the service that is supposed to be the single authority over balances.
         for (CommodityWithDetailsDao dao : commodities) {
             inventoryService.creditConsumable(adminStore, dao.getCommodity(), dao.getDeliveredQuantity(), context);
+        }
+        // A delivery may be what a request waiting at its Issue step needed. Told after commit.
+        if (adminStore != null) {
+            issueStockCheckService.onStockArrived(adminStore.getId());
         }
     }
 

@@ -78,6 +78,7 @@ public class WorkflowEngineService {
     private final pride.bank.erp.issuance.IssuanceRepository issuanceRepository;
     private final pride.bank.erp.issuedAsset.IssuedAssetLifecycleService issuedAssetLifecycleService;
     private final pride.bank.erp.auditing.trail.AuditService auditService;
+    private final pride.bank.erp.inventory.IssueStockCheckService issueStockCheckService;
 
     @Value("${application.admin.email}")
     private String adminEmail;
@@ -99,6 +100,15 @@ public class WorkflowEngineService {
         ApprovalWorkflow workflow = resolveWorkflow(request, assetTypeId);
 
         if (workflow == null || workflow.getSteps().isEmpty()) {
+            // A restock never falls back to the legacy supervisor routing, which knows nothing of
+            // where a restock is delivered. It is refused, naming what is missing, and the whole
+            // request creation rolls back with it.
+            if (request.isForStoreRestock()) {
+                throw new IllegalArgumentException("No active workflow handles store-restock requests"
+                        + (request.getAssetType() != null ? " for " + request.getAssetType().getName() : "")
+                        + ". Ask an administrator to add one under Settings > Approval Workflows "
+                        + "(Applies to: Store restock).");
+            }
             log.warn("No active workflow found for request {} — falling back to legacy routing", request.getId());
             return null;
         }
@@ -683,6 +693,12 @@ public class WorkflowEngineService {
         request.setCurrentUnit(stepUnit);
         requestRepository.save(request);
 
+        // A request reaching its Issue step short of stock waits there; say so to the requester and
+        // the issuer rather than leaving it to look like an issuer who has not acted. After commit.
+        if (step.getStepType() == StepType.ISSUANCE) {
+            issueStockCheckService.onIssueStepReached(request.getId());
+        }
+
         // Send email to approver (or group)
         if (approverEmail != null) {
             String greeting = (approver != null) ? approver.getFirstName() : "Team";
@@ -776,7 +792,8 @@ public class WorkflowEngineService {
 
         Set<Long> requesterRoleIds = request.getRequester().getEffectiveRoleIds();
         List<ApprovalWorkflow> candidates = workflowRepository.findActiveWorkflowsForRequest(
-                branchId, assetTypeId, scope, requesterRoleIds);
+                branchId, assetTypeId, scope, requesterRoleIds,
+                pride.bank.erp.workflow.WorkflowPurpose.of(request.isForStoreRestock()));
         return candidates.isEmpty() ? null : candidates.get(0);
     }
 
@@ -872,6 +889,9 @@ public class WorkflowEngineService {
     }
 
     public User resolveApprover(ApprovalStep step, Request request) {
+        if (isBranchPersonIssuanceStep(step)) {
+            return branchIssuanceApprover(step, request);
+        }
         // Role-based types climb the SUBJECT's reporting line — the requester by default, or the
         // issuer when the step is configured that way (e.g. issuance approval by the issuer's manager).
         User subject = subjectFor(step, request);
@@ -892,6 +912,87 @@ public class WorkflowEngineService {
             case REQUESTER -> request.getRequester();
         };
         return substituteIfOnLeave(candidate);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Branch-store issuance (Phase 3, WORKFLOW.md)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * An Issue step, or an issuance-approval step, routed to the branch's BOM or BM: a workflow that
+     * keeps a request at its branch and issues it from the branch store. Existing workflows route
+     * these steps to a unit or a manager and are unaffected.
+     */
+    private static boolean isBranchPersonIssuanceStep(ApprovalStep step) {
+        boolean branchRole = step.getApproverType() == StepApproverType.BOM
+                || step.getApproverType() == StepApproverType.BRANCH_MANAGER;
+        boolean issuing = step.getStepType() == StepType.ISSUANCE
+                || (step.getStepType() == StepType.REQUEST_APPROVAL
+                    && step.getApproverSubject() == pride.bank.erp.workflow.ApproverSubject.ISSUER);
+        return branchRole && issuing;
+    }
+
+    /**
+     * Who acts on a branch issuance step, under maker-checker.
+     *
+     * <p>Nobody issues their own request, and an issuance is approved by somebody who neither asked
+     * for it nor issued it. So the configured role (BOM or BM) is tried first and the other second,
+     * skipping anyone excluded: when the BOM raised the request, the BM issues it. When nobody is left
+     * the answer is null and the step <b>waits</b> - it is never skipped
+     * ({@link #shouldSkipStep}), because skipping an Issue step would skip the issuing. The issuance
+     * and approval services refuse the excluded people outright, whatever the routing says.
+     *
+     * <p>The BOM and BM are found by the branch record's own fields first, and otherwise by who at the
+     * branch holds the role: measured when this was written, no branch had either field set, while
+     * the people holding the titles were there.
+     */
+    private User branchIssuanceApprover(ApprovalStep step, Request request) {
+        User subject = subjectFor(step, request);
+        pride.bank.erp.branch.Branch branch = subject != null ? subject.getBranch() : null;
+        if (branch == null) return null;
+
+        java.util.Set<Long> excluded = new java.util.HashSet<>();
+        if (request.getRequester() != null) excluded.add(request.getRequester().getId());
+        if (step.getStepType() == StepType.REQUEST_APPROVAL) {
+            issuanceRepository.findByRequestId(request.getId())
+                    .map(pride.bank.erp.issuance.Issuance::getIssuer)
+                    .ifPresent(issuer -> excluded.add(issuer.getId()));
+        }
+
+        boolean bomFirst = step.getApproverType() == StepApproverType.BOM;
+        List<User> candidates = bomFirst
+                ? java.util.Arrays.asList(branchRoleHolder(branch, true), branchRoleHolder(branch, false))
+                : java.util.Arrays.asList(branchRoleHolder(branch, false), branchRoleHolder(branch, true));
+        for (User candidate : candidates) {
+            User acting = substituteIfOnLeave(candidate);
+            if (acting != null && !excluded.contains(acting.getId())) return acting;
+        }
+        log.info("Request {}: nobody at {} may act on '{}' - the BOM and BM are its requester or issuer; it waits",
+                request.getId(), branch.getName(), step.getStepName());
+        return null;
+    }
+
+    /** The branch's BOM (or BM): its recorded field, else an active user there holding the role. */
+    private User branchRoleHolder(pride.bank.erp.branch.Branch branch, boolean operationsManager) {
+        User recorded = operationsManager ? branch.getBranchOperationsManager() : branch.getBranchManager();
+        if (recorded != null) return recorded;
+        String role = operationsManager ? "BRANCH_OPERATIONS_MANAGER" : "BRANCH_MANAGER";
+        return userRepository.findAll().stream()
+                .filter(u -> u.getBranch() != null && u.getBranch().getId().equals(branch.getId()))
+                .filter(u -> u.isEnabled() && !u.isBlocked())
+                .filter(u -> holdsRole(u, role))
+                .min(java.util.Comparator.comparing(User::getId))
+                .orElse(null);
+    }
+
+    private static boolean holdsRole(User user, String roleName) {
+        java.util.stream.Stream<pride.bank.erp.role.Role> roles = java.util.stream.Stream.concat(
+                java.util.stream.Stream.of(user.getTitle() != null ? user.getTitle().getRole() : null),
+                java.util.stream.Stream.concat(
+                        user.getAdditionalRoles() != null ? user.getAdditionalRoles().stream() : java.util.stream.Stream.empty(),
+                        user.getUnit() != null && user.getUnit().getRoles() != null
+                                ? user.getUnit().getRoles().stream() : java.util.stream.Stream.empty()));
+        return roles.anyMatch(r -> r != null && roleName.equals(r.getName()));
     }
 
     /**
@@ -1023,6 +1124,11 @@ public class WorkflowEngineService {
         // workflow's terminal role.
         if (isLadderApprovalStep(step)) {
             return !ladderChainStepOrders.contains(step.getStepOrder());
+        }
+        // A branch issuance step with nobody to act waits; it is never skipped, because skipping an
+        // Issue step would skip the issuing (see branchIssuanceApprover).
+        if (isBranchPersonIssuanceStep(step)) {
+            return matchesSkipRole(step, request.getRequester());
         }
         return matchesSkipRole(step, request.getRequester())
                 || !stepHasRecipient(step, request);

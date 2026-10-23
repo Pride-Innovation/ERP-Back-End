@@ -81,6 +81,7 @@ class IssuanceAssetGuardTest {
     @Mock private StoreBalanceRepository storeBalanceRepository;
     @Mock private WorkflowEngineService workflowEngineService;
     @Mock private InventoryService inventoryService;
+    @Mock private pride.bank.erp.inventory.StockAvailabilityService stockAvailabilityService;
 
     private IssuanceService issuanceService;
 
@@ -91,13 +92,15 @@ class IssuanceAssetGuardTest {
                 issuedCommodityRepository, issuedAssetRepository, storeService, assetService,
                 assetRepository, requestService, requestRepository, assetAssignmentHistoryRepository,
                 currentUserService, emailService, userRepository, userBuilder,
-                storeBalanceRepository, workflowEngineService, inventoryService);
+                storeBalanceRepository, workflowEngineService, inventoryService, stockAvailabilityService);
 
         Branch branch = Branch.builder().id(BRANCH_ID).build();
-        User person = User.builder().id(1L).branch(branch).build();
+        // Two people: nobody issues their own request.
+        User issuer = User.builder().id(1L).branch(branch).build();
+        User requester = User.builder().id(2L).branch(branch).build();
 
-        when(userService.findUser(anyLong())).thenReturn(person);
-        when(currentUserService.getCurrentUser()).thenReturn(person);
+        when(userService.findUser(anyLong())).thenReturn(requester);
+        when(currentUserService.getCurrentUser()).thenReturn(issuer);
         when(requestService.findRequest(anyLong())).thenReturn(Request.builder().id(5L).build());
         when(statusService.findByStatusCode(any())).thenAnswer(
                 invocation -> Status.builder().id(1L).status(invocation.getArgument(0)).build());
@@ -114,7 +117,7 @@ class IssuanceAssetGuardTest {
 
     private IssuanceDTO issuanceOf(IssueAssetsDTO... assets) {
         return IssuanceDTO.builder()
-                .requester(1L)
+                .requester(2L)
                 .requestId(5L)
                 .assets(List.of(assets))
                 .build();

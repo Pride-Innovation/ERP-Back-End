@@ -43,4 +43,10 @@ public class StoreBalanceView {
     private int minLevel;
     /** True when a threshold is set and on-hand is at or below it. */
     private boolean lowStock;
+    /**
+     * What the store can still promise: on hand less what open movements and unapproved issuances
+     * have spoken for ({@link StockAvailabilityService}). Filled only when one store's balances are
+     * asked for - the movement form's source store - and null elsewhere, where it is not computed.
+     */
+    private Integer available;
 }

@@ -29,6 +29,7 @@ public class InventoryReportService {
     private final StoreRepository storeRepository;
     private final AssetRepository assetRepository;
     private final BranchRepository branchRepository;
+    private final StockAvailabilityService stockAvailabilityService;
 
     /**
      * All consumable balances <b>on hand</b> across every location (centralized visibility).
@@ -88,7 +89,17 @@ public class InventoryReportService {
 
     @Transactional(readOnly = true)
     public List<StoreBalanceView> balancesByStore(Long storeId) {
-        return storeBalanceRepository.findByStore_Id(storeId).stream().map(this::toBalanceView).toList();
+        List<StoreBalance> balances = storeBalanceRepository.findByStore_Id(storeId);
+        if (balances.isEmpty()) return List.of();
+        // One store's balances are what the movement form draws from, so they carry what is still
+        // available - the same figure the server checks the movement against.
+        Map<Long, Integer> promised = stockAvailabilityService.promised(balances.get(0).getStore());
+        return balances.stream().map(b -> {
+            StoreBalanceView view = toBalanceView(b);
+            int spoken = b.getCommodity() != null ? promised.getOrDefault(b.getCommodity().getId(), 0) : 0;
+            view.setAvailable(Math.max(0, b.getQuantity() - spoken));
+            return view;
+        }).toList();
     }
 
     @Transactional(readOnly = true)

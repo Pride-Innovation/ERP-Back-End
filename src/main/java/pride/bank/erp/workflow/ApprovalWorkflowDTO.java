@@ -28,6 +28,8 @@ public class ApprovalWorkflowDTO {
     private Long branchId;
     private String branchName;
     private WorkflowBranchScope branchScope;
+    /** PERSONAL, RESTOCK or BOTH. Absent on a save means BOTH. */
+    private WorkflowPurpose appliesTo;
     private boolean active;
     private int priority;
 

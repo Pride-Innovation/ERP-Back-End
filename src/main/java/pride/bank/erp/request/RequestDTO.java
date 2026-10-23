@@ -52,6 +52,8 @@ public class RequestDTO {
      * list with no way to action it. The page cannot mirror a rule it cannot see.
      */
     private pride.bank.erp.unit.Unit currentUnit;
+    /** True when the request restocks the requester's branch store rather than supplying them (V30). */
+    private boolean forStoreRestock;
 
     /**
      * The kind of action the workflow is waiting for — {@code REQUEST_APPROVAL},

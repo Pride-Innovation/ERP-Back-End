@@ -41,6 +41,7 @@ public interface ApprovalWorkflowRepository extends JpaRepository<ApprovalWorkfl
                     SIZE(w.requesterRoles) = 0
                  OR (:requesterRoleIds IS NOT NULL AND rr.id IN :requesterRoleIds)
                   )
+              AND (w.appliesTo = :purpose OR w.appliesTo = pride.bank.erp.workflow.WorkflowPurpose.BOTH)
             ORDER BY
               CASE WHEN w.branchId IS NOT NULL AND SIZE(w.assetTypes) > 0 THEN 1
                    WHEN w.branchId IS NOT NULL THEN 2
@@ -52,7 +53,9 @@ public interface ApprovalWorkflowRepository extends JpaRepository<ApprovalWorkfl
             @Param("branchId") Long branchId,
             @Param("assetTypeId") Long assetTypeId,
             @Param("scope") WorkflowBranchScope scope,
-            @Param("requesterRoleIds") Collection<Long> requesterRoleIds
+            @Param("requesterRoleIds") Collection<Long> requesterRoleIds,
+            /* PERSONAL or RESTOCK - the request's purpose, matched by a workflow of that kind or BOTH. */
+            @Param("purpose") WorkflowPurpose purpose
     );
 
     List<ApprovalWorkflow> findAllByOrderByPriorityAsc();
