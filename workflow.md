@@ -77,6 +77,14 @@ Among the matches, the most specific wins (a named branch plus categories, then 
 categories, then neither), and after that the **lowest priority number**. A restock that no
 workflow serves is **refused** when it is raised. It never falls back to another route.
 
+**A restock never takes a workflow that issues at the branch** (one whose Issue step goes to the
+BOM or BM), whatever its *Applies to* says. Such a workflow would issue the restock out of the very
+store it is meant to fill, which is refused, so the request would wait at its Issue step forever.
+This happened: request 140, a Gulu restock, was picked up by Branch · Store-handled while that was
+set to *Both*, because 22 outranks 23. The engine and the request form's routes preview both apply
+this rule (`BranchIssuance.servable`), so the preview names the workflow the request will get.
+Setting *Applies to* correctly is still the right fix: the rule is a safety net, not a substitute.
+
 Approval ceilings (`ApproverChainResolver`): Head Office climbs Supervisor → Manager → Head of
 Department; a branch climbs Supervisor → BOM → Branch Manager. A tier the requester's reporting
 line does not reach is skipped.
@@ -87,7 +95,7 @@ line does not reach is skipped.
 
 Every step has **48 h escalation** and **is not optional**. "CC" is the step's notify-group source;
 "On done" is who is told when the step completes; "Skip if" lists requester roles for which the step
-is skipped. The mailbox fields come from configuration (section 4).
+is skipped. No seeded step carries a fixed mailbox (section 4).
 
 ### 3.1 HO · Admin-handled
 
@@ -233,17 +241,21 @@ they confer (`ADMIN_UNIT`, `INFRA_UNIT`, since units can be renamed), and skip-r
 step names a person. If a name cannot be found, that one workflow is skipped and the problem is
 logged; the rest are still created.
 
-### Mailboxes (`.env`)
+### Mailboxes
 
-| Variable | Used for | Required |
-|---|---|---|
-| `WORKFLOW_GROUP_EMAIL` | the group and CC address written onto every seeded step | no; blank leaves them empty |
-| `ADMIN_TEAM_EMAIL_ADDRESS` | the Admin Unit's own mailbox, which unit steps use first | already required |
-| `IT_TEAM_EMAIL_ADDRESS` | the Infra Unit's own mailbox | already required |
+No new variable is needed. A unit step mails the unit's own mailbox, and every other recipient and
+CC is looked up when the email is sent: the approver, the requester, their managers' group, Admin.
 
-`WORKFLOW_GROUP_EMAIL` is read **only when the workflows are first seeded**. Changing it later changes
-nothing; change the address on the workflow in Settings instead. On the development database every
-step carried one and the same address, so one variable reproduces that.
+| Variable | Used for |
+|---|---|
+| `ADMIN_TEAM_EMAIL_ADDRESS` | the Admin Unit's own mailbox (already required) |
+| `IT_TEAM_EMAIL_ADDRESS` | the Infra Unit's own mailbox (already required) |
+
+The seeded steps leave the step's own group and CC address empty. Those two fields are fallbacks:
+the CC address is read only for a *Static* CC, which no seeded step uses, and the group address
+only when nobody can be found for the step. For a waiting branch issuance step that would mail an
+"action required" to somebody who is not allowed to act on it. A fixed address can still be set on
+any step in Settings.
 
 *Settings will refuse to save* a group-email step whose unit has no mailbox. If a new environment
 starts with `ADMIN_TEAM_EMAIL_ADDRESS` or `IT_TEAM_EMAIL_ADDRESS` blank, set the unit's mailbox on

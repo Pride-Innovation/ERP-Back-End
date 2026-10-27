@@ -57,6 +57,26 @@ public class IssuedAssetLifecycleService {
     private final AssetRepository assetRepository;
     private final StatusService statusService;
     private final AssetAssignmentHistoryRepository assignmentHistoryRepository;
+    private final pride.bank.erp.movement.MovementRepository movementRepository;
+
+    /**
+     * Whether the items have actually reached the requester. A direct issuance (no movement) has. One
+     * delivered by movement has once the leg handing the items over ({@code recipientUser} set, else
+     * the last leg) is {@code COMPLETED}. The requester's receipt is refused before then, and the
+     * repair of past receipts skips such a request - its assets are with the courier, and completing
+     * the movement is what hands them over.
+     */
+    public boolean deliveryComplete(Request request) {
+        List<pride.bank.erp.movement.Movement> movements = movementRepository.findByRequest_Id(request.getId());
+        if (movements.isEmpty()) {
+            return true;
+        }
+        pride.bank.erp.movement.Movement deliveryLeg = movements.stream()
+                .filter(m -> m.getRecipientUser() != null)
+                .findFirst()
+                .orElse(movements.get(movements.size() - 1));
+        return deliveryLeg.getStatus() == pride.bank.erp.movement.MovementStatus.COMPLETED;
+    }
 
     /** The serialized assets issued under a request (empty when the request had none / no issuance). */
     private List<Asset> issuedAssetsFor(Long requestId) {
@@ -71,8 +91,20 @@ public class IssuedAssetLifecycleService {
     }
 
     /**
-     * On acknowledgement of receipt: assign each issued asset to the requester and flip it to
-     * "Assigned". Idempotent — an asset already assigned to this requester is skipped.
+     * On acknowledgement of receipt: each issued asset becomes the requester's and reads "Assigned".
+     *
+     * <p>Finishes what issuing started and nothing else, so it is safe to run more than once:
+     * <ul>
+     *   <li><b>Only assets still in the issuing limbo</b> ({@code Issued} / {@code In Transit}) - the
+     *       same states {@link #restoreToAvailable} reverses. An asset that has since gone for repair,
+     *       back to a store or to disposal is not pulled back to the requester.</li>
+     *   <li><b>Never from somebody else.</b> An asset another person now holds is left alone.</li>
+     *   <li><b>Delivered by movement, already the requester's:</b> completing the movement handed it
+     *       over and wrote the assignment, but left it reading "Issued". Only the status is corrected;
+     *       the assignment record the movement wrote is kept rather than closed and duplicated.</li>
+     *   <li><b>Issued directly</b> (Head Office, or a branch from its own store - no movement): held by
+     *       nobody until now, so it is assigned here and the assignment recorded.</li>
+     * </ul>
      */
     @Transactional
     public void markAssigned(Request request) throws NotFoundException {
@@ -89,17 +121,24 @@ public class IssuedAssetLifecycleService {
         User requester = request.getRequester();
         Status assigned = statusService.findByStatusCode(CODE_ASSET_ASSIGNED);
 
+        int handedOver = 0;
         for (Asset asset : issuedAssetsFor(request.getId())) {
-            boolean alreadyAssignedToRequester = asset.getAssignedTo() != null
-                    && asset.getAssignedTo().getId().equals(requester.getId())
-                    && asset.getAssetStatus() != null
-                    && CODE_ASSET_ASSIGNED.equals(asset.getAssetStatus().getStatus());
-            if (alreadyAssignedToRequester) {
+            String code = asset.getAssetStatus() != null ? asset.getAssetStatus().getStatus() : null;
+            if (!CODE_ASSET_ISSUED.equals(code) && !CODE_IN_TRANSIT.equals(code)) {
+                continue; // assigned already, or moved on since it was issued
+            }
+            User holder = asset.getAssignedTo();
+            if (holder != null && !holder.getId().equals(requester.getId())) {
+                log.warn("Request {}: asset {} is held by user {}, not the requester; left alone",
+                        request.getId(), asset.getId(), holder.getId());
                 continue;
             }
 
             Status before = asset.getAssetStatus();
-            closeActiveAssignment(asset);
+            AssetAssignmentHistory active = assignmentHistoryRepository.findActiveByAssetId(asset.getId());
+            boolean alreadyRecorded = holder != null && active != null && active.getUser() != null
+                    && active.getUser().getId().equals(requester.getId());
+
             asset.setAssignedTo(requester);
             asset.setCurrentStore(null); // now held by a user, not a store
             if (requester.getBranch() != null) {
@@ -108,15 +147,19 @@ public class IssuedAssetLifecycleService {
             asset.setAssetStatus(assigned);
             assetRepository.save(asset);
 
-            assignmentHistoryRepository.save(AssetAssignmentHistory.builder()
-                    .asset(asset)
-                    .user(requester)
-                    .startDate(LocalDateTime.now())
-                    .statusBefore(before)
-                    .statusAfter(assigned)
-                    .build());
+            if (!alreadyRecorded) {
+                closeActiveAssignment(asset);
+                assignmentHistoryRepository.save(AssetAssignmentHistory.builder()
+                        .asset(asset)
+                        .user(requester)
+                        .startDate(LocalDateTime.now())
+                        .statusBefore(before)
+                        .statusAfter(assigned)
+                        .build());
+            }
+            handedOver++;
         }
-        log.info("Finalised assignment of issued assets for request {}", request.getId());
+        log.info("Request {}: {} issued asset(s) now assigned to the requester", request.getId(), handedOver);
     }
 
     /**

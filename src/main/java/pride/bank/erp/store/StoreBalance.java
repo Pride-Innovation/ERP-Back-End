@@ -113,4 +113,18 @@ public class StoreBalance {
 
     @LastModifiedBy
     private Long lastModifiedBy;
+
+    /**
+     * Of {@link #quantity}, how much is already spoken for: issued but not yet approved, or on a
+     * movement not yet collected (see {@code StockAvailabilityService}). It stays in the balance until
+     * then, because approval or collection is what takes it off the shelf - so without this a store
+     * page shows stock as free that the next issuance would be refused. Filled in by the store
+     * listing; null wherever nobody computed it, which a reader must not take as zero.
+     */
+    @Transient
+    private Integer promised;
+
+    /** {@link #quantity} less {@link #promised}, never below zero. Null where not computed. */
+    @Transient
+    private Integer available;
 }

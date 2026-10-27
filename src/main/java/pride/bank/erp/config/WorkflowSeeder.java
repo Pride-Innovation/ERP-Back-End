@@ -9,7 +9,6 @@ package pride.bank.erp.config;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import pride.bank.erp.assetType.AssetType;
@@ -67,11 +66,14 @@ import static pride.bank.erp.workflow.StepType.REQUEST_APPROVAL;
  * re-seeded, so deleting every workflow later does not bring these back, and an edit made in
  * Settings is never overwritten.
  *
- * <h2>Mailboxes come from configuration</h2>
- * Every step's group and CC address is {@code WORKFLOW_GROUP_EMAIL}, optional and blank by
- * default. A unit step mails its unit's own group mailbox first (the engine prefers it), and that
- * one is already configured, by {@code IT_TEAM_EMAIL_ADDRESS} and {@code ADMIN_TEAM_EMAIL_ADDRESS}
- * through {@link UnitSeeder}.
+ * <h2>No fixed mailbox on any step</h2>
+ * A unit step mails its unit's own group mailbox, configured by {@code IT_TEAM_EMAIL_ADDRESS} and
+ * {@code ADMIN_TEAM_EMAIL_ADDRESS} through {@link UnitSeeder}. Every other recipient and CC is looked
+ * up when the email is sent - the person, the requester, their managers' group, Admin. A step's own
+ * group and CC address are fallbacks the seeded steps never need: the CC address is read only for a
+ * "Static" CC, which none of them uses, and the group address only when nobody resolves - which for
+ * a waiting branch issuance step would mail somebody who may not act on it. Anyone wanting a fixed
+ * address on a step sets it in Settings.
  *
  * <h2>Where the definitions came from</h2>
  * The four workflows that were live when this was written, copied step for step (including their
@@ -108,10 +110,6 @@ public class WorkflowSeeder {
     private final RoleRepository roleRepository;
     private final UnitRepository unitRepository;
     private final pride.bank.erp.config.seed.OneTimeSeed oneTimeSeed;
-
-    /** An instance field on purpose: {@code @Value} on a static field injects nothing. */
-    @Value("${workflow.seed.group-email:}")
-    private String groupEmail;
 
     // ── definitions ─────────────────────────────────────────────────────────
 
@@ -311,8 +309,6 @@ public class WorkflowSeeder {
                     .approverType(s.approver())
                     .approverSubject(s.subject())
                     .unit(unit)
-                    .groupEmail(mailbox())
-                    .notifyGroupEmail(mailbox())
                     .notifyGroupSource(s.notifySource())
                     .notifyOnCompletion(new HashSet<>(s.onCompletion()))
                     .optional(false)
@@ -328,9 +324,5 @@ public class WorkflowSeeder {
         return unitRepository.findAll().stream()
                 .filter(u -> u.getRoles() != null && u.getRoles().stream().anyMatch(r -> roleName.equals(r.getName())))
                 .min(java.util.Comparator.comparing(Unit::getId));
-    }
-
-    private String mailbox() {
-        return (groupEmail == null || groupEmail.isBlank()) ? null : groupEmail.trim();
     }
 }

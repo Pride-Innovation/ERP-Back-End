@@ -791,9 +791,11 @@ public class WorkflowEngineService {
                 ? WorkflowBranchScope.HEAD_OFFICE : WorkflowBranchScope.BRANCH;
 
         Set<Long> requesterRoleIds = request.getRequester().getEffectiveRoleIds();
-        List<ApprovalWorkflow> candidates = workflowRepository.findActiveWorkflowsForRequest(
-                branchId, assetTypeId, scope, requesterRoleIds,
-                pride.bank.erp.workflow.WorkflowPurpose.of(request.isForStoreRestock()));
+        List<ApprovalWorkflow> candidates = pride.bank.erp.workflow.BranchIssuance.servable(
+                workflowRepository.findActiveWorkflowsForRequest(
+                        branchId, assetTypeId, scope, requesterRoleIds,
+                        pride.bank.erp.workflow.WorkflowPurpose.of(request.isForStoreRestock())),
+                request.isForStoreRestock());
         return candidates.isEmpty() ? null : candidates.get(0);
     }
 
@@ -921,15 +923,11 @@ public class WorkflowEngineService {
     /**
      * An Issue step, or an issuance-approval step, routed to the branch's BOM or BM: a workflow that
      * keeps a request at its branch and issues it from the branch store. Existing workflows route
-     * these steps to a unit or a manager and are unaffected.
+     * these steps to a unit or a manager and are unaffected. The rule lives in {@code BranchIssuance},
+     * which the choice of workflow for a restock also reads.
      */
     private static boolean isBranchPersonIssuanceStep(ApprovalStep step) {
-        boolean branchRole = step.getApproverType() == StepApproverType.BOM
-                || step.getApproverType() == StepApproverType.BRANCH_MANAGER;
-        boolean issuing = step.getStepType() == StepType.ISSUANCE
-                || (step.getStepType() == StepType.REQUEST_APPROVAL
-                    && step.getApproverSubject() == pride.bank.erp.workflow.ApproverSubject.ISSUER);
-        return branchRole && issuing;
+        return pride.bank.erp.workflow.BranchIssuance.isBranchPersonIssuanceStep(step);
     }
 
     /**

@@ -160,14 +160,6 @@ admin-team:
   email:
     address: ${ADMIN_TEAM_EMAIL_ADDRESS}
 
-# Used once, by WorkflowSeeder, when the approval workflows are seeded into a new database: the
-# group and CC mailbox written onto every seeded step. Optional - blank leaves them unset, and unit
-# steps mail their unit's own mailbox (IT_TEAM_EMAIL_ADDRESS / ADMIN_TEAM_EMAIL_ADDRESS) regardless.
-# Changing it later changes nothing: seeded workflows are edited in Settings.
-workflow:
-  seed:
-    group-email: ${WORKFLOW_GROUP_EMAIL:}
-
 logging:
   level:
     # Log everything under your app's base package (adjust this if needed)

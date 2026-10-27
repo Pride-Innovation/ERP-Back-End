@@ -74,8 +74,9 @@ public class WorkflowResolveService {
 
         Long effectiveBranchId = branch != null ? branch.getId() : null;
 
-        List<ApprovalWorkflow> candidates = workflowRepository.findActiveWorkflowsForRequest(
-                effectiveBranchId, categoryId, scope, requesterRoleIds, WorkflowPurpose.of(restock));
+        // The same choice the engine makes, so the preview names the workflow the request will get.
+        List<ApprovalWorkflow> candidates = BranchIssuance.servable(workflowRepository.findActiveWorkflowsForRequest(
+                effectiveBranchId, categoryId, scope, requesterRoleIds, WorkflowPurpose.of(restock)), restock);
 
         if (candidates.isEmpty()) {
             return ResolvedApprovalWorkflowDTO.builder()

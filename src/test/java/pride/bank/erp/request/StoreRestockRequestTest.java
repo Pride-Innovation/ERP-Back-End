@@ -181,6 +181,39 @@ class StoreRestockRequestTest {
                 .isEqualTo(restock.getId());
     }
 
+    /**
+     * Request 140: a workflow issuing at the branch, mistakenly set to "Both" and ahead on priority,
+     * took a restock. A restock is never issued from the store it fills, so it is skipped.
+     */
+    @Test
+    void aRestockIsNeverSentDownAWorkflowThatIssuesAtTheBranch() {
+        Optional<User> requester = branchUser(true);
+        AssetType category = assetTypeRepository.findAll().stream().findFirst().orElse(null);
+        if (requester.isEmpty() || category == null) return;
+        Long branchId = requester.get().getBranch().getId();
+
+        // Ahead on priority and serving both kinds - exactly the misconfiguration met live.
+        ApprovalWorkflow atTheBranch = workflow("Test store-handled", branchId, category, WorkflowPurpose.BOTH);
+        atTheBranch.setPriority(0);
+        atTheBranch.getSteps().add(0, ApprovalStep.builder().workflow(atTheBranch).stepOrder(0).stepName("Branch Issuance")
+                .stepType(StepType.ISSUANCE).approverType(StepApproverType.BOM).build());
+        workflowRepository.saveAndFlush(atTheBranch);
+        ApprovalWorkflow restock = workflow("Test restock", branchId, category, WorkflowPurpose.RESTOCK);
+
+        assertThat(resolveService.resolve(category.getId(), branchId, requester.get().getId(), true).getWorkflowId())
+                .as("the restock goes to the restock workflow").isEqualTo(restock.getId());
+        assertThat(resolveService.resolve(category.getId(), branchId, requester.get().getId(), false).getWorkflowId())
+                .as("a personal request still takes the branch workflow").isEqualTo(atTheBranch.getId());
+
+        // The engine's own choice, asked directly: starting the workflow would send real email.
+        Request request = restockRequest(requester.get(), category);
+        Object target = org.springframework.test.util.AopTestUtils.getUltimateTargetObject(engine);
+        ApprovalWorkflow chosen = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                target, "resolveWorkflow", request, category.getId());
+        assertThat(chosen).as("the engine agrees with the preview").isNotNull();
+        assertThat(chosen.getId()).isEqualTo(restock.getId());
+    }
+
     @Test
     void aRestockNoWorkflowServesIsRefusedNotSentDownTheLegacyRoute() {
         Optional<User> requester = branchUser(true);

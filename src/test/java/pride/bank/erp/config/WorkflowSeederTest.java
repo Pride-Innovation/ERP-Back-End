@@ -136,20 +136,12 @@ class WorkflowSeederTest {
     }
 
     @Test
-    void theMailboxComesFromConfigurationAndBlankLeavesItUnset() {
-        WorkflowSeeder target = target();
-        Object before = ReflectionTestUtils.getField(target, "groupEmail");
-        try {
-            ReflectionTestUtils.setField(target, "groupEmail", "  ");
-            assertThat(built().values()).flatMap(ApprovalWorkflow::getSteps)
-                    .allMatch(s -> s.getGroupEmail() == null && s.getNotifyGroupEmail() == null);
-            ReflectionTestUtils.setField(target, "groupEmail", "requests@example.test");
-            assertThat(built().values()).flatMap(ApprovalWorkflow::getSteps)
-                    .allMatch(s -> "requests@example.test".equals(s.getGroupEmail())
-                            && "requests@example.test".equals(s.getNotifyGroupEmail()));
-        } finally {
-            ReflectionTestUtils.setField(target, "groupEmail", before);
-        }
+    void noSeededStepCarriesAFixedMailbox() {
+        // Units mail their own mailbox; everyone else is looked up when the email is sent. A fixed
+        // CC is read only for a Static CC, so none may be Static either, or its CC would go nowhere.
+        assertThat(built().values()).flatMap(ApprovalWorkflow::getSteps)
+                .allMatch(s -> s.getGroupEmail() == null && s.getNotifyGroupEmail() == null)
+                .noneMatch(s -> s.getNotifyGroupSource() == pride.bank.erp.workflow.NotifyGroupSource.STATIC);
     }
 
     @Test

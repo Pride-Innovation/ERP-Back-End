@@ -151,6 +151,7 @@ public class DataInitializer {
     private final RestockPermissionSeeder restockPermissionSeeder;
     private final IssueWithoutRequestPermissionSeeder issueWithoutRequestPermissionSeeder;
     private final WorkflowSeeder workflowSeeder;
+    private final IssuedAssetHandOverRepairSeeder issuedAssetHandOverRepairSeeder;
     private final TitleSeeder titleSeeder;
     private final BranchHeadOfficeSeeder branchHeadOfficeSeeder;
     private final AssetCategoryFeatureSeeder assetCategoryFeatureSeeder;
@@ -258,6 +259,10 @@ public class DataInitializer {
             // Last: a workflow points at categories, units and roles, all seeded above. Writes only
             // into an empty workflow table, once - an existing environment's workflows are its own.
             workflowSeeder.seedWorkflows();
+
+            // Once: hands over the issued assets of receipts acknowledged while the hand-over sat on
+            // the wrong step. Needs the statuses above; skips requests still being delivered.
+            issuedAssetHandOverRepairSeeder.repair();
         };
     }
 
