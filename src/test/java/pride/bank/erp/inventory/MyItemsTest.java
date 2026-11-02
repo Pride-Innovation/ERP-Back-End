@@ -174,6 +174,12 @@ class MyItemsTest {
                 assertThat(myItemsService.forUser(person).away()).extracting(MyItemsView.AwayItem::id)
                         .as("listed as theirs").contains(asset.getId());
                 assetService.fetchSingleAsset(asset.getId());
+                String tag = asset.getEngravedNumber();
+                if (tag != null && !tag.isBlank()) {
+                    // Scanning the label must find what the record opens - the search asks the same guard.
+                    assertThat(assetService.findAssetsByTagName(tag)).extracting(pride.bank.erp.asset.AssetTagMatch::getId)
+                            .as("the tag search finds the sender's asset on the bench").containsExactly(asset.getId());
+                }
 
                 // Home again: no longer away, so the person is back to the ordinary rule, which refuses.
                 asset.setAssetStatus(statusRepository.findByStatus("sentToStore").orElseThrow());
@@ -183,6 +189,10 @@ class MyItemsTest {
                         .as("the ordinary rule refuses them").isFalse();
                 assertThatThrownBy(() -> assetService.fetchSingleAsset(asset.getId()))
                         .as("the reach lapses when the asset comes home").isInstanceOf(AccessDeniedException.class);
+                if (tag != null && !tag.isBlank()) {
+                    assertThat(assetService.findAssetsByTagName(tag))
+                            .as("and the tag search stops finding it, with the same answer as no such tag").isEmpty();
+                }
                 assertThat(myItemsService.forUser(person).away()).extracting(MyItemsView.AwayItem::id)
                         .doesNotContain(asset.getId());
                 return;

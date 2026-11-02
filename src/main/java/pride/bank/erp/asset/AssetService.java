@@ -1101,23 +1101,26 @@ public class AssetService {
     }
 
     /**
-     * Where the asset sits, or the branch it was sent away from. See the note above.
+     * May the caller open this asset's record? The tag search answers with the detail page's own
+     * guard, not a copy of it.
      *
-     * <p>Reads the <b>same</b> rule the detail page's guard uses, deliberately. If the search could
-     * find an asset the record then refused to open, it would recreate exactly the contradiction that
-     * rule exists to remove — a result you can see and cannot follow.
+     * <p>It used to restate the rule — where the asset sits, or the branch it was sent away from —
+     * and the copy fell behind when the guard gained its third limb, the person who handed the asset
+     * over for repair. So an officer at SELF scanning the label of their own laptop on the repair
+     * bench was told no such tag existed, while My Items listed it and its page opened. Calling the
+     * guard makes "the search finds it" and "the record opens" one fact: a result you can see and
+     * cannot follow, or one you could follow and cannot see, is no longer possible.
+     *
+     * <p>A refusal is translated into "not in reach", never propagated: out-of-reach matches are
+     * omitted, so the answer stays the same as for a number that does not exist.
      */
     private boolean withinTagSearchReach(Asset asset) {
-        Long branchId = asset.getBranch() != null ? asset.getBranch().getId() : null;
-        Long holderId = asset.getAssignedTo() != null ? asset.getAssignedTo().getId() : null;
-        Long originBranchId = isAwayFromItsBranch(asset)
-                ? movementService.branchLastSentAwayFrom(asset.getId())
-                : null;
-
-        return accessScopeService.canViewAnyOf(
-                pride.bank.erp.access.ScopeSubject.ASSETS,
-                java.util.Arrays.asList(branchId, originBranchId),
-                java.util.Collections.singletonList(holderId));
+        try {
+            requireAssetInScope(asset, pride.bank.erp.access.ScopeAction.VIEW);
+            return true;
+        } catch (org.springframework.security.access.AccessDeniedException refused) {
+            return false;
+        }
     }
 
     /**

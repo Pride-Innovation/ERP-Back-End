@@ -132,7 +132,15 @@ class EndpointGuardCoverageTest {
              * read as guarded to this test while being authenticated-only in fact. Naming them here
              * keeps the intent visible rather than resting on that accident.
              */
-            "GET /api/v1/users/picker"
+            "GET /api/v1/users/picker",
+            /*
+             * Pairing a handheld scanner with this browser. A pairing belongs to the signed-in user
+             * and can only ever deliver scans to that user's own browsers, and only its owner can
+             * read or end it (ScanRelayService checks the owner). There is no permission to ask for.
+             */
+            "POST /api/v1/scan-pairings",
+            "GET /api/v1/scan-pairings/{pairingId}",
+            "DELETE /api/v1/scan-pairings/{pairingId}"
     );
 
     /**
@@ -260,6 +268,8 @@ class EndpointGuardCoverageTest {
                 || path.startsWith("/swagger-ui")
                 || path.startsWith("/v3/api-docs")
                 || path.startsWith("/ws")
+                // The PDA side of the scan relay: not signed in by design (see ScanRelayController).
+                || path.startsWith("/api/v1/scan-relay/")
                 || path.equals("/error");
     }
 

@@ -192,8 +192,11 @@ class AwayFromBranchReadTest {
                 .as("both reach the origin through one helper, so they cannot drift")
                 .contains("branchLastSentAwayFrom");
         assertThat(source.split("branchLastSentAwayFrom").length - 1)
-                .as("the guard and the tag search, and nowhere else inventing a third rule")
-                .isEqualTo(2);
+                .as("only the guard reads the origin; the tag search asks the guard rather than copying it")
+                .isEqualTo(1);
+        assertThat(source)
+                .as("the tag search delegates to the detail page's guard")
+                .contains("requireAssetInScope(asset, pride.bank.erp.access.ScopeAction.VIEW)");
     }
 
     private static String readSource(String path) {

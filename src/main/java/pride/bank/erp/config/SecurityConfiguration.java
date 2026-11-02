@@ -72,6 +72,11 @@ public class SecurityConfiguration {
                                         "/v3/api-docs/**",
                                         "/v3/api-docs",
                                         "/ws/**",  // WebSocket endpoint
+                                        // The handheld scanner's two calls. The PDA is not signed in:
+                                        // the one-time pairing code, then the relay token it buys,
+                                        // are the authorisation - and they authorise only text into
+                                        // one browser's search box. See ScanRelayService.
+                                        "/api/v1/scan-relay/**",
                                         // The container ERROR dispatch re-enters the filter chain with no
                                         // authentication (stateless). Without permitting /error, every
                                         // controller error (400/500) is masked as a 403 "Full authentication

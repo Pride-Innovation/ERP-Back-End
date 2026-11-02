@@ -601,8 +601,17 @@ public class RequestService {
      */
     @Transactional(readOnly = true)
     public List<AssetRequestSummaryDTO> getCurrentYearRequestSummary(Long requestedBranchId) {
-        Long receiptAcknowledged = 7L; // ID for Receipt Acknowledged Status
-        Long requestRejected = 2L;     // ID for Request Rejected Status
+        /*
+         * Resolved by code, never by id (trap #4).
+         *
+         * These were literals - 7L "Receipt Acknowledged", 2L "Request Rejected" - and on the live
+         * database id 7 is inMaintenance, an asset status no request can hold, while Receipt
+         * Acknowledged is 8. So the dashboard's Request Fulfilment counted every request as
+         * outstanding: "0% of 388 requested items delivered" over 62 requests acknowledged this year.
+         * 2 happened to still be Request Rejected; it is resolved the same way so it cannot be next.
+         */
+        Long receiptAcknowledged = statusIdOrNone("receiptAcknowledged");
+        Long requestRejected = statusIdOrNone("requestRejected");
         /*
          * Scope, not the caller's own branch.
          *
@@ -663,6 +672,21 @@ public class RequestService {
      */
     private static final List<String> TERMINAL_REQUEST_CODES =
             List.of("requestRejected", "receiptAcknowledged");
+
+    /**
+     * The id of a status code, or an id no row carries when the code is not seeded - so a missing
+     * status makes its comparison match nothing rather than failing the whole query.
+     */
+    private Long statusIdOrNone(String code) {
+        try {
+            Status status = statusService.findByStatusCode(code);
+            if (status != null) return status.getId();
+        } catch (Exception e) {
+            // fall through
+        }
+        log.warn("Status code '{}' is not seeded - comparisons against it will match nothing", code);
+        return -1L;
+    }
 
     private List<Long> terminalStatusIds() {
         return TERMINAL_REQUEST_CODES.stream()
