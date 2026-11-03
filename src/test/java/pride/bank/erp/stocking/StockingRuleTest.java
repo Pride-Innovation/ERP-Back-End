@@ -319,15 +319,23 @@ class StockingRuleTest {
                 .orElseThrow(() -> new AssertionError("no branch user holds CREATE_INVENTORY"));
     }
 
+    /*
+     * Every commodity these cases use follows its category's rule (no override of its own).
+     *
+     * The cases set a category's rule and assert a commodity obeys it. They used to take the first
+     * consumable they found - which, once an administrator gave Ream of paper and Pen their own rules
+     * in Settings, was a commodity that rightly ignored its category, and four cases failed for the
+     * feature working. Choosing a follower keeps them about the rule, whatever Settings holds.
+     */
     private Commodity categorisedCommodity() {
         return commodityRepository.findAll().stream()
-                .filter(c -> c.getAssetType() != null && !c.getAssetType().isTracksAssets())
+                .filter(c -> c.getAssetType() != null && !c.getAssetType().isTracksAssets() && !c.isStockingOverride())
                 .findFirst().orElseThrow();
     }
 
     private Commodity anotherCategoryCommodity(AssetType not) {
         return commodityRepository.findAll().stream()
-                .filter(c -> c.getAssetType() != null && !c.getAssetType().isTracksAssets()
+                .filter(c -> c.getAssetType() != null && !c.getAssetType().isTracksAssets() && !c.isStockingOverride()
                         && !c.getAssetType().getId().equals(not.getId()))
                 .findFirst().orElseThrow();
     }
@@ -335,7 +343,7 @@ class StockingRuleTest {
     private Commodity anotherInSameCategory(Commodity of) {
         return commodityRepository.findAll().stream()
                 .filter(c -> c.getAssetType() != null && c.getAssetType().getId().equals(of.getAssetType().getId())
-                        && !c.getId().equals(of.getId()))
+                        && !c.getId().equals(of.getId()) && !c.isStockingOverride())
                 .findFirst().orElse(null);
     }
 

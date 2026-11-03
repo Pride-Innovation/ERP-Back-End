@@ -77,6 +77,7 @@ public class StockService {
     private final StockReversalService stockReversalService;
     private final pride.bank.erp.auditing.trail.AuditService auditService;
     private final pride.bank.erp.stocking.StockingRuleService stockingRuleService;
+    private final pride.bank.erp.user.UserRepository userRepository;
 
     // Status codes (stable across re-seeds) — replace brittle magic numeric IDs.
     private static final String STATUS_REQUIRE_UPDATE  = "requireUpdate";
@@ -98,6 +99,31 @@ public class StockService {
             LocalDateTime startDate,
             LocalDateTime endDate
     ) {
+        return fetchAllStocks(pageSize, sortDirection, pageNumber, sortBy, lpoNumber, stockStatusId,
+                supplierId, branchId, disposed, startDate, endDate, null, null, null);
+    }
+
+    /**
+     * @param orderedFrom / orderedTo the period by order date, else created date - what the report's
+     *                    Date column shows (see {@link StockSearchCriteria#getOrderedFrom()})
+     * @param assetTypeId orders with at least one line in this category
+     */
+    public Page<StockDAO> fetchAllStocks(
+            int pageSize,
+            String sortDirection,
+            int pageNumber,
+            String sortBy,
+            String lpoNumber,
+            Long stockStatusId,
+            Long supplierId,
+            Long branchId,
+            Boolean disposed,
+            LocalDateTime startDate,
+            LocalDateTime endDate,
+            LocalDateTime orderedFrom,
+            LocalDateTime orderedTo,
+            Long assetTypeId
+    ) {
         StockPage stockPage = StockPage.builder()
                     .pageSize(pageSize)
                     .sortDirection(determineSortDirection(sortDirection))
@@ -113,6 +139,9 @@ public class StockService {
                     .disposed(disposed)
                     .startDate(startDate)
                     .endDate(endDate)
+                    .orderedFrom(orderedFrom)
+                    .orderedTo(orderedTo)
+                    .assetTypeId(assetTypeId)
                     .build();
 
             Page<Stock> stocks = stockSearchDao.findAllWithFilters(stockPage, criteria);
@@ -142,7 +171,28 @@ public class StockService {
             });
 
             List<StockDAO> stockDAOS = convertToStockDTOList(stocks.getContent());
+            nameCreators(stockDAOS);
             return new PageImpl<>(stockDAOS, stocks.getPageable(), stocks.getTotalElements());
+    }
+
+    /**
+     * Who created each order, by name - one query for the page, not one per row.
+     *
+     * <p>The order carries only the creator's user id, and the report's "Stocked By" column read a
+     * name nothing sent, so it showed "—" on every row.
+     */
+    private void nameCreators(List<StockDAO> stocks) {
+        java.util.Set<Long> ids = stocks.stream().map(StockDAO::getCreatedBy)
+                .filter(java.util.Objects::nonNull).collect(Collectors.toSet());
+        if (ids.isEmpty()) return;
+        Map<Long, String> names = userRepository.findAllById(ids).stream().collect(Collectors.toMap(
+                pride.bank.erp.user.User::getId,
+                u -> ((u.getFirstName() == null ? "" : u.getFirstName()) + " "
+                        + (u.getLastName() == null ? "" : u.getLastName())).trim()));
+        stocks.forEach(s -> {
+            String name = names.get(s.getCreatedBy());
+            if (name != null && !name.isEmpty()) s.setCreatedByName(name);
+        });
     }
 
     private List<StockDAO> convertToStockDTOList(List<Stock> stocks) {

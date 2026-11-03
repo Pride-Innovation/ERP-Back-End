@@ -35,6 +35,21 @@ public class StockSearchCriteria {
     private Long stockStatusId;
     private Boolean disposed;
 
+    /** When the order was <b>created</b> - what the inventory page's "created" range filters on. */
     private LocalDateTime startDate;
     private LocalDateTime endDate;
+
+    /**
+     * When the order was <b>placed</b>: its order date, else - 15 orders have none - when it was
+     * created. The report's Date column shows exactly this, so the period and the column agree;
+     * filtering it on the created date showed rows dated outside the period they were listed under.
+     */
+    private LocalDateTime orderedFrom;
+    private LocalDateTime orderedTo;
+
+    /**
+     * Orders with at least one line in this asset category. A category belongs to the commodity on a
+     * line, not to the order, so an order spanning two categories matches either.
+     */
+    private Long assetTypeId;
 }

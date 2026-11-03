@@ -67,7 +67,23 @@ public class StockController {
 
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
-            LocalDateTime endDate
+            LocalDateTime endDate,
+
+            /*
+             * The period by when the order was placed - its order date, else its created date - which
+             * is the date the report shows. startDate/endDate stay on the created date, which is what
+             * the inventory page's "created" range means.
+             */
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+            LocalDateTime orderedFrom,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+            LocalDateTime orderedTo,
+
+            /** Orders with at least one line in this asset category. */
+            @RequestParam(required = false) Long assetTypeId
     ) {
         Page<StockDAO> response = stockService.fetchAllStocks(
                 pageSize,
@@ -80,7 +96,10 @@ public class StockController {
                 branchId,
                 disposed,
                 startDate,
-                endDate
+                endDate,
+                orderedFrom,
+                orderedTo,
+                assetTypeId
         );
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
