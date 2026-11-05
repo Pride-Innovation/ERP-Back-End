@@ -43,6 +43,10 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     List<User> findByTitleId(Long tileId);
 
+    boolean existsByTitle_Id(Long titleId);
+
+    boolean existsByActingTitle_Id(Long titleId);
+
     /** Members of a unit — used to notify everyone in a unit when a request is routed to it. */
     List<User> findByUnit_Id(Long unitId);
 

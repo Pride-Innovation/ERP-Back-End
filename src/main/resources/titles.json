@@ -14,403 +14,6 @@
           "role": "DIRECTOR",
           "subordinates": [
             {
-              "shortCode": "HS",
-              "name": "Head Strategy, Data & Projects",
-              "role": "HEAD_OF_DEPARTMENT",
-              "subordinates": [
-                {
-                  "shortCode": "MST",
-                  "name": "Manager Strategy & Transformation",
-                  "role": "MANAGER",
-                  "subordinates": [
-                    {
-                      "shortCode": "BTA",
-                      "name": "Business Transformation Analyst",
-                      "role": "OFFICER"
-                    }
-                  ]
-                },
-                {
-                  "shortCode": "MPMO",
-                  "name": "Manager Program Management Officer",
-                  "role": "MANAGER",
-                  "subordinates": [
-                    {
-                      "shortCode": "PM",
-                      "name": "Project Manager",
-                      "role": "OFFICER"
-                    }
-                  ]
-                },
-                {
-                  "shortCode": "MDI",
-                  "name": "Manager Data & Insights",
-                  "role": "MANAGER",
-                  "subordinates": [
-                    {
-                      "shortCode": "DE",
-                      "name": "Data Engineer",
-                      "role": "OFFICER"
-                    },
-                    {
-                      "shortCode": "DS",
-                      "name": "Data Scientist",
-                      "role": "OFFICER"
-                    }
-                  ]
-                }
-              ]
-            },
-            {
-              "shortCode": "HP&C",
-              "name": "Head People & Culture",
-              "role": "HEAD_OF_DEPARTMENT",
-              "subordinates": [
-                {
-                  "shortCode": "MSS",
-                  "name": "Manage Shared Services",
-                  "role": "MANAGER",
-                  "subordinates": [
-                    {
-                      "shortCode": "PBO",
-                      "name": "Payroll & Benefits Officer",
-                      "role": "OFFICER"
-                    },
-                    {
-                      "shortCode": "HRIRO",
-                      "name": "HR Information & Records Officer",
-                      "role": "OFFICER"
-                    }
-                  ]
-                },
-                {
-                  "shortCode": "MTL",
-                  "name": "Manage Talent & Learning",
-                  "role": "MANAGER",
-                  "subordinates": [
-                    {
-                      "shortCode": "LDO",
-                      "name": "Learning & Development Officer",
-                      "role": "OFFICER"
-                    }
-                  ]
-                },
-                {
-                  "shortCode": "MPCP",
-                  "name": "Manage people & Culture Partner",
-                  "role": "MANAGER",
-                  "subordinates": [
-                    {
-                      "shortCode": "PCP",
-                      "name": "People & Culture Partner",
-                      "role": "OFFICER"
-                    }
-                  ]
-                }
-              ]
-            },
-            {
-              "shortCode": "CS",
-              "name": "Company Secretary/Head Legal",
-              "role": "HEAD_OF_DEPARTMENT",
-              "subordinates": [
-                {
-                  "shortCode": "LMABA",
-                  "name": "Legal Manager Advisory and Board Affairs",
-                  "role": "MANAGER"
-                },
-                {
-                  "shortCode": "LMLR",
-                  "name": "Legal Manager Litigation & Registration",
-                  "role": "MANAGER",
-                  "subordinates": [
-                    {
-                      "shortCode": "SLO-L",
-                      "name": "Senior Legal Officer-Litigation",
-                      "role": "SUPERVISOR",
-                      "subordinates": [
-                        {
-                          "shortCode": "LO",
-                          "name": "Legal Officer",
-                          "role": "OFFICER"
-                        }
-                      ]
-                    },
-                    {
-                      "shortCode": "SLO-RS",
-                      "name": "Senior Legal Officer-Registration & Securities",
-                      "role": "SUPERVISOR",
-                      "subordinates": [
-                        {
-                          "shortCode": "LO",
-                          "name": "Legal Officer",
-                          "role": "OFFICER"
-                        }
-                      ]
-                    },
-                    {
-                      "shortCode": "LC",
-                      "name": "Law Clerk",
-                      "role": "OFFICER"
-                    }
-                  ]
-                }
-              ]
-            },
-            {
-              "shortCode": "HOF",
-              "name": "Head Finance",
-              "role": "HEAD_OF_DEPARTMENT",
-              "subordinates": [
-                {
-                  "shortCode": "FC",
-                  "name": "Financial Controller",
-                  "role": "MANAGER",
-                  "subordinates": [
-                    {
-                      "shortCode": "FMR",
-                      "name": "Finance Manager-Reporting",
-                      "role": "MANAGER",
-                      "subordinates": [
-                        {
-                          "shortCode": "SFORR",
-                          "name": "Senior Finance Officer-Regulatory Reporting",
-                          "role": "SUPERVISOR",
-                          "subordinates": [
-                            {
-                              "shortCode": "FO",
-                              "name": "Finance Officer",
-                              "role": "OFFICER"
-                            }
-                          ]
-                        },
-                        {
-                          "shortCode": "SFOFR",
-                          "name": "Senior Finance Officer-Financial Reporting",
-                          "role": "SUPERVISOR",
-                          "subordinates": [
-                            {
-                              "shortCode": "FO",
-                              "name": "Finance Officer",
-                              "role": "OFFICER"
-                            }
-                          ]
-                        }
-                      ]
-                    },
-                    {
-                      "shortCode": "FMBP",
-                      "name": "Finance Manager-Business Performance",
-                      "role": "MANAGER",
-                      "subordinates": [
-                        {
-                          "shortCode": "SFOMR",
-                          "name": "Senior Finance Officer-Management Reporting",
-                          "role": "SUPERVISOR",
-                          "subordinates": [
-                            {
-                              "shortCode": "FO",
-                              "name": "Finance Officer",
-                              "role": "OFFICER"
-                            }
-                          ]
-                        },
-                        {
-                          "shortCode": "SFOMR",
-                          "name": "Senior Finance Officer Tax, Financial Planning & Analysis",
-                          "role": "SUPERVISOR",
-                          "subordinates": [
-                            {
-                              "shortCode": "FO",
-                              "name": "Finance Officer",
-                              "role": "OFFICER"
-                            }
-                          ]
-                        }
-                      ]
-                    }
-                  ]
-                }
-              ]
-            },
-            {
-              "shortCode": "HRM",
-              "name": "Head Risk Management",
-              "role": "HEAD_OF_DEPARTMENT",
-              "subordinates": [
-                {
-                  "shortCode": "MLR",
-                  "name": "Market & Liquidity Risk",
-                  "role": "MANAGER"
-                },
-                {
-                  "shortCode": "MCR",
-                  "name": "Manager Credit Risk",
-                  "role": "MANAGER",
-                  "subordinates": [
-                    {
-                      "shortCode": "CRA",
-                      "name": "Credit Risk Analyst",
-                      "role": "OFFICER"
-                    }
-                  ]
-                },
-                {
-                  "shortCode": "MOR",
-                  "name": "Manager Operational Risk",
-                  "role": "MANAGER",
-                  "subordinates": [
-                    {
-                      "shortCode": "OPRA",
-                      "name": "Operational Risk Analyst",
-                      "role": "OFFICER"
-                    }
-                  ]
-                },
-                {
-                  "shortCode": "ESRA",
-                  "name": "Essential & Social Risk Analyst",
-                  "role": "MANAGER"
-                },
-                {
-                  "shortCode": "SICTRA",
-                  "name": "Senior ICT Risk Analyst",
-                  "role": "MANAGER"
-                }
-              ]
-            },
-            {
-              "shortCode": "ES",
-              "name": "Executive Secretary",
-              "role": "HEAD_OF_DEPARTMENT"
-            },
-            {
-              "shortCode": "HC",
-              "name": "Head Credit",
-              "role": "HEAD_OF_DEPARTMENT",
-              "subordinates": [
-                {
-                  "shortCode": "MCA",
-                  "name": "Manager Credit Admin",
-                  "role": "MANAGER",
-                  "subordinates": [
-                    {
-                      "shortCode": "CSMR",
-                      "name": "Credit Supervisor Monitoring & Reporting",
-                      "role": "SUPERVISOR",
-                      "subordinates": [
-                        {
-                          "shortCode": "CAO",
-                          "name": "Credit Administration Officer",
-                          "role": "OFFICER"
-                        }
-                      ]
-                    },
-                    {
-                      "shortCode": "RCA",
-                      "name": "Regional Credit Administrator",
-                      "role": "OFFICER"
-                    },
-                    {
-                      "shortCode": "CRBS",
-                      "name": "CRB Supervisor",
-                      "role": "SUPERVISOR",
-                      "subordinates": [
-                        {
-                          "shortCode": "CRB-O",
-                          "name": "CRB Officer",
-                          "role": "OFFICER"
-                        }
-                      ]
-                    }
-                  ]
-                },
-                {
-                  "shortCode": "MCE-SME",
-                  "name": "Manager Credit Evaluation-SME",
-                  "role": "MANAGER",
-                  "subordinates": [
-                    {
-                      "shortCode": "TFS",
-                      "name": "Trade Finance Specialist",
-                      "role": "OFFICER"
-                    },
-                    {
-                      "shortCode": "CA-SME",
-                      "name": "Credit Analyst -SME Loans",
-                      "role": "OFFICER"
-                    }
-                  ]
-                },
-                {
-                  "shortCode": "MCE-M",
-                  "name": "Manager Credit Evaluation-Micro",
-                  "role": "MANAGER",
-                  "subordinates": [
-                    {
-                      "shortCode": "CAMPL",
-                      "name": "Credit Analyst Micro & Personal Loans",
-                      "role": "OFFICER"
-                    },
-                    {
-                      "shortCode": "SCEM",
-                      "name": "Supervisor Credit Evaluation -Micro",
-                      "role": "SUPERVISOR"
-                    }
-                  ]
-                },
-                {
-                  "shortCode": "MCR",
-                  "name": "Manager Credit Recovery",
-                  "role": "MANAGER",
-                  "subordinates": [
-                    {
-                      "shortCode": "SCR",
-                      "name": "Supervisor Credit Recovery",
-                      "role": "SUPERVISOR",
-                      "subordinates": [
-                        {
-                          "shortCode": "RO",
-                          "name": "Recovery Officer",
-                          "role": "OFFICER"
-                        }
-                      ]
-                    }
-                  ]
-                }
-              ]
-            },
-            {
-              "shortCode": "CISO",
-              "name": "Chief Information Security Officer",
-              "role": "HEAD_OF_DEPARTMENT",
-              "subordinates": [
-                {
-                  "shortCode": "MICTS",
-                  "name": "Manager ICT Security",
-                  "role": "MANAGER",
-                  "subordinates": [
-                    {
-                      "shortCode": "CDS",
-                      "name": "Cyber Defence Specialists",
-                      "role": "OFFICER"
-                    },
-                    {
-                      "shortCode": "IASS",
-                      "name": "Identity & Application Security Specialists",
-                      "role": "OFFICER"
-
-                    }
-                  ]
-                },
-                {
-                  "shortCode": "ISGS",
-                  "name": "ICT Security Governance Specialist",
-                  "role": "MANAGER"
-                }
-              ]
-            },
-            {
               "shortCode": "HBT",
               "name": "Head Business Technology",
               "role": "HEAD_OF_DEPARTMENT",
@@ -428,17 +31,73 @@
                         {
                           "shortCode": "MCA",
                           "name": "Manager Custom Applications",
-                          "role": "MANAGER"
+                          "role": "MANAGER",
+                          "subordinates": [
+                            {
+                              "shortCode": "CBSS",
+                              "name": "Core Banking Systems (CBS) Specialist",
+                              "role": "OFFICER"
+                            },
+                            {
+                              "shortCode": "BAS",
+                              "name": "Business Applications Specialist",
+                              "role": "OFFICER"
+                            },
+                            {
+                              "shortCode": "SBIA",
+                              "name": "Senior Business Intelligence Analyst",
+                              "role": "OFFICER"
+                            }
+                          ]
                         },
                         {
                           "shortCode": "MDBA",
                           "name": "Manager Database Administrator ",
-                          "role": "MANAGER"
+                          "role": "MANAGER",
+                          "subordinates": [
+                            {
+                              "shortCode": "DBA",
+                              "name": "Database Administrator",
+                              "role": "OFFICER"
+                            }
+                          ]
                         },
                         {
                           "shortCode": "MIF",
                           "name": "Manager Infrastructure",
-                          "role": "MANAGER"
+                          "role": "MANAGER",
+                          "subordinates": [
+                            {
+                              "shortCode": "SYSA",
+                              "name": "Systems Administrator",
+                              "role": "OFFICER"
+                            },
+                            {
+                              "shortCode": "NETA",
+                              "name": "Network Administrator",
+                              "role": "OFFICER"
+                            },
+                            {
+                              "shortCode": "ISA",
+                              "name": "Infrastructure & Server Administrator",
+                              "role": "OFFICER"
+                            },
+                            {
+                              "shortCode": "ESA",
+                              "name": "Enterprise Systems Admin",
+                              "role": "OFFICER"
+                            },
+                            {
+                              "shortCode": "INFO",
+                              "name": "Infrastructure Officer",
+                              "role": "OFFICER"
+                            },
+                            {
+                              "shortCode": "ITSDO",
+                              "name": "IT Service Desk Officer",
+                              "role": "OFFICER"
+                            }
+                          ]
                         }
                       ]
                     },
@@ -450,7 +109,14 @@
                         {
                           "shortCode": "ICTPM",
                           "name": "ICT Project Manager",
-                          "role": "MANAGER"
+                          "role": "MANAGER",
+                          "subordinates": [
+                            {
+                              "shortCode": "SITP",
+                              "name": "Supervisor IT Projects",
+                              "role": "SUPERVISOR"
+                            }
+                          ]
                         },
                         {
                           "shortCode": "DEV",
@@ -482,6 +148,11 @@
                             {
                               "shortCode": "CHEOD",
                               "name": "Channels EOD",
+                              "role": "OFFICER"
+                            },
+                            {
+                              "shortCode": "EBA",
+                              "name": "E-Banking Administrator",
                               "role": "OFFICER"
                             }
                           ]
@@ -629,13 +300,23 @@
                                   "role": "OFFICER"
                                 },
                                 {
-                                  "shortCode": "ROGCB",
-                                  "name": "Relationship Officer Group/Comm Banking",
+                                  "shortCode": "ROSC",
+                                  "name": "Relationship Officer Salaried Customers",
                                   "role": "OFFICER"
                                 },
                                 {
-                                  "shortCode": "ROSC",
-                                  "name": "Relationship Officer Salaried Customers",
+                                  "shortCode": "ROCB",
+                                  "name": "Relationship Officer Community Banking",
+                                  "role": "OFFICER"
+                                },
+                                {
+                                  "shortCode": "ROGB",
+                                  "name": "Relationship Officer Group Banking",
+                                  "role": "OFFICER"
+                                },
+                                {
+                                  "shortCode": "ROAG",
+                                  "name": "Relationship Officer Agribusiness",
                                   "role": "OFFICER"
                                 }
                               ]
@@ -653,12 +334,7 @@
                                 {
                                   "shortCode": "CEO",
                                   "name": "Customer Experience Officers",
-                                  "role": "OFFICER"
-                                },
-                                {
-                                  "shortCode": "HC",
-                                  "name": "Head Cashier",
-                                  "role": "SUPERVISOR",
+                                  "role": "OFFICER",
                                   "subordinates": [
                                     {
                                       "shortCode": "TLS",
@@ -666,6 +342,56 @@
                                       "role": "OFFICER"
                                     }
                                   ]
+                                },
+                                {
+                                  "shortCode": "HSA",
+                                  "name": "Health & Sanitation Assistant",
+                                  "role": "OFFICER"
+                                },
+                                {
+                                  "shortCode": "SE",
+                                  "name": "Sales Executive",
+                                  "role": "OFFICER"
+                                },
+                                {
+                                  "shortCode": "SR",
+                                  "name": "Sales Representative",
+                                  "role": "OFFICER"
+                                },
+                                {
+                                  "shortCode": "TSA",
+                                  "name": "Telesales Agent",
+                                  "role": "OFFICER"
+                                },
+                                {
+                                  "shortCode": "ROSGL",
+                                  "name": "Relationship Officer SGL",
+                                  "role": "OFFICER"
+                                },
+                                {
+                                  "shortCode": "CO-GGLS",
+                                  "name": "Credit Officer GGLS",
+                                  "role": "OFFICER"
+                                },
+                                {
+                                  "shortCode": "CO-ILS",
+                                  "name": "Credit Officer ILS",
+                                  "role": "OFFICER"
+                                },
+                                {
+                                  "shortCode": "CO-CB",
+                                  "name": "Credit Officer Community Banking",
+                                  "role": "OFFICER"
+                                },
+                                {
+                                  "shortCode": "CE-SME",
+                                  "name": "Credit Evaluation - SME",
+                                  "role": "OFFICER"
+                                },
+                                {
+                                  "shortCode": "DRV-BR",
+                                  "name": "Driver - Branch",
+                                  "role": "OFFICER"
                                 }
                               ]
                             },
@@ -688,21 +414,22 @@
                     {
                       "shortCode": "RMWB",
                       "name": "Relationship Manager Workplace Banking",
-                      "role": "MANAGER",
-                      "subordinates": [
-                        {
-                          "shortCode": "RMPS",
-                          "name": "Relationship Manager Public Sector",
-                          "role": "MANAGER",
-                          "subordinates": [
-                            {
-                              "shortCode": "RMWY",
-                              "name": "Relationship Manager Women & Youth",
-                              "role": "MANAGER"
-                            }
-                          ]
-                        }
-                      ]
+                      "role": "MANAGER"
+                    },
+                    {
+                      "shortCode": "RMPS",
+                      "name": "Relationship Manager Public Sector",
+                      "role": "MANAGER"
+                    },
+                    {
+                      "shortCode": "RMWY",
+                      "name": "Relationship Manager Women & Youth",
+                      "role": "MANAGER"
+                    },
+                    {
+                      "shortCode": "RMIPB",
+                      "name": "Relationship Manager - Institutional & Personal Banking",
+                      "role": "MANAGER"
                     }
                   ]
                 },
@@ -714,21 +441,17 @@
                     {
                       "shortCode": "RMCB",
                       "name": "Relationship Manager Community Banking",
-                      "role": "MANAGER",
-                      "subordinates": [
-                        {
-                          "shortCode": "RMGB",
-                          "name": "Relationship Manager Group Banking",
-                          "role": "MANAGER",
-                          "subordinates": [
-                            {
-                              "shortCode": "RMMF",
-                              "name": "Relationship Manager Micro Finance",
-                              "role": "MANAGER"
-                            }
-                          ]
-                        }
-                      ]
+                      "role": "MANAGER"
+                    },
+                    {
+                      "shortCode": "RMGB",
+                      "name": "Relationship Manager Group Banking",
+                      "role": "MANAGER"
+                    },
+                    {
+                      "shortCode": "RMMF",
+                      "name": "Relationship Manager Micro Finance",
+                      "role": "MANAGER"
                     }
                   ]
                 },
@@ -740,14 +463,12 @@
                     {
                       "shortCode": "SDP",
                       "name": "Supervisor Digital Products",
-                      "role": "SUPERVISOR",
-                      "subordinates": [
-                        {
-                          "shortCode": "SBA",
-                          "name": "Supervisor Bank Assurance",
-                          "role": "OFFICER"
-                        }
-                      ]
+                      "role": "SUPERVISOR"
+                    },
+                    {
+                      "shortCode": "SBA",
+                      "name": "Supervisor Bank Assurance",
+                      "role": "OFFICER"
                     }
                   ]
                 },
@@ -843,14 +564,21 @@
                   "role": "MANAGER",
                   "subordinates": [
                     {
-                      "shortCode": "PO",
-                      "name": "Procurement Officer",
-                      "role": "OFFICER"
-                    },
-                    {
-                      "shortCode": "PSO",
-                      "name": "Procurement Support Officer",
-                      "role": "OFFICER"
+                      "shortCode": "SPO",
+                      "name": "Senior Procurement Officer",
+                      "role": "SUPERVISOR",
+                      "subordinates": [
+                        {
+                          "shortCode": "PO",
+                          "name": "Procurement Officer",
+                          "role": "OFFICER"
+                        },
+                        {
+                          "shortCode": "PSO",
+                          "name": "Procurement Support Officer",
+                          "role": "OFFICER"
+                        }
+                      ]
                     }
                   ]
                 },
@@ -867,7 +595,14 @@
                         {
                           "shortCode": "AO",
                           "name": "Administration Officer",
-                          "role": "OFFICER"
+                          "role": "OFFICER",
+                          "subordinates": [
+                            {
+                              "shortCode": "OA-HO",
+                              "name": "Office Assistant - Head Office",
+                              "role": "OFFICER"
+                            }
+                          ]
                         },
                         {
                           "shortCode": "FDE",
@@ -894,7 +629,14 @@
                         {
                           "shortCode": "FO",
                           "name": "Fleet Officer",
-                          "role": "OFFICER"
+                          "role": "OFFICER",
+                          "subordinates": [
+                            {
+                              "shortCode": "DRV-HO",
+                              "name": "Driver - Head Office",
+                              "role": "OFFICER"
+                            }
+                          ]
                         },
                         {
                           "shortCode": "EO",
@@ -909,46 +651,422 @@
                       "role": "OFFICER"
                     }
                   ]
-                }
-              ]
-            },
-            {
-              "shortCode": "HCOMP",
-              "name": "Head Compliance",
-              "role": "HEAD_OF_DEPARTMENT",
-              "subordinates": [
-                {
-                  "shortCode": "MC",
-                  "name": "Manager Compliance",
-                  "role": "MANAGER",
-                  "subordinates": [
-                    {
-                      "shortCode": "SCS",
-                      "name": "Senior Compliance Supervisor",
-                      "role": "SUPERVISOR",
-                      "subordinates": [
-                        {
-                          "shortCode": "COMPS",
-                          "name": "Compliance Supervisor",
-                          "role": "OFFICER"
-                        }
-                      ]
-                    }
-                  ]
                 },
                 {
-                  "shortCode": "SAP",
-                  "name": "Senior AML Supervisor",
+                  "shortCode": "SA",
+                  "name": "Security Administrator",
                   "role": "SUPERVISOR",
                   "subordinates": [
                     {
-                      "shortCode": "AMLS",
-                      "name": "AML Supervisor",
+                      "shortCode": "SS",
+                      "name": "Security Supervisor",
                       "role": "OFFICER"
                     }
                   ]
                 }
               ]
+            }
+          ]
+        },
+        {
+          "shortCode": "ES",
+          "name": "Executive Secretary",
+          "role": "HEAD_OF_DEPARTMENT"
+        },
+        {
+          "shortCode": "HS",
+          "name": "Head Strategy, Data & Projects",
+          "role": "HEAD_OF_DEPARTMENT",
+          "subordinates": [
+            {
+              "shortCode": "MST",
+              "name": "Manager Strategy & Transformation",
+              "role": "MANAGER",
+              "subordinates": [
+                {
+                  "shortCode": "BTA",
+                  "name": "Business Transformation Analyst",
+                  "role": "OFFICER"
+                }
+              ]
+            },
+            {
+              "shortCode": "MPMO",
+              "name": "Manager Program Management Officer",
+              "role": "MANAGER",
+              "subordinates": [
+                {
+                  "shortCode": "PM",
+                  "name": "Project Manager",
+                  "role": "OFFICER"
+                }
+              ]
+            },
+            {
+              "shortCode": "MDI",
+              "name": "Manager Data & Insights",
+              "role": "MANAGER",
+              "subordinates": [
+                {
+                  "shortCode": "DE",
+                  "name": "Data Engineer",
+                  "role": "OFFICER"
+                },
+                {
+                  "shortCode": "DS",
+                  "name": "Data Scientist",
+                  "role": "OFFICER"
+                },
+                {
+                  "shortCode": "DD",
+                  "name": "Dashboard Developer",
+                  "role": "OFFICER"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "shortCode": "HP&C",
+          "name": "Head People & Culture",
+          "role": "HEAD_OF_DEPARTMENT",
+          "subordinates": [
+            {
+              "shortCode": "MSS",
+              "name": "Manage Shared Services",
+              "role": "MANAGER",
+              "subordinates": [
+                {
+                  "shortCode": "PBO",
+                  "name": "Payroll & Benefits Officer",
+                  "role": "OFFICER"
+                },
+                {
+                  "shortCode": "HRIRO",
+                  "name": "HR Information & Records Officer",
+                  "role": "OFFICER"
+                }
+              ]
+            },
+            {
+              "shortCode": "MTL",
+              "name": "Manage Talent & Learning",
+              "role": "MANAGER",
+              "subordinates": [
+                {
+                  "shortCode": "LDO",
+                  "name": "Learning & Development Officer",
+                  "role": "OFFICER"
+                }
+              ]
+            },
+            {
+              "shortCode": "MPCP",
+              "name": "Manage people & Culture Partner",
+              "role": "MANAGER",
+              "subordinates": [
+                {
+                  "shortCode": "PCP",
+                  "name": "People & Culture Partner",
+                  "role": "OFFICER"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "shortCode": "CS",
+          "name": "Company Secretary/Head Legal",
+          "role": "HEAD_OF_DEPARTMENT",
+          "subordinates": [
+            {
+              "shortCode": "LMABA",
+              "name": "Legal Manager Advisory and Board Affairs",
+              "role": "MANAGER"
+            },
+            {
+              "shortCode": "LMLR",
+              "name": "Legal Manager Litigation & Registration",
+              "role": "MANAGER",
+              "subordinates": [
+                {
+                  "shortCode": "SLO-L",
+                  "name": "Senior Legal Officer-Litigation",
+                  "role": "SUPERVISOR",
+                  "subordinates": [
+                    {
+                      "shortCode": "LO",
+                      "name": "Legal Officer",
+                      "role": "OFFICER"
+                    }
+                  ]
+                },
+                {
+                  "shortCode": "SLO-RS",
+                  "name": "Senior Legal Officer-Registration & Securities",
+                  "role": "SUPERVISOR"
+                },
+                {
+                  "shortCode": "LC",
+                  "name": "Law Clerk",
+                  "role": "OFFICER"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "shortCode": "HOF",
+          "name": "Head Finance",
+          "role": "HEAD_OF_DEPARTMENT",
+          "subordinates": [
+            {
+              "shortCode": "FC",
+              "name": "Financial Controller",
+              "role": "MANAGER",
+              "subordinates": [
+                {
+                  "shortCode": "FMR",
+                  "name": "Finance Manager-Reporting",
+                  "role": "MANAGER",
+                  "subordinates": [
+                    {
+                      "shortCode": "SFORR",
+                      "name": "Senior Finance Officer-Regulatory Reporting",
+                      "role": "SUPERVISOR",
+                      "subordinates": [
+                        {
+                          "shortCode": "FO",
+                          "name": "Finance Officer",
+                          "role": "OFFICER"
+                        }
+                      ]
+                    },
+                    {
+                      "shortCode": "SFOFR",
+                      "name": "Senior Finance Officer-Financial Reporting",
+                      "role": "SUPERVISOR"
+                    }
+                  ]
+                },
+                {
+                  "shortCode": "FMBP",
+                  "name": "Finance Manager-Business Performance",
+                  "role": "MANAGER",
+                  "subordinates": [
+                    {
+                      "shortCode": "SFOMR",
+                      "name": "Senior Finance Officer-Management Reporting",
+                      "role": "SUPERVISOR"
+                    },
+                    {
+                      "shortCode": "SFOMR",
+                      "name": "Senior Finance Officer Tax, Financial Planning & Analysis",
+                      "role": "SUPERVISOR"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "shortCode": "HRM",
+          "name": "Head Risk Management",
+          "role": "HEAD_OF_DEPARTMENT",
+          "subordinates": [
+            {
+              "shortCode": "MLR",
+              "name": "Market & Liquidity Risk",
+              "role": "MANAGER",
+              "subordinates": [
+                {
+                  "shortCode": "MLRA",
+                  "name": "Market & Liquidity Risk Analyst",
+                  "role": "OFFICER"
+                }
+              ]
+            },
+            {
+              "shortCode": "MCR",
+              "name": "Manager Credit Risk",
+              "role": "MANAGER",
+              "subordinates": [
+                {
+                  "shortCode": "CRA",
+                  "name": "Credit Risk Analyst",
+                  "role": "OFFICER"
+                }
+              ]
+            },
+            {
+              "shortCode": "MOR",
+              "name": "Manager Operational Risk",
+              "role": "MANAGER",
+              "subordinates": [
+                {
+                  "shortCode": "OPRA",
+                  "name": "Operational Risk Analyst",
+                  "role": "OFFICER"
+                }
+              ]
+            },
+            {
+              "shortCode": "ESRA",
+              "name": "Essential & Social Risk Analyst",
+              "role": "MANAGER"
+            },
+            {
+              "shortCode": "SICTRA",
+              "name": "Senior ICT Risk Analyst",
+              "role": "MANAGER"
+            },
+            {
+              "shortCode": "SM",
+              "name": "Sustainability Manager",
+              "role": "MANAGER",
+              "subordinates": [
+                {
+                  "shortCode": "SGS",
+                  "name": "Sustainability & Governance Specialist",
+                  "role": "OFFICER"
+                },
+                {
+                  "shortCode": "DPPO",
+                  "name": "Data Protection & Privacy Officer",
+                  "role": "OFFICER"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "shortCode": "HC",
+          "name": "Head Credit",
+          "role": "HEAD_OF_DEPARTMENT",
+          "subordinates": [
+            {
+              "shortCode": "MCA",
+              "name": "Manager Credit Admin",
+              "role": "MANAGER",
+              "subordinates": [
+                {
+                  "shortCode": "CSMR",
+                  "name": "Credit Supervisor Monitoring & Reporting",
+                  "role": "SUPERVISOR",
+                  "subordinates": [
+                    {
+                      "shortCode": "CAO",
+                      "name": "Credit Administration Officer",
+                      "role": "OFFICER"
+                    }
+                  ]
+                },
+                {
+                  "shortCode": "RCA",
+                  "name": "Regional Credit Administrator",
+                  "role": "OFFICER"
+                },
+                {
+                  "shortCode": "CRBS",
+                  "name": "CRB Supervisor",
+                  "role": "SUPERVISOR",
+                  "subordinates": [
+                    {
+                      "shortCode": "CRB-O",
+                      "name": "CRB Officer",
+                      "role": "OFFICER"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "shortCode": "MCE-SME",
+              "name": "Manager Credit Evaluation-SME",
+              "role": "MANAGER",
+              "subordinates": [
+                {
+                  "shortCode": "TFS",
+                  "name": "Trade Finance Specialist",
+                  "role": "OFFICER"
+                },
+                {
+                  "shortCode": "CA-SME",
+                  "name": "Credit Analyst -SME Loans",
+                  "role": "OFFICER"
+                }
+              ]
+            },
+            {
+              "shortCode": "MCE-M",
+              "name": "Manager Credit Evaluation-Micro",
+              "role": "MANAGER",
+              "subordinates": [
+                {
+                  "shortCode": "CAMPL",
+                  "name": "Credit Analyst Micro & Personal Loans",
+                  "role": "OFFICER"
+                },
+                {
+                  "shortCode": "SCEM",
+                  "name": "Supervisor Credit Evaluation -Micro",
+                  "role": "SUPERVISOR"
+                }
+              ]
+            },
+            {
+              "shortCode": "MCR",
+              "name": "Manager Credit Recovery",
+              "role": "MANAGER",
+              "subordinates": [
+                {
+                  "shortCode": "SCR",
+                  "name": "Supervisor Credit Recovery",
+                  "role": "SUPERVISOR",
+                  "subordinates": [
+                    {
+                      "shortCode": "RO",
+                      "name": "Recovery Officer",
+                      "role": "OFFICER"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "shortCode": "CISO",
+          "name": "Chief Information Security Officer",
+          "role": "HEAD_OF_DEPARTMENT",
+          "subordinates": [
+            {
+              "shortCode": "MICTS",
+              "name": "Manager ICT Security",
+              "role": "MANAGER",
+              "subordinates": [
+                {
+                  "shortCode": "CDS",
+                  "name": "Cyber Defence Specialists",
+                  "role": "OFFICER"
+                },
+                {
+                  "shortCode": "IASS",
+                  "name": "Identity & Application Security Specialists",
+                  "role": "OFFICER"
+                },
+                {
+                  "shortCode": "ICTSO",
+                  "name": "ICT Security Officer",
+                  "role": "OFFICER"
+                }
+              ]
+            },
+            {
+              "shortCode": "ISGS",
+              "name": "ICT Security Governance Specialist",
+              "role": "MANAGER"
             }
           ]
         }
@@ -984,13 +1102,13 @@
           "role": "MANAGER",
           "subordinates": [
             {
-              "shortCode": "SIA",
-              "name": "Senior Internal Auditor",
+              "shortCode": "SITA",
+              "name": "Senior IT Auditor",
               "role": "SUPERVISOR",
               "subordinates": [
                 {
-                  "shortCode": "IA",
-                  "name": "Internal Audits",
+                  "shortCode": "IAIT",
+                  "name": "Internal Auditor - IT",
                   "role": "OFFICER"
                 }
               ]
@@ -1000,21 +1118,7 @@
         {
           "shortCode": "AMF",
           "name": "Audit Manager - Finance",
-          "role": "MANAGER",
-          "subordinates": [
-            {
-              "shortCode": "SIA",
-              "name": "Senior Internal Auditor",
-              "role": "SUPERVISOR",
-              "subordinates": [
-                {
-                  "shortCode": "IA",
-                  "name": "Internal Audits",
-                  "role": "OFFICER"
-                }
-              ]
-            }
-          ]
+          "role": "MANAGER"
         },
         {
           "shortCode": "AMSA",
@@ -1025,6 +1129,44 @@
               "shortCode": "SIASA",
               "name": "Senior Internal Auditor Special Audits",
               "role": "SUPERVISOR"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "shortCode": "HCOMP",
+      "name": "Head Compliance",
+      "role": "HEAD_OF_DEPARTMENT",
+      "subordinates": [
+        {
+          "shortCode": "MC",
+          "name": "Manager Compliance",
+          "role": "MANAGER",
+          "subordinates": [
+            {
+              "shortCode": "SCS",
+              "name": "Senior Compliance Supervisor",
+              "role": "SUPERVISOR",
+              "subordinates": [
+                {
+                  "shortCode": "COMPS",
+                  "name": "Compliance Supervisor",
+                  "role": "OFFICER"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "shortCode": "SAP",
+          "name": "Senior AML Supervisor",
+          "role": "SUPERVISOR",
+          "subordinates": [
+            {
+              "shortCode": "AMLS",
+              "name": "AML Supervisor",
+              "role": "OFFICER"
             }
           ]
         }

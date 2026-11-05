@@ -28,4 +28,6 @@ public interface TitleRepository extends JpaRepository<Title, Long> {
 
     Optional<Title> findByNameIgnoreCase(String name);
 
+    List<Title> findAllByNameIgnoreCaseOrderByIdAsc(String name);
+
 }
