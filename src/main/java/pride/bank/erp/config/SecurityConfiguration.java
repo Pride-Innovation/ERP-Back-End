@@ -64,6 +64,7 @@ public class SecurityConfiguration {
                         request.requestMatchers(
                                         AUTH_ROUTE,
                                         REFRESH_TOKEN_ROUTE,
+                                        AUTH_MODE_ROUTE,
                                         VERIFY_EMAIL,
                                         REQUEST_PASSWORD_RESET,
                                         RESET_PASSWORD,

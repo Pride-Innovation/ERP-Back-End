@@ -93,6 +93,8 @@ public class Constants {
     public static final String AUTH_ROUTE = GENERAL_ROUTE + "/auth/login";
     public static final String LOGOUT = GENERAL_ROUTE + "/auth/logout";
     public static final String REFRESH_TOKEN_ROUTE = GENERAL_ROUTE + "/auth/refresh-token";
+    /** Public: the login page asks it before anyone is signed in. Says LDAP or LOCAL, nothing else. */
+    public static final String AUTH_MODE_ROUTE = GENERAL_ROUTE + "/auth/mode";
     public static final String REQUEST_PASSWORD_RESET = GENERAL_ROUTE + "/request-password-reset";
     public static final String RESET_PASSWORD = GENERAL_ROUTE + "/reset-password";
     public static final String VERIFY_EMAIL = GENERAL_ROUTE + "/auth/verify-email/**";

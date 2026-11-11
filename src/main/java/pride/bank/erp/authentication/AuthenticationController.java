@@ -14,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import pride.bank.erp.authentication.directory.DirectoryAuthSettings;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.Constants;
 
@@ -26,6 +27,7 @@ import java.util.Map;
 public class AuthenticationController {
 
     private final AuthenticationService authenticationService;
+    private final DirectoryAuthSettings directoryAuthSettings;
 
     @PostMapping("/auth/register/{titleId}")
     public ResponseEntity<AuthenticationResponse> register(
@@ -38,8 +40,20 @@ public class AuthenticationController {
     @PostMapping("/auth/login")
     public ResponseEntity<AuthenticationResponse> authenticate(
             @Valid @RequestBody AuthenticationRequest request
-    ) throws NotFoundException {
+    ) {
         return ResponseEntity.ok(authenticationService.authenticate(request));
+    }
+
+    /**
+     * Whether passwords are checked by AD or by this application, so the pages offer the right
+     * actions: no "Forgot password?" and no "Change password" while AD owns the password. Public,
+     * because the login page asks before anyone signs in; it says nothing about any account.
+     */
+    @GetMapping("/auth/mode")
+    public ResponseEntity<Map<String, Object>> authMode() {
+        return ResponseEntity.ok(Map.of(
+                "mode", directoryAuthSettings.getMode().name(),
+                "passwordsManagedByDirectory", directoryAuthSettings.isLdap()));
     }
 
     @PostMapping("/auth/refresh-token")
