@@ -44,6 +44,9 @@ public class RequestController {
     @Autowired
     private RequestService requestService;
 
+    @Autowired
+    private pride.bank.erp.inventory.IssueStockCheckService issueStockCheckService;
+
     @GetMapping("/requests")
     public ResponseEntity<Page<RequestDTO>> fetchAllRequests(
             @RequestParam(required = false, defaultValue = "10") int pageSize,
@@ -87,6 +90,9 @@ public class RequestController {
             // drops an undeclared parameter silently - a filter that looks wired and returns the
             // unfiltered list is trap #2, and this page has been bitten by it before.
             @RequestParam(required = false) Long requesterDepartmentId,
+            // The requester's branch - the reports page's Branch filter, for callers who see every
+            // branch. Refused below ALL unless it is the caller's own; it narrows, never widens.
+            @RequestParam(required = false) Long requesterBranchId,
             @RequestParam(required = false, defaultValue = "false") Boolean deleted,
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
@@ -113,6 +119,7 @@ public class RequestController {
                 requesterId,
                 approverId,
                 requesterDepartmentId,
+                requesterBranchId,
                 deleted,
                 startDate,
                 endDate,
@@ -129,7 +136,8 @@ public class RequestController {
             @RequestParam("description") String description,
             @RequestParam("requestCommodities") String requestCommodities,
             @RequestParam(value = "assetTypeId", required = false) String assetTypeIdRaw,
-            @RequestParam(value = "attributes", required = false) String attributesRaw
+            @RequestParam(value = "attributes", required = false) String attributesRaw,
+            @RequestParam(value = "forStoreRestock", required = false, defaultValue = "false") boolean forStoreRestock
     ) {
         List<RequestCommodityDTO> commodityList;
         Long assetTypeId;
@@ -155,11 +163,16 @@ public class RequestController {
                 .name(name)
                 .priority(priority)
                 .description(description)
+                .forStoreRestock(forStoreRestock)
                 .build();
 
         try {
             RequestDTO savedRequest = requestService.createRequest(request, file, commodityList, assetTypeId, attributes);
             return ResponseEntity.status(HttpStatus.CREATED).body(savedRequest);
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            // A refusal, not a fault: rethrown so it reaches the handler that answers it as one.
+            // The catch-all below would turn it into a 440 "server fault".
+            throw e;
         } catch (ValidationException | BusinessRuleException | BadRequestException | IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
         } catch (NotFoundException | ResourceNotFoundException e) {
@@ -275,6 +288,21 @@ public class RequestController {
             throw e;
         } catch (Exception e) {
             return new ResponseEntity<>(e.getMessage(), HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    /**
+     * Whether the store this request will be issued from holds everything on it - what the request
+     * page shows while it sits at its Issue step. Readable by whoever may read the request.
+     */
+    @GetMapping("/requests/{requestID}/stock-check")
+    public ResponseEntity<?> stockCheck(@PathVariable Long requestID) {
+        try {
+            requestService.requireReadableById(requestID);
+            return ResponseEntity.ok(issueStockCheckService.check(requestID));
+        } catch (pride.bank.erp.exception.NotFoundException e) {
+            // Named explicitly: the NotFoundException handler answers 200, which would read as a check.
+            return new ResponseEntity<>(e.getMessage(), HttpStatus.NOT_FOUND);
         }
     }
 

@@ -40,6 +40,47 @@ class StockFilterTest {
     @Autowired
     private StockService stockService;
 
+    @Autowired pride.bank.erp.user.UserRepository userRepository;
+    @Autowired pride.bank.erp.config.JwtService jwtService;
+    @Autowired pride.bank.erp.access.AccessScopeService accessScopeService;
+
+    /*
+     * Signed in as somebody who sees every branch.
+     *
+     * These tests ran with nobody signed in, which the listing used to answer with every branch's
+     * orders - the "no branch on record reads as no restriction" hole that is now refused. They are
+     * about filters, not scope, so they run as a caller for whom the whole register is the right
+     * answer; scope has its own tests in StockReportScopeTest.
+     */
+    @org.junit.jupiter.api.BeforeEach
+    void signInAsAllBranchesViewer() {
+        for (pride.bank.erp.user.User u : userRepository.findAll()) {
+            if (u.getBranch() == null) continue;
+            signInAs(u);
+            if (accessScopeService.scopeFor(pride.bank.erp.access.ScopeSubject.INVENTORY,
+                    pride.bank.erp.access.ScopeAction.VIEW) == pride.bank.erp.dashboard.DashboardScope.ALL) {
+                return;
+            }
+        }
+        org.junit.jupiter.api.Assumptions.abort("No account sees every branch's inventory");
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void signOut() {
+        org.springframework.web.context.request.RequestContextHolder.resetRequestAttributes();
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+    }
+
+    private void signInAs(pride.bank.erp.user.User user) {
+        org.springframework.mock.web.MockHttpServletRequest request = new org.springframework.mock.web.MockHttpServletRequest();
+        request.addHeader("Authorization", "Bearer " + jwtService.generateToken(user));
+        org.springframework.web.context.request.RequestContextHolder.setRequestAttributes(
+                new org.springframework.web.context.request.ServletRequestAttributes(request));
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                        user, null, user.getAuthorities()));
+    }
+
     private Page<StockDAO> search(Long supplierId, String lpoNumber,
                                   LocalDateTime from, LocalDateTime to) {
         return search(supplierId, lpoNumber, from, to, null);
@@ -114,15 +155,10 @@ class StockFilterTest {
     /**
      * Naming a branch you may not see is refused, not quietly rewritten.
      *
-     * <p>This test has no authenticated principal, so the resolver puts it at SELF — the same place a
-     * branch officer sits. Asking for a specific branch from there must refuse: silently substituting
-     * the caller's own branch would show one branch's deliveries under another's name, which is a
-     * worse answer than an error.
-     *
-     * <p>The other half — that a caller at ALL scope gets the branch they asked for — is pinned in
-     * {@code AccessScopeServiceTest}, where a principal can be stood up properly. Reaching ALL scope
-     * here would need a real application {@code User} on the security context, and a test that built
-     * one would be pinning the fixture rather than this query.
+     * <p>The branch is found as the all-branches viewer, then asked for with nobody signed in - a
+     * caller who cannot see beyond one branch (they cannot see any). Silently substituting would show
+     * one branch's deliveries under another's name, a worse answer than an error. A real branch
+     * viewer naming another branch is pinned in {@code StockReportScopeTest}.
      */
     @Test
     @Transactional(readOnly = true)
@@ -136,6 +172,7 @@ class StockFilterTest {
                 .findFirst()
                 .orElse(null);
         if (branchId == null) return;
+        signOut();
 
         assertThatThrownBy(() -> search(null, null, null, null, branchId))
                 .as("a caller who cannot see beyond one branch must be refused another, rather than "

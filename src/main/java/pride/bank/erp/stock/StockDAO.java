@@ -35,6 +35,8 @@ public class StockDAO {
     private LocalDateTime createDate;
     private LocalDateTime lastModified;
     private Long createdBy;
+    /** The creator's name, filled for the listing - the report's "Stocked By" column. */
+    private String createdByName;
     private Long lastModifiedBy;
     private List<CommodityWithDetailsDao> commodities;
     private List<GrnReport> grnReports;

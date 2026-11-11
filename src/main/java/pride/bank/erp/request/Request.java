@@ -56,6 +56,18 @@ public class Request {
     private Boolean isBranchStationery; // Tracks branch stationery requests.
     private Boolean isBranchNonStationery; // Tracks branch non stationery requests.
 
+    /**
+     * True when this request restocks the requester's branch Admin store rather than supplying the
+     * requester (V30). Chosen on the form, guarded by RESTOCK_STORE, branch users only, and applies to
+     * the whole request. It decides where the goods are delivered and which workflows can serve it.
+     *
+     * <p>Named without an "is" prefix deliberately: Jackson strips it from a primitive boolean's
+     * getter, and a wire name nobody chose is one every consumer has to rediscover.
+     */
+    @Builder.Default
+    @Column(name = "for_store_restock", nullable = false)
+    private boolean forStoreRestock = false;
+
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "status_id")
     @NotAudited

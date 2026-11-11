@@ -23,6 +23,13 @@ public class RepairDTO {
     private Long technicianUserId;
     private Long technicianConsultantId;
     private pride.bank.erp.assetType.RepairDestination repairDestination;
+    /**
+     * The branch this repair belongs to - the one its opening transfer sent the asset from - for the
+     * maintenance report. Not {@code asset.branch}: that reads Head Office while the asset is on the
+     * bench. Set only by the report listing.
+     */
+    private Long sentFromBranchId;
+    private String sentFromBranchName;
     private String repairReason;
     private String status;
     private List<String> documents;

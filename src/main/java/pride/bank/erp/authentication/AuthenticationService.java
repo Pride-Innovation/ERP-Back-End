@@ -12,6 +12,13 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import pride.bank.erp.advice.WafStatus;
+import pride.bank.erp.authentication.directory.DirectoryAuthClient;
+import pride.bank.erp.authentication.directory.DirectoryAuthSettings;
+import pride.bank.erp.authentication.directory.DirectoryResult;
+import pride.bank.erp.authentication.directory.DirectoryUsername;
+import pride.bank.erp.exception.SignInException;
 import org.springframework.security.authentication.InsufficientAuthenticationException;
 import org.springframework.security.authentication.*;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -54,6 +61,13 @@ public class AuthenticationService {
      * recorded explicitly here or not at all.
      */
     private final AuditService auditService;
+    private final DirectoryAuthSettings directoryAuthSettings;
+    private final DirectoryAuthClient directoryAuthClient;
+
+    /** One message for an unknown address and a wrong password, so neither can be told apart. */
+    static final String WRONG_CREDENTIALS = "Incorrect email or password.";
+    /** The login page's code for "the service, not you": unavailable, rate-limited, or misconfigured. */
+    public static final String SIGN_IN_UNAVAILABLE = "SIGN_IN_UNAVAILABLE";
 
     public AuthenticationResponse register(RegisterRequest request, Long titleId)
             throws NotFoundException {
@@ -103,7 +117,7 @@ public class AuthenticationService {
      * Those records are written with {@code REQUIRES_NEW} inside {@link AuditService}, so the throw
      * that follows a refusal unwinds the attempt without taking the record of it along.
      */
-    public AuthenticationResponse authenticate(AuthenticationRequest request) throws NotFoundException {
+    public AuthenticationResponse authenticate(AuthenticationRequest request) {
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> {
                     // No user, so no id and no name — the attempted address is the whole of what is
@@ -113,7 +127,9 @@ public class AuthenticationService {
                             AuditEventType.REJECTED, AuditModule.SYSTEM, "LOGIN_FAILED_UNKNOWN_USER",
                             "Failed sign-in attempt for unknown address " + request.getEmail(),
                             AuditSeverity.WARNING);
-                    return new NotFoundException("User not found");
+                    // The same answer as a wrong password. This was a NotFoundException saying "User
+                    // not found", which told anyone typing addresses which ones belong to staff.
+                    return new BadCredentialsException(WRONG_CREDENTIALS);
                 });
 
         if (!user.isEnabled()) {
@@ -129,6 +145,12 @@ public class AuthenticationService {
         if (!user.isAccountNonLocked()) {
             auditRefusal(user, "LOGIN_REFUSED_ACCOUNT_LOCKED", "locked pending email verification");
             throw new LockedException("Account is locked. Please verify your email.");
+        }
+
+        // The account's own state is checked above, before AD is asked: a disabled or blocked account
+        // must not spend its owner's five-attempts AD allowance, which every bank system shares.
+        if (directoryAuthSettings.isLdap()) {
+            return authenticateAgainstDirectory(user, request.getPassword());
         }
 
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
@@ -175,6 +197,96 @@ public class AuthenticationService {
                 AuditEventType.LOGIN, AuditModule.SYSTEM, "LOGIN_SUCCEEDED",
                 "Signed in", AuditSeverity.INFO);
         return response;
+    }
+
+    /**
+     * Checks the password with the bank's LDAP Authentication API, then issues this application's own
+     * tokens exactly as a local sign-in does. Authorization is untouched: roles and permissions come
+     * from this database, and the AD groups the API returns are ignored.
+     *
+     * <p>The AD username is the email's local part without trailing digits ({@link DirectoryUsername}),
+     * so test accounts such as {@code sodong12@} sign in with the password of {@code sodong}.
+     *
+     * <p>No failed-attempt counter and no automatic block here. AD throttles a username after five
+     * failures in fifteen minutes across every bank system; a counter of our own would block sooner
+     * and separately for each test account sharing one AD identity. Every failure is still audited.
+     */
+    private AuthenticationResponse authenticateAgainstDirectory(User user, String password) {
+        String username = DirectoryUsername.of(user.getEmail());
+        if (username == null) {
+            auditService.recordAs(user, user.getEmail(),
+                    AuditEventType.REJECTED, AuditModule.SYSTEM, "LOGIN_REFUSED_NO_DIRECTORY_USERNAME",
+                    "Sign-in refused — no AD username can be derived from the account's email",
+                    AuditSeverity.WARNING);
+            throw new BadCredentialsException(WRONG_CREDENTIALS);
+        }
+
+        DirectoryResult result = directoryAuthClient.authenticate(username, password);
+
+        if (!result.authenticated()) {
+            refuseDirectorySignIn(user, username, result.code());
+        }
+
+        // The identity AD vouched for must be the one this account signs in as. A mismatch would mean
+        // the password just checked belongs to somebody else, so it is refused, not reconciled. (The
+        // returned email is not compared: AD emails and usernames differ legitimately - jdoe /
+        // jane.doe - and both sides would lose their digits the same way, so it could only refuse
+        // real people without catching anything the username does not.)
+        if (!username.equalsIgnoreCase(result.username().trim())) {
+            auditService.recordAs(user, user.getEmail(),
+                    AuditEventType.REJECTED, AuditModule.SYSTEM, "LOGIN_REFUSED_IDENTITY_MISMATCH",
+                    "Sign-in refused — AD authenticated a different identity than this account's ("
+                            + username + ")",
+                    AuditSeverity.CRITICAL);
+            throw new BadCredentialsException(WRONG_CREDENTIALS);
+        }
+
+        if (user.getFailedLoginAttempts() > 0) {
+            user.setFailedLoginAttempts(0);
+            userRepository.save(user);
+        }
+        revokeAllUserTokens(user);
+        AuthenticationResponse response = generateToken(user, user.getTitle());
+        auditService.recordAs(user, user.getEmail(),
+                AuditEventType.LOGIN, AuditModule.SYSTEM, "LOGIN_SUCCEEDED",
+                "Signed in with AD credentials (" + username + ")", AuditSeverity.INFO);
+        return response;
+    }
+
+    /** Audits the refusal and throws what the login page shows. Never returns. */
+    private void refuseDirectorySignIn(User user, String username, String code) {
+        switch (code) {
+            case DirectoryResult.INVALID_CREDENTIALS -> {
+                auditService.recordAs(user, user.getEmail(),
+                        AuditEventType.REJECTED, AuditModule.SYSTEM, "LOGIN_FAILED_BAD_PASSWORD",
+                        "Failed sign-in attempt — AD refused the credentials for " + username,
+                        AuditSeverity.WARNING);
+                throw new BadCredentialsException(WRONG_CREDENTIALS);
+            }
+            case DirectoryResult.USER_THROTTLED -> {
+                auditService.recordAs(user, user.getEmail(),
+                        AuditEventType.REJECTED, AuditModule.SYSTEM, "LOGIN_REFUSED_AD_THROTTLED",
+                        "Sign-in refused — AD is throttling " + username + " after repeated failures",
+                        AuditSeverity.CRITICAL);
+                throw new SignInException(HttpStatus.UNAUTHORIZED, DirectoryResult.USER_THROTTLED,
+                        "Too many failed sign-in attempts. Please wait 15 minutes and try again.");
+            }
+            case DirectoryResult.VALIDATION_ERROR -> {
+                throw new SignInException(HttpStatus.BAD_REQUEST, DirectoryResult.VALIDATION_ERROR,
+                        "Enter your email address and password.");
+            }
+            default -> {
+                // The service, its quota, or this application's own registration - never the employee.
+                boolean ourCredentials = DirectoryResult.INVALID_CLIENT.equals(code)
+                        || DirectoryResult.CLIENT_INACTIVE.equals(code);
+                auditService.recordAs(user, user.getEmail(),
+                        AuditEventType.REJECTED, AuditModule.SYSTEM, "LOGIN_REFUSED_DIRECTORY_UNAVAILABLE",
+                        "Sign-in refused — the LDAP Authentication API could not check the password (" + code + ")",
+                        ourCredentials ? AuditSeverity.CRITICAL : AuditSeverity.WARNING);
+                throw new SignInException(WafStatus.SERVER_FAULT, SIGN_IN_UNAVAILABLE,
+                        "Sign-in is temporarily unavailable. Please try again shortly.");
+            }
+        }
     }
 
     /** A sign-in refused by the state of the account rather than by the password. */

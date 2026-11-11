@@ -31,6 +31,8 @@ public class StoreService {
     private final CurrentUserService currentUserService;
     private final InventoryService inventoryService;
     private final pride.bank.erp.config.BranchScopeService branchScope;
+    private final pride.bank.erp.inventory.IssueStockCheckService issueStockCheckService;
+    private final pride.bank.erp.inventory.StockAvailabilityService stockAvailabilityService;
 
     /**
      * Adds or updates commodities in the ADMIN store of a specific branch.
@@ -62,6 +64,10 @@ public class StoreService {
         // going through the service that is supposed to be the single authority over balances.
         for (CommodityWithDetailsDao dao : commodities) {
             inventoryService.creditConsumable(adminStore, dao.getCommodity(), dao.getDeliveredQuantity(), context);
+        }
+        // A delivery may be what a request waiting at its Issue step needed. Told after commit.
+        if (adminStore != null) {
+            issueStockCheckService.onStockArrived(adminStore.getId());
         }
     }
 
@@ -98,8 +104,26 @@ public class StoreService {
             String stockLevel, Pageable pageable) {
         String name = (stockName == null || stockName.isBlank()) ? null : stockName.trim();
         String level = normaliseStockLevel(stockLevel);
-        return storeBalanceRepository.search(branchId, assetTypeId, storeType, name, level,
+        Page<StoreBalance> page = storeBalanceRepository.search(branchId, assetTypeId, storeType, name, level,
                 withStableOrder(pageable));
+        markPromised(page.getContent());
+        return page;
+    }
+
+    /**
+     * Fills in how much of each line is already promised, and so how much is free. The figure the page
+     * shows next to on-hand: issued stock stays on the shelf until approval, and a store page showing
+     * only on-hand reads as though none of it were spoken for. One availability read per store.
+     */
+    private void markPromised(List<StoreBalance> lines) {
+        Map<Long, Map<Long, Integer>> byStore = new java.util.HashMap<>();
+        for (StoreBalance line : lines) {
+            if (line.getStore() == null || line.getCommodity() == null) continue;
+            int promised = byStore.computeIfAbsent(line.getStore().getId(), id -> stockAvailabilityService.promised(line.getStore()))
+                    .getOrDefault(line.getCommodity().getId(), 0);
+            line.setPromised(promised);
+            line.setAvailable(Math.max(0, line.getQuantity() - promised));
+        }
     }
 
     /**

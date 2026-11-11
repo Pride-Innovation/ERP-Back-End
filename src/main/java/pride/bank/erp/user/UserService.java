@@ -68,6 +68,8 @@ public class UserService {
     private final LeaveRepository leaveRepository;
     private final TitleRepository titleRepository;
     private final RoleRepository roleRepository;
+    /** In LDAP mode passwords live in AD, and changing the local one would change nothing. */
+    private final pride.bank.erp.authentication.directory.DirectoryAuthSettings directoryAuthSettings;
     /**
      * Account state changes are how access to this system is granted and taken away, so all of them
      * are recorded at WARNING or above.
@@ -653,6 +655,7 @@ public class UserService {
     }
 
     public User changePassword(ChangePasswordDTO request) {
+        directoryAuthSettings.requireLocalPasswords();
         String oldPassword = request.getOldPassword();
         String newPassword = request.getNewPassword();
 

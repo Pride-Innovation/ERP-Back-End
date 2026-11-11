@@ -26,22 +26,15 @@ public interface StockAdjustmentRepository extends JpaRepository<StockAdjustment
             WHERE (:storeId IS NULL OR a.store.id = :storeId)
               AND (:from IS NULL OR a.postedAt >= :from)
               AND (:to IS NULL OR a.postedAt <= :to)
-            ORDER BY a.postedAt DESC
+            ORDER BY a.postedAt DESC, a.id DESC
             """)
     List<StockAdjustment> findForReport(@Param("storeId") Long storeId,
                                         @Param("from") LocalDateTime from,
                                         @Param("to") LocalDateTime to);
 
-    /** Totals by reason for the report headline: {@code [reason, lines, netUnits]}. */
-    @Query("""
-            SELECT a.reason, COUNT(a), SUM(a.quantityDelta)
-            FROM StockAdjustment a
-            WHERE (:storeId IS NULL OR a.store.id = :storeId)
-              AND (:from IS NULL OR a.postedAt >= :from)
-              AND (:to IS NULL OR a.postedAt <= :to)
-            GROUP BY a.reason
-            """)
-    List<Object[]> summariseByReason(@Param("storeId") Long storeId,
-                                     @Param("from") LocalDateTime from,
-                                     @Param("to") LocalDateTime to);
+    /*
+     * There was a `summariseByReason` aggregate here. It is computed from the scoped list now: the
+     * aggregate ran over every store in the bank, so the headline totals disclosed what the list
+     * beneath them had been narrowed to withhold.
+     */
 }

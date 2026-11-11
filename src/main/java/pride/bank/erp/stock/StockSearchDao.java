@@ -37,7 +37,7 @@ public class StockSearchDao {
         CriteriaQuery<Stock> criteriaQuery = criteriaBuilder.createQuery(Stock.class);
         Root<Stock> stockRoot = criteriaQuery.from(Stock.class);
 
-        Predicate predicate = getPredicate(stockSearchCriteria, stockRoot);
+        Predicate predicate = getPredicate(stockSearchCriteria, stockRoot, criteriaQuery);
         criteriaQuery.where(predicate);
 
         setOrder(stockPage, criteriaQuery, stockRoot);
@@ -52,7 +52,7 @@ public class StockSearchDao {
         return new PageImpl<>(typedQuery.getResultList(), pageable, stocksCount);
     }
 
-    private Predicate getPredicate(StockSearchCriteria criteria, Root<Stock> root) {
+    private Predicate getPredicate(StockSearchCriteria criteria, Root<Stock> root, AbstractQuery<?> query) {
         List<Predicate> predicates = new ArrayList<>();
 
         if (Objects.nonNull(criteria.getScopedBranchId())) {
@@ -105,15 +105,50 @@ public class StockSearchDao {
             predicates.add(criteriaBuilder.lessThanOrEqualTo(root.get("createDate"), criteria.getEndDate()));
         }
 
+        if (Objects.nonNull(criteria.getOrderedFrom()) || Objects.nonNull(criteria.getOrderedTo())) {
+            // When it was ordered, else when it was created: the date the report's column shows.
+            Expression<java.time.LocalDateTime> placed = criteriaBuilder.coalesce(
+                    root.<java.time.LocalDateTime>get("orderDate"), root.<java.time.LocalDateTime>get("createDate"));
+            if (Objects.nonNull(criteria.getOrderedFrom())) {
+                predicates.add(criteriaBuilder.greaterThanOrEqualTo(placed, criteria.getOrderedFrom()));
+            }
+            if (Objects.nonNull(criteria.getOrderedTo())) {
+                predicates.add(criteriaBuilder.lessThanOrEqualTo(placed, criteria.getOrderedTo()));
+            }
+        }
+
+        if (Objects.nonNull(criteria.getAssetTypeId())) {
+            /*
+             * An EXISTS over the order's lines, not a join: joining the lines would repeat an order
+             * once per matching line and inflate the count that drives the pager. LEFT joins inside,
+             * since a commodity's category is nullable (trap #1).
+             */
+            Subquery<Long> lines = query.subquery(Long.class);
+            Root<pride.bank.erp.stockCommodity.StockCommodity> line =
+                    lines.from(pride.bank.erp.stockCommodity.StockCommodity.class);
+            Join<?, ?> category = line.join("commodity", JoinType.LEFT).join("assetType", JoinType.LEFT);
+            lines.select(line.get("id")).where(
+                    criteriaBuilder.equal(line.get("stock"), root),
+                    criteriaBuilder.equal(category.get("id"), criteria.getAssetTypeId()));
+            predicates.add(criteriaBuilder.exists(lines));
+        }
+
         return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
     }
 
+    /**
+     * The requested order, then {@code id} as a tie-break (trap #3): sorting on a non-unique column
+     * alone lets MySQL order ties differently per query, so a page repeats one order and drops another.
+     */
     private void setOrder(StockPage stockPage, CriteriaQuery<Stock> query, Root<Stock> root) {
-        if (sortDirection(stockPage).equals(Sort.Direction.ASC)) {
-            query.orderBy(criteriaBuilder.asc(root.get(sortBy(stockPage))));
-        } else {
-            query.orderBy(criteriaBuilder.desc(root.get(sortBy(stockPage))));
+        boolean ascending = sortDirection(stockPage).equals(Sort.Direction.ASC);
+        String field = sortBy(stockPage);
+        List<Order> orders = new ArrayList<>();
+        orders.add(ascending ? criteriaBuilder.asc(root.get(field)) : criteriaBuilder.desc(root.get(field)));
+        if (!"id".equals(field)) {
+            orders.add(ascending ? criteriaBuilder.asc(root.get("id")) : criteriaBuilder.desc(root.get("id")));
         }
+        query.orderBy(orders);
     }
 
     private Pageable getPageable(StockPage stockPage) {
@@ -125,7 +160,7 @@ public class StockSearchDao {
         CriteriaQuery<Long> countQuery = criteriaBuilder.createQuery(Long.class);
         Root<Stock> countRoot = countQuery.from(Stock.class);
 
-        Predicate countPredicate = getPredicate(criteria, countRoot);
+        Predicate countPredicate = getPredicate(criteria, countRoot, countQuery);
         countQuery.select(criteriaBuilder.count(countRoot)).where(countPredicate);
 
         return entityManager.createQuery(countQuery).getSingleResult();

@@ -37,6 +37,7 @@ import pride.bank.erp.exception.AccountBlockedException;
 import pride.bank.erp.exception.BadRequestException;
 import pride.bank.erp.exception.NoApproverException;
 import pride.bank.erp.exception.NotFoundException;
+import pride.bank.erp.exception.SignInException;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -217,6 +218,17 @@ public class ApplicationExceptionHandler {
         errorDetail.setProperty("errorCode", "INVALID_CREDENTIALS");
         errorDetail.setProperty("access_denied_reason", "Invalid Email or Password");
         return errorDetail;
+    }
+
+    /**
+     * Directory sign-in outcomes the login page names (throttled, sign-in unavailable, password
+     * managed by AD). The status is chosen by the thrower and is always one the firewall admits.
+     */
+    @ExceptionHandler(SignInException.class)
+    public ResponseEntity<ProblemDetail> handleSignInException(SignInException ex) {
+        ProblemDetail errorDetail = ProblemDetail.forStatusAndDetail(ex.getStatus(), ex.getMessage());
+        errorDetail.setProperty("errorCode", ex.getErrorCode());
+        return ResponseEntity.status(ex.getStatus()).body(errorDetail);
     }
 
     @ExceptionHandler(AccountBlockedException.class)

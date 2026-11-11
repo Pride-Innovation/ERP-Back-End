@@ -70,6 +70,28 @@ public class IssuanceApprovalRecordService {
         // the approver would make issuance approval unreachable for every manager in practice.
         requireIssuerUnitMatch(request, issuance);
 
+        // Maker-checker: the issuance is approved by somebody who neither asked for it nor issued it,
+        // whatever they hold. The workflow routes the step accordingly; this is the guarantee.
+        User approver = currentUserService.getCurrentUser();
+        if (approver != null && request.getRequester() != null && approver.getId().equals(request.getRequester().getId())) {
+            throw new IllegalArgumentException("You cannot approve the issuance of your own request.");
+        }
+        if (approver != null && issuance.getIssuer() != null && approver.getId().equals(issuance.getIssuer().getId())) {
+            throw new IllegalArgumentException("You issued these items, so their issuance must be approved by somebody else.");
+        }
+
+        /*
+         * The stock leaves the store now, at approval - not when it was issued. Settled before the
+         * workflow advances, so a store that can no longer cover the issuance refuses the approval
+         * with nothing moved; all of it is one transaction either way. A cross-location issuance is
+         * only marked settled here: the fulfilment movement created below owns its transfer.
+         */
+        boolean direct = fulfillmentService.decide(
+                issuance.getIssuer() != null ? issuance.getIssuer().getBranch() : null,
+                request.getRequester() != null ? request.getRequester().getBranch() : null)
+                == pride.bank.erp.movement.FulfillmentType.DIRECT_ISSUANCE;
+        issuanceService.settleIssuanceStock(issuance, direct);
+
         // Persist the audit record (always, regardless of workflow mode)
         IssuanceApprovalRecord record = IssuanceApprovalRecord.builder()
                 .issuance(issuance)

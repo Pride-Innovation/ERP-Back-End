@@ -54,4 +54,18 @@ public interface RequestWorkflowInstanceRepository extends JpaRepository<Request
             + "AND i.status = pride.bank.erp.workflowinstance.InstanceStatus.IN_PROGRESS "
             + "AND s.stepOrder = i.currentStepOrder")
     List<Object[]> findCurrentStepTypes(@Param("requestIds") Collection<Long> requestIds);
+
+    /**
+     * Requests waiting at an Issue step for a person at this branch - what a delivery into the branch
+     * store may now be able to fill. The joins are inner on purpose: each is to something the
+     * predicate requires (a routed person, at a branch).
+     */
+    @Query("SELECT r FROM RequestWorkflowInstance i "
+            + "JOIN i.workflow w JOIN w.steps s JOIN i.request r JOIN r.currentApprover u JOIN u.branch b "
+            + "WHERE i.status = pride.bank.erp.workflowinstance.InstanceStatus.IN_PROGRESS "
+            + "AND s.stepOrder = i.currentStepOrder "
+            + "AND s.stepType = pride.bank.erp.workflow.StepType.ISSUANCE "
+            + "AND b.id = :branchId "
+            + "AND (r.deleted IS NULL OR r.deleted = false)")
+    List<pride.bank.erp.request.Request> findAtIssueStepRoutedToBranch(@Param("branchId") Long branchId);
 }

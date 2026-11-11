@@ -56,12 +56,19 @@ public class RepairController {
             java.time.LocalDateTime startDate,
             @RequestParam(required = false)
             @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME)
-            java.time.LocalDateTime endDate
+            java.time.LocalDateTime endDate,
+            // The branch the repair belongs to (the one that sent it). Refused below ALL scope unless
+            // it is the caller's own; the report only offers it to callers who see every branch.
+            @RequestParam(required = false) Long branchId,
+            // INTERNAL / EXTERNAL / NONE (no technician recorded yet).
+            @RequestParam(required = false) String repairedBy
     ) {
         Pageable pageable = PageRequest.of(pageNumber, pageSize,
-                org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "repairStartDate"));
+                // `id` breaks ties: two repairs booked the same instant otherwise page unpredictably.
+                org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "repairStartDate", "id"));
         return new ResponseEntity<>(
-                repairService.listAllRepairs(status, assetTypeId, startDate, endDate, pageable), HttpStatus.OK);
+                repairService.listAllRepairs(status, assetTypeId, startDate, endDate, branchId, repairedBy, pageable),
+                HttpStatus.OK);
     }
 
     @GetMapping(value = "/assets/repairs/{assetId}")

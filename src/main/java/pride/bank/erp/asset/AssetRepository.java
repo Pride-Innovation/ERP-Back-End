@@ -277,7 +277,6 @@ public interface AssetRepository extends JpaRepository<Asset, Long> {
             @Param("scopedBranchId") Long scopedBranchId,
             @Param("scopedOwnerId") Long scopedOwnerId);
 
-    List<Asset> findByAssignedTo_IdAndDisposedFalse(Long userId);
 
     /** Assets held in a store, per branch: {@code [branchId, count]}. Excludes courier custody. */
     @Query("""

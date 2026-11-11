@@ -15,6 +15,7 @@ import pride.bank.erp.auditing.trail.AuditEventType;
 import pride.bank.erp.auditing.trail.AuditModule;
 import pride.bank.erp.auditing.trail.AuditService;
 import pride.bank.erp.auditing.trail.AuditSeverity;
+import pride.bank.erp.authentication.directory.DirectoryAuthSettings;
 import pride.bank.erp.config.JwtService;
 import pride.bank.erp.notification.Email;
 import pride.bank.erp.user.PasswordPolicy;
@@ -34,9 +35,12 @@ public class PasswordResetService {
     private final BCryptPasswordEncoder passwordEncoder;
     /** Password changes are credential events; they belong in the trail whoever initiated them. */
     private final AuditService auditService;
+    /** In LDAP mode passwords live in AD: a reset here would set a hash nobody signs in with. */
+    private final DirectoryAuthSettings directoryAuthSettings;
 
     @Transactional
     public Map<String, Object> requestPasswordReset(String email) {
+        directoryAuthSettings.requireLocalPasswords();
         return userRepository.findByEmail(email)
                 .map(this::sendResetPasswordEmail)
                 .orElseGet(() -> {
@@ -89,6 +93,7 @@ public class PasswordResetService {
 
     @Transactional
     public Map<String, Object> resetPassword(String token, String newPassword) {
+        directoryAuthSettings.requireLocalPasswords();
         /*
          * Checked before the token, deliberately.
          *

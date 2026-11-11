@@ -34,6 +34,7 @@ import pride.bank.erp.role.Role;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
 import pride.bank.erp.inventory.InventoryService;
+import pride.bank.erp.inventory.StockAvailabilityService;
 import pride.bank.erp.inventory.ledger.LedgerContext;
 import pride.bank.erp.inventory.ledger.StockLedgerReason;
 import pride.bank.erp.stock.CommodityWithDetailsDao;
@@ -51,6 +52,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.logging.Logger;
@@ -62,7 +64,6 @@ import static java.lang.String.format;
 @Slf4j
 public class IssuanceService {
     private static final Logger logger = Logger.getLogger(IssuanceService.class.getName());
-    private static final Long HEAD_OFFICE_ID = 1L;
     // Status codes (stable across environments/re-seeds — never reference by id).
     /** Newly-stocked assets that still need their details filled in. */
     private static final String CODE_REQUIRE_UPDATE = "requireUpdate";
@@ -96,13 +97,32 @@ public class IssuanceService {
     private final StoreBalanceRepository storeBalanceRepository;
     private final WorkflowEngineService workflowEngineService;
     private final InventoryService inventoryService;
+    private final StockAvailabilityService stockAvailabilityService;
+
+    /** Head Office by its flag. A branch id of 1 is Head Office on one database and nothing elsewhere. */
+    private static boolean isHeadOffice(User user) {
+        return user != null && user.getBranch() != null && user.getBranch().isHeadOffice();
+    }
 
     @Transactional
     public IssuanceDAO issueCommodities(IssuanceDTO request) throws NotFoundException {
-        User requester = userService.findUser(request.getRequester());
         Status status = statusService.findByStatusCode(CODE_ISSUED);
         Request requestDetails = requestService.findRequest(request.getRequestId());
         User currentUser = currentUserService.getCurrentUser();
+
+        // Whose request it is comes from the request, not the payload. The client sends a requester id
+        // too, and trusting it let an issuance be made out to somebody other than who asked.
+        User requester = requestDetails.getRequester() != null
+                ? requestDetails.getRequester() : userService.findUser(request.getRequester());
+        if (request.getRequester() != null && !request.getRequester().equals(requester.getId())) {
+            throw new IllegalArgumentException("This issuance names a different person from the one who raised the request.");
+        }
+
+        // Maker-checker: nobody issues their own request, whatever they hold. The workflow routes the
+        // step to someone else (MakerChecker); this is the guarantee behind the routing.
+        if (currentUser != null && currentUser.getId().equals(requester.getId())) {
+            throw new IllegalArgumentException("You cannot issue your own request. Another issuer has to issue it.");
+        }
         Long issuerBranchId = currentUser.getBranch().getId();
         Long requesterBranchId = requester.getBranch().getId();
 
@@ -111,6 +131,13 @@ public class IssuanceService {
 
         boolean sameLocationAssets = Objects.equals(issuerBranchId, requesterBranchId);
 
+        // A store restock fills the requester's branch store, so it cannot be issued out of that same
+        // store - the goods would leave the shelf to arrive back on it.
+        if (requestDetails.isForStoreRestock() && sameLocationAssets) {
+            throw new IllegalArgumentException("A store restock is issued from another branch's store - "
+                    + "usually Head Office - not from the store it restocks.");
+        }
+
         // Handle asset assignments if present — validate up front (fail fast, before the
         // Issuance record exists); the actual assignment/link is applied after the Issuance
         // is saved (see below), same ordering as commodities.
@@ -118,44 +145,38 @@ public class IssuanceService {
             validateAssetsReadyForIssuance(request.getAssets());
         }
 
-        // Process commodities if present
+        /*
+         * Commodities are checked here and debited at approval, not here.
+         *
+         * Issuing used to debit the issuer's Admin store on the spot, before anyone approved the
+         * issuance, and a rejection afterwards put nothing back - the store then read lower than the
+         * shelf and the next stock take reported it lost. Now issuing only proves the stock is
+         * available (on hand less what is already promised), and the issuance itself is the promise
+         * until approval debits it (settleDirectIssuance) or hands it to the fulfilment movement.
+         *
+         * Head Office is told by its flag. This used to compare the branch id with 1, which is right
+         * on one database and wrong on any other (trap #4).
+         */
         if (request.getCommodities() != null && !request.getCommodities().isEmpty()) {
 
             // Check if the request contains mixed item types and validate according to business rules
-            validateRequestItemTypes(request.getCommodities(), requesterBranchId);
+            validateRequestItemTypes(request.getCommodities(), requester);
 
-            // CASE 1: Branch issuing to its own users (stationery only) — same location, direct issuance.
-            if (!Objects.equals(issuerBranchId, HEAD_OFFICE_ID)) {
+            // A branch issues whatever its own store holds. It used to be "Stationery only", matched by
+            // the category's display name, which left everything else a branch stocks - printing,
+            // kitchen and cleaning supplies, and anything Head Office replenished to it - impossible to
+            // issue at all. What a branch handles is now decided by its workflow (Phase 3,
+            // WORKFLOW.md); availability below decides whether the shelf can cover it.
+            if (!isHeadOffice(currentUser)) {
                 logger.info("Branch issuing items to user - branch ID: " + issuerBranchId);
-
-                // Ensure that all items being issued are stationary
-                ensureThatAllItemsAreStationery(request.getCommodities());
-
-                // Validate that items are in branch store
-                validateCommoditiesInStore(request.getCommodities(), issuerBranchId);
-
-                // Direct issuance: debit the branch's ADMIN store through the inventory ledger.
-                debitFromAdminStore(request.getCommodities(), issuerBranchId);
-            }
-            // CASE 2: Head Office issuing items
-            else {
-                boolean crossLocation = !Objects.equals(requesterBranchId, HEAD_OFFICE_ID);
-                logger.info("Head office issuing items - crossLocation: " + crossLocation
+            } else {
+                logger.info("Head office issuing items - crossLocation: " + !isHeadOffice(requester)
                         + ", requester is BOM: " + isBranchOperationManager(requester));
-
-                // Validate availability at head office regardless of destination.
-                validateCommoditiesInStore(request.getCommodities(), HEAD_OFFICE_ID);
-
-                if (crossLocation) {
-                    // Inter-location fulfilment: the Movement created at issuance approval owns the
-                    // HO→destination transfer (debits HO, credits the destination ADMIN store on
-                    // receipt). No eager move here — that would double-count against the movement.
-                    logger.info("Cross-location issuance; stock transfer deferred to fulfilment movement");
-                } else {
-                    // Same location: direct issuance from the HO ADMIN store.
-                    debitFromAdminStore(request.getCommodities(), HEAD_OFFICE_ID);
-                }
             }
+
+            // Whoever issues draws from their own branch's Admin store - directly at approval for the
+            // same location, through the fulfilment movement for another.
+            validateCommoditiesInStore(request.getCommodities(), issuerBranchId);
         }
 
         // Create and save the issuance record
@@ -217,11 +238,11 @@ public class IssuanceService {
      * - Head office users can request any combination of items
      * - Branch users cannot mix stationery and non-stationery items in a single request
      */
-    private void validateRequestItemTypes(List<IssuanceCommodityDTO> commodities, Long requesterBranchId)
+    private void validateRequestItemTypes(List<IssuanceCommodityDTO> commodities, User requester)
             throws NotFoundException {
 
         // If requester is from head office, no restrictions on mixed items
-        if (Objects.equals(requesterBranchId, HEAD_OFFICE_ID)) {
+        if (isHeadOffice(requester)) {
             return;
         }
 
@@ -272,26 +293,6 @@ public class IssuanceService {
                 user.getTitle().getName().contains("Branch Operation Manager");
     }
 
-    /**
-     * Ensures that all commodities in the list are stationary items
-     *
-     * @param commodities The list of commodities to check
-     * @throws NotFoundException        If a commodity is not found
-     * @throws IllegalArgumentException If any commodity is not stationery
-     */
-    private void ensureThatAllItemsAreStationery(List<IssuanceCommodityDTO> commodities)
-            throws NotFoundException {
-
-        for (IssuanceCommodityDTO dto : commodities) {
-            Commodity commodity = commodityService.findCommodity(dto.getCommodityId());
-            if (!isStationery(commodity)) {
-                throw new IllegalArgumentException(String.format(
-                        "Commodity '%s' is not Stationery. Only Stationery items can be issued from branch stores.",
-                        commodity.getName()));
-            }
-        }
-        logger.info("All items verified as stationery");
-    }
 
     /**
      * Validates that all commodities are available in the specified branch store
@@ -302,47 +303,55 @@ public class IssuanceService {
      */
     private void validateCommoditiesInStore(List<IssuanceCommodityDTO> commodities, Long branchId)
             throws NotFoundException {
-
+        /*
+         * Against what is available, not what is on hand: stock other issuances and movements have
+         * already promised is still in the balance until they are debited. The store is the branch's
+         * own Admin store - the one approval debits and the fulfilment movement draws from - so the
+         * check and the debit can never look at different shelves.
+         *
+         * A shortfall is an IllegalArgumentException (a 400). It was a NotFoundException, which this
+         * application's handler answers with 200 and a bare message - a refusal the browser could
+         * read as success.
+         */
+        Store adminStore = storeService.resolveAdminStore(branchId);
+        List<Map.Entry<Commodity, Integer>> lines = new ArrayList<>();
         for (IssuanceCommodityDTO dto : commodities) {
-            Commodity commodity = commodityService.findCommodity(dto.getCommodityId());
-
-            // Scope to the branch's ADMIN store. A plain branch-scoped lookup is unsafe: a courier
-            // custody store is anchored at Head Office, so once a consumable has passed through a
-            // courier the branch holds two balance rows for it and a single-result query blows up.
-            StoreBalance balance = storeBalanceRepository
-                    .findByBranchIdAndStore_StoreTypeAndCommodity_Id(branchId, StoreType.ADMIN, commodity.getId())
-                    .orElseThrow(() -> new NotFoundException(
-                            String.format("Commodity '%s' not found in store for branch ID %d",
-                                    commodity.getName(), branchId)));
-
-            if (balance.getQuantity() < dto.getQuantity()) {
-                throw new NotFoundException(String.format(
-                        "Insufficient stock for commodity '%s'. Available: %d, Requested: %d",
-                        commodity.getName(), balance.getQuantity(), dto.getQuantity()));
-            }
+            lines.add(Map.entry(commodityService.findCommodity(dto.getCommodityId()), dto.getQuantity()));
         }
+        stockAvailabilityService.requireAvailable(adminStore, StockAvailabilityService.sumByCommodity(lines));
         logger.info("All commodities verified as available in branch " + branchId);
     }
 
     /**
-     * Direct issuance: debits the commodities from a branch's ADMIN store through the inventory
-     * ledger ({@link InventoryService}), the single authority over balances. Used only for
-     * same-location issuance — cross-location transfers are owned by the fulfilment movement.
+     * Settles an issuance's stock at approval: a same-location issuance debits the issuer's branch
+     * Admin store now, and a cross-location one is marked settled because its fulfilment movement
+     * owns the transfer. Idempotent through {@code stockSettled}, so an issuance settled under the old
+     * rule (debited at issue) is never debited again.
      *
-     * @param commodities The commodities to debit
-     * @param branchId    The branch whose ADMIN store is debited
-     * @throws NotFoundException If the branch or a commodity is not found
+     * @param direct whether the issuance is fulfilled in place (FulfillmentService DIRECT_ISSUANCE)
      */
-    private void debitFromAdminStore(List<IssuanceCommodityDTO> commodities, Long branchId)
-            throws NotFoundException {
-        Store adminStore = storeService.resolveAdminStore(branchId);
-        for (IssuanceCommodityDTO dto : commodities) {
-            Commodity commodity = commodityService.findCommodity(dto.getCommodityId());
-            inventoryService.debitConsumable(adminStore, commodity, dto.getQuantity(),
-                    LedgerContext.of(StockLedgerReason.ISSUANCE, "ISSUANCE", null));
+    @Transactional
+    public void settleIssuanceStock(Issuance issuance, boolean direct) throws NotFoundException {
+        if (issuance.isStockSettled()) return;
+        if (direct) {
+            List<IssuedCommodity> lines = issuedCommodityRepository.findByIssuance_Id(issuance.getId());
+            if (!lines.isEmpty()) {
+                if (issuance.getIssuer() == null || issuance.getIssuer().getBranch() == null) {
+                    throw new IllegalArgumentException("This issuance has no issuer branch, so there is no store to debit.");
+                }
+                Store adminStore = storeService.resolveAdminStore(issuance.getIssuer().getBranch());
+                for (IssuedCommodity line : lines) {
+                    inventoryService.debitConsumable(adminStore, line.getCommodity(), line.getQuantity(),
+                            LedgerContext.of(StockLedgerReason.ISSUANCE, "ISSUANCE", issuance.getId()));
+                }
+                logger.info("Issuance " + issuance.getId() + " approved: " + lines.size()
+                        + " line(s) debited from " + adminStore.getName());
+            }
         }
-        logger.info("Stock quantities reduced in branch " + branchId + " ADMIN store");
+        issuance.setStockSettled(true);
+        issuanceRepository.save(issuance);
     }
+
 
     /**
      * Creates issued commodity records for the issuance

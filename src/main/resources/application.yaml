@@ -102,6 +102,22 @@ application:
   verification:
     url: ${ACCOUNT_VERIFICATION_URL}
 
+  # Sign-in: passwords are checked by the bank's LDAP Authentication API (LDAP), or against this
+  # application's own password hashes (LOCAL, development machines only). Authorization - roles,
+  # permissions, scope - and JWT sessions stay in this application either way.
+  #
+  # LDAP is the default so an environment that sets nothing fails closed. Each environment
+  # (development, UAT, production) needs its own client registration and key. The base URL must be
+  # https; the application refuses to start otherwise.
+  directory-auth:
+    mode: ${AUTH_MODE:LDAP}
+    base-url: ${LDAP_AUTH_BASE_URL:}
+    client-id: ${LDAP_AUTH_CLIENT_ID:}
+    api-key: ${LDAP_AUTH_API_KEY:}
+    connect-timeout-ms: ${LDAP_AUTH_CONNECT_TIMEOUT_MS:5000}
+    read-timeout-ms: ${LDAP_AUTH_READ_TIMEOUT_MS:10000}
+    retry-delay-ms: ${LDAP_AUTH_RETRY_DELAY_MS:1000}
+
   # Super admin information
   super:
     admin:

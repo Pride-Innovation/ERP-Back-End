@@ -61,6 +61,12 @@ public class ApprovalWorkflow {
     @Builder.Default
     private boolean active = true;
 
+    /** Personal requests, store-restock requests, or both (V30). Matched against the request's purpose. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "applies_to", nullable = false, length = 16)
+    @Builder.Default
+    private WorkflowPurpose appliesTo = WorkflowPurpose.BOTH;
+
     /** Lower number = higher precedence when multiple workflows match */
     @Column(nullable = false)
     @Builder.Default

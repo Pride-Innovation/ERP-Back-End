@@ -93,6 +93,8 @@ public class Constants {
     public static final String AUTH_ROUTE = GENERAL_ROUTE + "/auth/login";
     public static final String LOGOUT = GENERAL_ROUTE + "/auth/logout";
     public static final String REFRESH_TOKEN_ROUTE = GENERAL_ROUTE + "/auth/refresh-token";
+    /** Public: the login page asks it before anyone is signed in. Says LDAP or LOCAL, nothing else. */
+    public static final String AUTH_MODE_ROUTE = GENERAL_ROUTE + "/auth/mode";
     public static final String REQUEST_PASSWORD_RESET = GENERAL_ROUTE + "/request-password-reset";
     public static final String RESET_PASSWORD = GENERAL_ROUTE + "/reset-password";
     public static final String VERIFY_EMAIL = GENERAL_ROUTE + "/auth/verify-email/**";
@@ -208,6 +210,13 @@ public class Constants {
      * the approval workflows. Somebody who should be allowed the first should not need the second.
      */
     public static final String UPDATE_EXPORT_COLUMNS = "UPDATE_EXPORT_COLUMNS";
+    /** May raise a request to restock the branch store, rather than for oneself (V30). */
+    public static final String RESTOCK_STORE = "RESTOCK_STORE";
+    /**
+     * May hand stock from a store straight to a person with no request behind it - the exception
+     * path (Phase 3). Always with a recorded reason. Ordinary giving goes through a request.
+     */
+    public static final String ISSUE_WITHOUT_REQUEST = "ISSUE_WITHOUT_REQUEST";
 
     /**
      * Enabling, disabling, blocking and unblocking an account, and returning somebody from leave.

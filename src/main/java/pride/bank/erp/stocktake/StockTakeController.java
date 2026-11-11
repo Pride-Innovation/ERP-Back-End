@@ -39,6 +39,17 @@ public class StockTakeController {
         return new ResponseEntity<>(stockTakeService.openCount(request), HttpStatus.CREATED);
     }
 
+    /**
+     * The stores the caller may open a count for - at their own branch, with stock lines to count.
+     * The Open dialog reads this rather than filtering the store directory itself, which used the
+     * general inventory reach and would have offered Head Office every branch's stores.
+     */
+    @PreAuthorize("hasAuthority('" + Constants.PERFORM_STOCK_TAKE + "')")
+    @GetMapping("/stock-counts/countable-stores")
+    public ResponseEntity<List<CountableStore>> countableStores() {
+        return new ResponseEntity<>(stockTakeService.countableStores(), HttpStatus.OK);
+    }
+
     @PreAuthorize("hasAuthority('" + Constants.READ_STOCK_TAKE + "')")
     @GetMapping("/stock-counts")
     public ResponseEntity<List<CountView>> list(@RequestParam(required = false) Long storeId) {
@@ -92,7 +103,11 @@ public class StockTakeController {
         return new ResponseEntity<>(stockTakeService.post(countId), HttpStatus.OK);
     }
 
-    @PreAuthorize("hasAuthority('" + Constants.APPROVE_STOCK_TAKE + "')")
+    /**
+     * Either permission: an approver may cancel anything not yet posted, and the counter may cancel
+     * their own count while it is still being counted — see {@code StockTakeService#cancel}.
+     */
+    @PreAuthorize("hasAnyAuthority('" + Constants.PERFORM_STOCK_TAKE + "', '" + Constants.APPROVE_STOCK_TAKE + "')")
     @PostMapping("/stock-counts/{countId}/cancel")
     public ResponseEntity<CountView> cancel(
             @PathVariable Long countId,

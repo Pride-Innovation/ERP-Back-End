@@ -36,7 +36,9 @@ public class MovementController {
     @PreAuthorize("hasAuthority('" + Constants.CREATE_MOVEMENT + "')")
     @PostMapping("/movements")
     public ResponseEntity<MovementResponseDTO> createMovement(@RequestBody MovementDTO dto) throws NotFoundException {
-        return new ResponseEntity<>(movementMapper.toDto(movementService.createMovement(dto)), HttpStatus.CREATED);
+        // The form's path: it adds the rules a person creating a movement must meet. The system's own
+        // flows call createMovement directly, with their own checks.
+        return new ResponseEntity<>(movementMapper.toDto(movementService.createFromForm(dto)), HttpStatus.CREATED);
     }
 
     /** Approve the current tier of a standalone movement's approval ladder. */
@@ -174,10 +176,16 @@ public class MovementController {
             @RequestParam(required = false) String source,
             @RequestParam(required = false) String destination,
             @RequestParam(required = false) String courier,
-            @RequestParam(required = false) String initiator
+            @RequestParam(required = false) String initiator,
+            // The reports page's filters. branchId: any of the four ends (refused below ALL unless
+            // it is the caller's own). assetTypeId: any line's asset or commodity category.
+            @RequestParam(required = false) Long branchId,
+            @RequestParam(required = false) Long assetTypeId
     ) {
         MovementSearchCriteria criteria = criteria(dateFrom, dateTo, movementType, movementCategory,
                 status, receiptStatus, trackingNumber, source, destination, courier, initiator);
+        criteria.setBranchId(branchId);
+        criteria.setAssetTypeId(assetTypeId);
 
         Pageable pageable = page(pageNumber, pageSize, sort(sortBy, sortDirection));
         return new ResponseEntity<>(

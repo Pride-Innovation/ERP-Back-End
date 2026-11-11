@@ -51,6 +51,7 @@ public class RepairMovementService {
     private final BranchRepository branchRepository;
     private final InventoryService inventoryService;
     private final pride.bank.erp.user.UserRepository userRepository;
+    private final LoanerAvailability loanerAvailability;
 
     /**
      * Opens and closes the maintenance record that rides along with a repair journey.
@@ -94,6 +95,12 @@ public class RepairMovementService {
                             + (category.getName() != null ? category.getName() : "unnamed")
                             + "' is not repairable, so the fault cannot be worked on")
                     .build());
+        }
+
+        // A loaner to lend with this repair must be free now. Checked before anything is created, so
+        // a refusal costs nothing rather than relying on the rollback of a half-made repair.
+        if (dto.getTempAssetId() != null) {
+            loanerAvailability.requireLendable(findAsset(dto.getTempAssetId()));
         }
 
         RepairDestination routing = dto.getRepairDestination() != null
@@ -220,6 +227,9 @@ public class RepairMovementService {
     public Movement issueTemporaryReplacement(TempReplacementDTO dto) throws NotFoundException {
         Asset temp = findAsset(dto.getTempAssetId());
         requireAssetInScope(temp);
+        // Not already promised to another temporary replacement (or anything else still open), and
+        // fit to lend - the rule the loaner list is filtered by, so the two cannot disagree.
+        loanerAvailability.requireLendable(temp);
         Store source = currentStoreOf(temp);
 
         /*
@@ -670,10 +680,40 @@ public class RepairMovementService {
                 : ("Early disposal — " + earlyReason.trim()
                         + (isBlank(dto.getRemarks()) ? "" : ". " + dto.getRemarks().trim()));
 
+        /*
+         * Whose write-off this is, recorded now - as the repair transfer records whose repair it is.
+         *
+         * The disposal's source store cannot say on its own: an asset written off from the repair
+         * bench leaves from the Head Office IT or Admin store, so a Gulu laptop found unrepairable
+         * would read as Head Office's disposal. While it is away for repair the owner is the branch
+         * its repair transfer recorded; otherwise it is where it stands, which for an asset handed
+         * back to a store is that store's branch. The Disposal report, the detail page and the store
+         * listings all read this through the same "origin, else source store" rule.
+         */
+        Long disposingBranchId = pride.bank.erp.asset.AssetService.isAwayFromItsBranch(asset) && originLocationFor(asset) != null
+                ? originLocationFor(asset)
+                : (asset.getBranch() != null ? asset.getBranch().getId() : null);
+
+        /*
+         * And whose item it was, on the same terms. Written off from the repair bench, it is still the
+         * laptop somebody handed over, and My Items goes on showing it to them as away "for disposal"
+         * rather than letting it vanish. Handed back to a store first, nobody holds it any more, so
+         * there is no one to record.
+         */
+        Long disposingHolderId = pride.bank.erp.asset.AssetService.isAwayFromItsBranch(asset)
+                ? movementRepository
+                        .findFirstByItems_Asset_IdAndMovementTypeOrderByIdDesc(asset.getId(), MovementType.REPAIR_TRANSFER)
+                        .map(Movement::getOriginHolder)
+                        .map(User::getId)
+                        .orElse(null)
+                : null;
+
         Movement movement = movementService.createMovement(MovementDTO.builder()
                 .movementType(MovementType.DISPOSAL_TRANSFER)
                 .sourceStoreId(source.getId())
                 .destStoreId(disposalStore.getId())
+                .originLocationId(disposingBranchId)
+                .originHolderId(disposingHolderId)
                 .remarks(remarks)
                 .proceedWithoutApproval(dto.getProceedWithoutApproval()).bypassReason(dto.getBypassReason())
                 .items(List.of(assetItem(dto.getAssetId())))

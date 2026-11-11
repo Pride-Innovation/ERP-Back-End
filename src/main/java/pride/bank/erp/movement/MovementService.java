@@ -70,6 +70,8 @@ public class MovementService {
     private final ConsultantRepository consultantRepository;
     private final CurrentUserService currentUserService;
     private final InventoryService inventoryService;
+    private final pride.bank.erp.inventory.StockAvailabilityService stockAvailabilityService;
+    private final pride.bank.erp.inventory.IssueStockCheckService issueStockCheckService;
     private final MovementApprovalService movementApprovalService;
     private final FileUpload fileUpload;
     private final CourierService courierService;
@@ -85,6 +87,152 @@ public class MovementService {
 
     /** Issues the tracking number a dispatch travels under. */
     private final pride.bank.erp.tracking.TrackingNumberService trackingNumberService;
+
+    /** The only movements a person creates on the form; every other type has its own flow and guard. */
+    static final java.util.Set<MovementType> FORM_TYPES =
+            java.util.EnumSet.of(MovementType.REPLENISHMENT, MovementType.DEPARTMENT_TRANSFER);
+
+    /** Asset statuses that are not on the shelf to be moved: away, travelling, issued, or unfinished. */
+    static final java.util.Set<String> NOT_MOVABLE_STATUSES =
+            java.util.Set.of("inMaintenance", "pendingDisposal", "inTransit", "assetIssued", "requireUpdate");
+
+    /**
+     * A movement created by a person on the movement form ({@code POST /movements}).
+     *
+     * <h2>Why this is separate from {@link #createMovement}</h2>
+     * The system creates movements too - issuance fulfilment, repair, disposal, returns, loaners - and
+     * those carry their own checks and must keep working exactly as they do. A person on the form is
+     * asking something narrower, so the form path adds four rules and then creates the same way:
+     * <ol>
+     *   <li><b>Only the form's own types.</b> The endpoint accepted any type, so a hand-made request
+     *       could post a DISPOSAL_TRANSFER and write an asset off with no DISPOSE_ASSET, or forge a
+     *       fulfilment against somebody's request. System-only fields are cleared for the same reason.</li>
+     *   <li><b>You draw only from your own branch's stores</b>, and may send anywhere. Cross-branch
+     *       inventory reach does not widen it, the same as stock take: you draw where you stand. The
+     *       super administrator is exempt.</li>
+     *   <li><b>Every asset is on that shelf:</b> in the source store, held by nobody, on no other open
+     *       movement, not a loaner, and not away, travelling, issued or awaiting completion.</li>
+     *   <li><b>Consumables are checked against what is available</b> - on hand less what is already
+     *       promised - not against the raw balance ({@link pride.bank.erp.inventory.StockAvailabilityService}).</li>
+     * </ol>
+     */
+    @Transactional
+    public Movement createFromForm(MovementDTO dto) throws NotFoundException {
+        if (dto.getMovementType() == null || !FORM_TYPES.contains(dto.getMovementType())) {
+            throw new IllegalArgumentException("Only a replenishment or a department transfer can be created here. "
+                    + "Repairs, disposals, returns and issuance have their own forms.");
+        }
+        if (dto.getSourceStoreId() == null || dto.getSourceUserId() != null) {
+            throw new IllegalArgumentException("A movement created here draws from a store.");
+        }
+        // System fields: set by the flows that own them, never by the form.
+        dto.setRequestId(null);
+        dto.setRepairId(null);
+        dto.setConsultantId(null);
+        dto.setOriginHolderId(null);
+        dto.setOriginLocationId(null);
+        dto.setRestoreStatusCode(null);
+        dto.setRequiresApproval(null);
+
+        // Giving to a person without a request is the exception path: its own permission, and a
+        // reason on the record. Store to store stays ordinary.
+        if (dto.getRecipientUserId() != null) {
+            requireMayIssueWithoutRequest(currentUserService.getCurrentUser());
+            if (isBlank(dto.getRemarks())) {
+                throw new IllegalArgumentException(
+                        "Giving items to a person without a request needs a reason. Say why in the remarks.");
+            }
+        }
+
+        Store source = storeRepository.findById(dto.getSourceStoreId())
+                .orElseThrow(() -> new NotFoundException("Source store " + dto.getSourceStoreId() + " not found"));
+        requireDrawableBy(source, currentUserService.getCurrentUser());
+
+        List<MovementItemDTO> lines = dto.getItems() == null ? List.of() : dto.getItems();
+        requireAssetsOnTheShelf(source, lines);
+
+        List<java.util.Map.Entry<Commodity, Integer>> consumables = new ArrayList<>();
+        for (MovementItemDTO line : lines) {
+            if (line.getCommodityId() == null || line.getAssetId() != null) continue;
+            Commodity commodity = commodityRepository.findById(line.getCommodityId())
+                    .orElseThrow(() -> new NotFoundException("Commodity " + line.getCommodityId() + " not found"));
+            consumables.add(java.util.Map.entry(commodity, line.getQuantity() == null ? 0 : line.getQuantity()));
+        }
+        if (!consumables.isEmpty()) {
+            stockAvailabilityService.requireAvailable(source,
+                    pride.bank.erp.inventory.StockAvailabilityService.sumByCommodity(consumables));
+        }
+        return createMovement(dto);
+    }
+
+    private static void requireMayIssueWithoutRequest(User caller) {
+        boolean held = caller != null && caller.getAuthorities().stream()
+                .anyMatch(a -> pride.bank.erp.helper.Constants.ISSUE_WITHOUT_REQUEST.equals(a.getAuthority()));
+        if (!held && !isSuperAdmin(caller)) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Giving items to a person without a request needs the ISSUE_WITHOUT_REQUEST permission. "
+                            + "Ask them to raise a request instead.");
+        }
+    }
+
+    /** You draw from a store only at your own branch. The super administrator may draw anywhere. */
+    private void requireDrawableBy(Store source, User caller) {
+        if (isSuperAdmin(caller)) return;
+        Long own = caller != null && caller.getBranch() != null ? caller.getBranch().getId() : null;
+        Long at = source.getLocation() != null ? source.getLocation().getId() : null;
+        if (own == null || !own.equals(at)) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "You can draw stock only from stores at your own branch. You may send it to any branch.");
+        }
+    }
+
+    /** Refuses any asset line that is not sitting free on the source store's shelf, naming why. */
+    private void requireAssetsOnTheShelf(Store source, List<MovementItemDTO> lines) throws NotFoundException {
+        List<Long> assetIds = lines.stream().map(MovementItemDTO::getAssetId).filter(java.util.Objects::nonNull).toList();
+        if (assetIds.isEmpty()) return;
+        if (new java.util.HashSet<>(assetIds).size() != assetIds.size()) {
+            throw new IllegalArgumentException("The same asset is on this movement twice.");
+        }
+        java.util.Map<Long, Long> onMovement = new java.util.HashMap<>();
+        for (Object[] row : movementRepository.findOpenMovementsCarrying(assetIds)) {
+            onMovement.putIfAbsent((Long) row[0], (Long) row[1]);
+        }
+        List<String> problems = new ArrayList<>();
+        for (Long id : assetIds) {
+            Asset asset = assetRepository.findById(id)
+                    .orElseThrow(() -> new NotFoundException("Asset " + id + " not found"));
+            String label = asset.getEngravedNumber() != null ? asset.getEngravedNumber()
+                    : (asset.getAssetName() != null ? asset.getAssetName() : "asset " + id);
+            String code = asset.getAssetStatus() != null ? asset.getAssetStatus().getStatus() : null;
+            if (Boolean.TRUE.equals(asset.getDeleted()) || Boolean.TRUE.equals(asset.getDisposed())) {
+                problems.add(label + " is no longer in the register");
+            } else if (asset.getCurrentStore() == null || !asset.getCurrentStore().getId().equals(source.getId())) {
+                problems.add(label + " is not in " + source.getName());
+            } else if (asset.getAssignedTo() != null) {
+                problems.add(label + " is assigned to somebody");
+            } else if (onMovement.containsKey(id)) {
+                problems.add(label + " is already on movement #" + onMovement.get(id));
+            } else if (asset.isTemporaryPool()) {
+                problems.add(label + " is a loaner - lend it through Temporary Replacement");
+            } else if (code != null && NOT_MOVABLE_STATUSES.contains(code)) {
+                problems.add(label + " reads " + asset.getAssetStatus().getName() + " and cannot be moved");
+            }
+        }
+        if (!problems.isEmpty()) {
+            throw new IllegalArgumentException("These assets cannot be moved: " + String.join("; ", problems) + ".");
+        }
+    }
+
+    private static boolean isSuperAdmin(User user) {
+        if (user == null) return false;
+        java.util.stream.Stream<pride.bank.erp.role.Role> roles = java.util.stream.Stream.concat(
+                java.util.stream.Stream.of(user.getTitle() != null ? user.getTitle().getRole() : null),
+                java.util.stream.Stream.concat(
+                        user.getAdditionalRoles() != null ? user.getAdditionalRoles().stream() : java.util.stream.Stream.empty(),
+                        user.getUnit() != null && user.getUnit().getRoles() != null
+                                ? user.getUnit().getRoles().stream() : java.util.stream.Stream.empty()));
+        return roles.anyMatch(r -> r != null && pride.bank.erp.helper.Constants.SUPER_ADMIN.equals(r.getName()));
+    }
 
     @Transactional
     public Movement createMovement(MovementDTO dto) throws NotFoundException {
@@ -545,6 +693,10 @@ public class MovementService {
         Movement saved = movementRepository.save(movement);
         // A repaired asset reaching its holder is the moment any loaner standing in for it is due.
         loanerReminder.onCompleted(saved);
+        // Stock landing in a branch store may be what a request waiting at its Issue step needed.
+        if (saved.getDestStore() != null) {
+            issueStockCheckService.onStockArrived(saved.getDestStore().getId());
+        }
         // Anything other than a clean receipt is flagged: a short or damaged delivery is the
         // discrepancy someone will need to reconstruct later.
         boolean clean = receiptStatus == ReceiptStatus.RECEIVED_OK;
@@ -751,7 +903,15 @@ public class MovementService {
                 pride.bank.erp.access.ScopeAction.VIEW);
 
         if (scope == pride.bank.erp.dashboard.DashboardScope.ALL) {
-            return;   // legitimately every branch
+            return;   // legitimately every branch, and any branch may be asked for
+        }
+
+        // A branch asked for by name (the report's filter) narrows within the scope - it is refused,
+        // not quietly ignored, when it is not the caller's own, as the maintenance report does.
+        if (criteria.getBranchId() != null
+                && !criteria.getBranchId().equals(accessScopeService.currentUserBranchId())) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "You can only view movements for your own branch.");
         }
 
         if (scope == pride.bank.erp.dashboard.DashboardScope.SELF) {
@@ -980,6 +1140,50 @@ public class MovementService {
      *
      * @return the branch id, or null when this asset has never been sent away
      */
+    /**
+     * Whose write-off each asset was - the branch on its newest disposal transfer, else that
+     * transfer's source store's branch - for a page of assets in one query. Assets with no disposal
+     * transfer are absent from the map.
+     */
+    @Transactional(readOnly = true)
+    public java.util.Map<Long, Long> disposingBranches(java.util.Collection<Long> assetIds) {
+        java.util.Map<Long, Long> owners = new java.util.HashMap<>();
+        if (assetIds == null || assetIds.isEmpty()) return owners;
+        java.util.Set<Long> seen = new java.util.HashSet<>();
+        for (Object[] row : movementRepository.findDisposingBranchesForAssets(assetIds)) {
+            // Newest first, and the newest decides - as in AssetSearchDao#disposedFrom - even when it
+            // names no branch; an older disposal does not answer for it.
+            if (!seen.add((Long) row[0])) continue;
+            if (row[1] != null) owners.put((Long) row[0], (Long) row[1]);
+        }
+        return owners;
+    }
+
+    /**
+     * Who handed this asset over on its newest repair or disposal transfer: the person, beside
+     * {@link #branchLastSentAwayFrom}'s branch.
+     *
+     * <p>Read from {@code originHolder}, which the repair transfer captures from the active assignment
+     * and which the return leg aims at. The assignment itself is closed when Head Office receives the
+     * asset, so by then it no longer says who had it. Measured when this was written: set on all 25
+     * repair transfers, and equal to the last assignment's holder on every asset away.
+     *
+     * <p>Like the branch, it answers only while the caller has checked the asset is away
+     * ({@code AssetService.isAwayFromItsBranch}). A past transfer must not let somebody read an asset
+     * for good because they once sent it for repair.
+     */
+    @Transactional(readOnly = true)
+    public Long holderLastSentAwayFrom(Long assetId) {
+        if (assetId == null) return null;
+        return movementRepository
+                .findFirstByItems_Asset_IdAndMovementTypeInOrderByIdDesc(
+                        assetId,
+                        java.util.List.of(MovementType.REPAIR_TRANSFER, MovementType.DISPOSAL_TRANSFER))
+                .map(Movement::getOriginHolder)
+                .map(pride.bank.erp.user.User::getId)
+                .orElse(null);
+    }
+
     @Transactional(readOnly = true)
     public Long branchLastSentAwayFrom(Long assetId) {
         if (assetId == null) return null;

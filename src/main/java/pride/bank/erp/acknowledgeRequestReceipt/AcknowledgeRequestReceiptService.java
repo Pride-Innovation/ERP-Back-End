@@ -14,10 +14,6 @@ import pride.bank.erp.config.CurrentUserService;
 import pride.bank.erp.exception.BusinessRuleException;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.issuance.UserBuilder;
-import pride.bank.erp.issuedAsset.IssuedAssetLifecycleService;
-import pride.bank.erp.movement.Movement;
-import pride.bank.erp.movement.MovementRepository;
-import pride.bank.erp.movement.MovementStatus;
 import pride.bank.erp.user.User;
 import pride.bank.erp.notification.Email;
 import pride.bank.erp.request.Request;
@@ -27,8 +23,6 @@ import pride.bank.erp.request.RequestService;
 import pride.bank.erp.status.Status;
 import pride.bank.erp.status.StatusService;
 import pride.bank.erp.workflowinstance.WorkflowEngineService;
-
-import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -41,8 +35,6 @@ public class AcknowledgeRequestReceiptService {
     private final Email emailService;
     private final UserBuilder userBuilder;
     private final WorkflowEngineService workflowEngineService;
-    private final MovementRepository movementRepository;
-    private final IssuedAssetLifecycleService issuedAssetLifecycleService;
 
     @Transactional
     public RequestDTO createAcknowledgeRequestReceipt(
@@ -62,11 +54,15 @@ public class AcknowledgeRequestReceiptService {
                     "You cannot acknowledge your own request. It must be acknowledged by a colleague in your unit.");
         }
 
-        // Guard: cross-location requests must have their delivery movement actually completed
-        // before the requester can acknowledge — otherwise acknowledgement and physical delivery
-        // are two disconnected confirmations. DIRECT_ISSUANCE requests have no movement and are
-        // unaffected.
-        requireDeliveryComplete(request);
+        /*
+         * This is the Infra/Admin unit acknowledging the REQUEST, before anything is issued - not the
+         * requester acknowledging receipt of the items. The names invite the mix-up, and it happened:
+         * the delivery check and the hand-over of issued assets to the requester both used to live
+         * here, where there is never a movement or an issued asset yet. So the check always passed
+         * and the hand-over always did nothing, and every directly issued asset (Head Office, and a
+         * branch issuing from its own store) finished "Issued" with no holder. Both now run at the
+         * requester's receipt, in AcknowledgeIssuanceReceiptService.
+         */
 
         // Persist the audit record first (always, regardless of workflow mode)
         AcknowledgeRequestReceipt acknowledgeRequestReceipt = AcknowledgeRequestReceipt
@@ -104,10 +100,6 @@ public class AcknowledgeRequestReceiptService {
             );
         }
 
-        // The requester has now confirmed receipt: finalize any issued serialized assets —
-        // assign them to the requester and flip them from "Issued" to "Assigned".
-        issuedAssetLifecycleService.markAssigned(request);
-
         // Reload to reflect any status changes made by the engine
         request = requestService.findRequest(acknowledgeRequestReceiptDTO.getRequestId());
 
@@ -137,29 +129,6 @@ public class AcknowledgeRequestReceiptService {
                 .currentApprover(request.getCurrentApprover() != null ?
                         userBuilder.builder(request.getCurrentApprover()) : null)
                 .build();
-    }
-
-    /**
-     * If this request was fulfilled via one or more movements (cross-location), the last leg —
-     * the one that actually hands the items to the requester ({@code recipientUser != null}) —
-     * must be {@code COMPLETED} before receipt can be acknowledged. Requests with no movement rows
-     * (same-location / DIRECT_ISSUANCE) are unaffected.
-     */
-    private void requireDeliveryComplete(Request request) throws BusinessRuleException {
-        List<Movement> movements = movementRepository.findByRequest_Id(request.getId());
-        if (movements.isEmpty()) {
-            return;
-        }
-        Movement deliveryLeg = movements.stream()
-                .filter(m -> m.getRecipientUser() != null)
-                .findFirst()
-                .orElse(movements.get(movements.size() - 1));
-
-        if (deliveryLeg.getStatus() != MovementStatus.COMPLETED) {
-            throw new BusinessRuleException(
-                    "The items for this request have not been delivered yet. Please wait until the "
-                            + "delivery movement is completed before acknowledging receipt.");
-        }
     }
 
     public AcknowledgeRequestReceiptDAO findAcknowledgeRequestReceiptByRequestId(Long requestId) {

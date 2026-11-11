@@ -11,7 +11,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pride.bank.erp.config.CurrentUserService;
+import pride.bank.erp.exception.BusinessRuleException;
 import pride.bank.erp.exception.NotFoundException;
+import pride.bank.erp.issuedAsset.IssuedAssetLifecycleService;
 import pride.bank.erp.issuance.UserBuilder;
 import pride.bank.erp.notification.Email;
 import pride.bank.erp.request.Request;
@@ -33,11 +35,29 @@ public class AcknowledgeIssuanceReceiptService {
     private final UserBuilder userBuilder;
     private final WorkflowEngineService workflowEngineService;
     private final Email emailService;
+    private final IssuedAssetLifecycleService issuedAssetLifecycleService;
 
+    /**
+     * The requester confirms the items reached them - the last step of a request.
+     *
+     * <p>This is where the issued assets become theirs. It used to happen in
+     * {@code AcknowledgeRequestReceiptService} - the Infra/Admin unit acknowledging the <em>request</em>,
+     * before anything is issued - where there was never an issued asset to hand over. Measured when it
+     * was found: every Head Office request since the first, completed and "Receipt Acknowledged", left
+     * its laptops, monitors, chairs and tables at "Issued" with no holder and no store. A request
+     * delivered by movement was unaffected, because completing the movement assigns the items; a
+     * direct issuance - Head Office, or a branch issuing from its own store - has no movement, and
+     * this is the only place left to do it.
+     */
     @Transactional
     public RequestDTO createAcknowledgeRequestIssuance(AcknowledgeIssuanceReceiptDTO acknowledgeIssuanceReceiptDTO)
-            throws NotFoundException {
+            throws NotFoundException, BusinessRuleException {
         Request request = requestService.findRequest(acknowledgeIssuanceReceiptDTO.getRequestId());
+
+        // Delivered by movement: the leg handing the items over must be complete before anyone can say
+        // they arrived. This check also lived on the unit's acknowledgement, where no movement exists
+        // yet, so it never once refused anything. A direct issuance has no movement and passes.
+        requireDeliveryComplete(request);
 
         // Persist the audit record first (always, regardless of workflow mode)
         AcknowledgeIssuanceReceipt acknowledgeIssuanceReceipt = AcknowledgeIssuanceReceipt
@@ -74,6 +94,11 @@ public class AcknowledgeIssuanceReceiptService {
             );
         }
 
+        // The items are the requester's now: each issued asset is assigned to them and reads Assigned.
+        // Idempotent, so an asset a delivery movement already assigned is left alone; a store restock's
+        // assets stay in the store.
+        issuedAssetLifecycleService.markAssigned(request);
+
         // Reload to reflect any status changes made by the engine
         request = requestService.findRequest(acknowledgeIssuanceReceiptDTO.getRequestId());
 
@@ -103,6 +128,20 @@ public class AcknowledgeIssuanceReceiptService {
                 .currentApprover(request.getCurrentApprover() != null ?
                         userBuilder.builder(request.getCurrentApprover()) : null)
                 .build();
+    }
+
+    /**
+     * If this request was fulfilled via one or more movements (cross-location), the last leg - the one
+     * that actually hands the items to the requester ({@code recipientUser != null}) - must be
+     * {@code COMPLETED} before receipt can be acknowledged. Requests with no movement rows
+     * (same-location / DIRECT_ISSUANCE) are unaffected.
+     */
+    private void requireDeliveryComplete(Request request) throws BusinessRuleException {
+        if (!issuedAssetLifecycleService.deliveryComplete(request)) {
+            throw new BusinessRuleException(
+                    "The items for this request have not been delivered yet. Please wait until the "
+                            + "delivery movement is completed before acknowledging receipt.");
+        }
     }
 
     private void notifyIndividual(

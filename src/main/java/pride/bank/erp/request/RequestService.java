@@ -137,6 +137,24 @@ public class RequestService {
         Long requesterBranchId = requester.getBranch().getId();
         boolean isHeadOfficeUser = requester.getBranch().isHeadOffice();
 
+        /*
+         * A store restock is asked for deliberately, not guessed from who is asking. It needs
+         * RESTOCK_STORE, and only a branch can ask: Head Office is where restocks come from, and it
+         * fills its own store through stock orders.
+         */
+        if (body.isForStoreRestock()) {
+            boolean mayRestock = requester.getAuthorities().stream()
+                    .anyMatch(a -> Constants.RESTOCK_STORE.equals(a.getAuthority()));
+            if (!mayRestock) {
+                throw new org.springframework.security.access.AccessDeniedException(
+                        "Restocking the branch store needs the Restock Store permission.");
+            }
+            if (isHeadOfficeUser) {
+                throw new BusinessRuleException("Head Office restocks its store through stock orders, "
+                        + "not requests. A store-restock request is raised by a branch.");
+            }
+        }
+
         log.info("Request from user at branch ID: {}, isHeadOfficeUser: {}", requesterBranchId, isHeadOfficeUser);
 
         // Track Branch Stationery and Non stationery request
@@ -427,12 +445,14 @@ public class RequestService {
             Long requesterId,
             Long approverId,
             Long requesterDepartmentId,
+            Long requesterBranchId,
             Boolean deleted,
             LocalDateTime startDate,
             LocalDateTime endDate,
             Long currentApproverId
     ) {
         try {
+            requireBranchFilterInReach(requesterBranchId);
             log.debug("Fetching requests with filters - page: {}, statusIds: {}", pageNumber, statusIds);
 
             RequestPage requestPage = RequestPage.builder()
@@ -456,6 +476,8 @@ public class RequestService {
                     .raisedByUserId(requesterId)
                     .approverId(approverId)
                     .requesterDepartmentId(requesterDepartmentId)
+                    // The same LEFT-joined predicate the dashboard's branch filter uses.
+                    .requesterBranchId(requesterBranchId)
                     .deleted(deleted)
                     .timeOfSubmissionOfRequest(timeOfSubmissionOfRequest)
                     .startDate(startDate)
@@ -579,8 +601,17 @@ public class RequestService {
      */
     @Transactional(readOnly = true)
     public List<AssetRequestSummaryDTO> getCurrentYearRequestSummary(Long requestedBranchId) {
-        Long receiptAcknowledged = 7L; // ID for Receipt Acknowledged Status
-        Long requestRejected = 2L;     // ID for Request Rejected Status
+        /*
+         * Resolved by code, never by id (trap #4).
+         *
+         * These were literals - 7L "Receipt Acknowledged", 2L "Request Rejected" - and on the live
+         * database id 7 is inMaintenance, an asset status no request can hold, while Receipt
+         * Acknowledged is 8. So the dashboard's Request Fulfilment counted every request as
+         * outstanding: "0% of 388 requested items delivered" over 62 requests acknowledged this year.
+         * 2 happened to still be Request Rejected; it is resolved the same way so it cannot be next.
+         */
+        Long receiptAcknowledged = statusIdOrNone("receiptAcknowledged");
+        Long requestRejected = statusIdOrNone("requestRejected");
         /*
          * Scope, not the caller's own branch.
          *
@@ -641,6 +672,21 @@ public class RequestService {
      */
     private static final List<String> TERMINAL_REQUEST_CODES =
             List.of("requestRejected", "receiptAcknowledged");
+
+    /**
+     * The id of a status code, or an id no row carries when the code is not seeded - so a missing
+     * status makes its comparison match nothing rather than failing the whole query.
+     */
+    private Long statusIdOrNone(String code) {
+        try {
+            Status status = statusService.findByStatusCode(code);
+            if (status != null) return status.getId();
+        } catch (Exception e) {
+            // fall through
+        }
+        log.warn("Status code '{}' is not seeded - comparisons against it will match nothing", code);
+        return -1L;
+    }
 
     private List<Long> terminalStatusIds() {
         return TERMINAL_REQUEST_CODES.stream()
@@ -997,6 +1043,7 @@ public class RequestService {
                 .description(body.getDescription())
                 .isBranchStationery(isBranchStationeryRequest)
                 .isBranchNonStationery(isBranchNonStationeryRequest)
+                .forStoreRestock(body.isForStoreRestock())
                 .deleted(false)
                 .build();
     }
@@ -1409,6 +1456,25 @@ public class RequestService {
         return issuerApproval ? "ISSUANCE_APPROVAL" : stepType.toString();
     }
 
+    /**
+     * A branch named in the Branch filter must be one the caller may see.
+     *
+     * <p>The filter narrows within {@link #requestersList()}, so naming another branch could not
+     * widen anything - it would return an empty page. Refused instead, because an empty page reads
+     * as "that branch raised nothing", which is a statement about data the caller may not look at.
+     */
+    private void requireBranchFilterInReach(Long requesterBranchId) {
+        if (requesterBranchId == null) return;
+        if (accessScopeService.scopeFor(pride.bank.erp.access.ScopeSubject.REQUESTS,
+                pride.bank.erp.access.ScopeAction.VIEW) == pride.bank.erp.dashboard.DashboardScope.ALL) {
+            return;
+        }
+        if (!requesterBranchId.equals(currentUserBranchId())) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "You can only view requests for your own branch.");
+        }
+    }
+
     private List<Long> requestersList() {
         return switch (accessScopeService.scopeFor(
                 pride.bank.erp.access.ScopeSubject.REQUESTS,
@@ -1468,6 +1534,7 @@ public class RequestService {
                 .requester(request.getRequester())
                 .currentApprover(request.getCurrentApprover())
                 .currentUnit(request.getCurrentUnit())
+                .forStoreRestock(request.isForStoreRestock())
                 .commodities(getRequestCommodities(request))
                 .requestReports(request.getRequestReportDAOS())
                 .assetTypeId(request.getAssetType() != null ? request.getAssetType().getId() : null)
@@ -1542,6 +1609,7 @@ public class RequestService {
                         userBuilder.builder(request.getCurrentApprover()) : null)
                 // Needed by the detail page to know a group step is its viewer's to take.
                 .currentUnit(request.getCurrentUnit())
+                .forStoreRestock(request.isForStoreRestock())
                 // And what kind of action is due, so the page offers that one and no other.
                 .currentStepType(currentStepTypes(List.of(request)).get(request.getId()))
                 .assetTypeId(request.getAssetType() != null ? request.getAssetType().getId() : null)

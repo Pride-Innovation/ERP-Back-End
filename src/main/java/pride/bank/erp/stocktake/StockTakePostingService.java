@@ -45,6 +45,7 @@ public class StockTakePostingService {
     private final StoreBalanceRepository storeBalanceRepository;
     private final InventoryService inventoryService;
     private final CurrentUserService currentUserService;
+    private final pride.bank.erp.auditing.trail.AuditService auditService;
 
     /**
      * Flags lines whose balance moved since the sheet was opened, sends the sheet back, and commits
@@ -132,6 +133,15 @@ public class StockTakePostingService {
         countRepository.save(count);
 
         log.info("Stock count {} posted — {} adjustment(s) written", count.getReference(), posted);
+        // In this transaction, so the trail says posted exactly when the balances changed. A post
+        // that moved stock is a discrepancy written into the books, hence WARNING.
+        auditService.record(pride.bank.erp.auditing.trail.AuditEventType.UPDATED,
+                pride.bank.erp.auditing.trail.AuditModule.INVENTORY, "STOCK_COUNT_POSTED",
+                String.format("Posted stock count %s for %s — %d balance(s) adjusted",
+                        count.getReference(), count.getStore().getName(), posted),
+                posted > 0 ? pride.bank.erp.auditing.trail.AuditSeverity.WARNING
+                        : pride.bank.erp.auditing.trail.AuditSeverity.INFO,
+                "STOCK_COUNT", count.getId());
         return posted;
     }
 }

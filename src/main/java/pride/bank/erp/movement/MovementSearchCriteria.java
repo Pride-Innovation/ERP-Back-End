@@ -66,6 +66,16 @@ public class MovementSearchCriteria {
     private String initiator;
 
     /**
+     * A branch the caller <em>asked</em> for - the report's Branch filter - matched on the same four
+     * ends as {@link #scopedBranchId}. Bound from the request, so the service refuses one a caller
+     * below ALL scope may not name; it narrows within the scope and never replaces it.
+     */
+    private Long branchId;
+
+    /** Asset category: a movement matches when any line's asset, or commodity, is in it. */
+    private Long assetTypeId;
+
+    /**
      * The branch the caller may see, or {@code null} for no restriction.
      *
      * <p><b>Server-resolved.</b> Filled from {@code AccessScopeService}, never bound from the
