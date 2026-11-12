@@ -19,4 +19,11 @@ public class TitleSearchCriteria {
     private String shortCode;
     private Long reportsToId;
     private Long roleId;
+
+    /** Null = no filter. With {@link #workplaceNotSet} true, only titles with no workplace. */
+    private TitleWorkplace workplace;
+    private boolean workplaceNotSet;
+
+    private Long departmentId;
+    private boolean noDepartment;
 }

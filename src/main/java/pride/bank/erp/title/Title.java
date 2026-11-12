@@ -8,12 +8,14 @@ Managing Director
 package pride.bank.erp.title;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import pride.bank.erp.branch.Branch;
+import pride.bank.erp.department.Department;
 import pride.bank.erp.role.Role;
 import pride.bank.erp.user.User;
 
@@ -55,6 +57,23 @@ public class Title {
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "reports_to_id")
     private Title reportsTo;
+
+    /** Where the title is used. For filtering only; null is "not set". See {@link TitleWorkplace}. */
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private TitleWorkplace workplace;
+
+    /**
+     * The department the title belongs to, optional. For filtering only - a user's department is
+     * still the user's own field, and nothing derives one from the other.
+     *
+     * <p>Serialised without the department's branch: a title travels inside every user response,
+     * and the name is all a filter or a card needs.
+     */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "department_id")
+    @JsonIgnoreProperties({"branch", "managersGroupEmail", "hibernateLazyInitializer", "handler"})
+    private Department department;
 
     @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(name = "role_id", nullable = false)

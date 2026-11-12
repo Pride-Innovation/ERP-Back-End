@@ -11,14 +11,19 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.TypedQuery;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Join;
+import jakarta.persistence.criteria.JoinType;
+import jakarta.persistence.criteria.Order;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Repository;
+import pride.bank.erp.department.Department;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 import static pride.bank.erp.helper.Constants.*;
 
@@ -98,6 +103,23 @@ public class TitleSearchDao {
             predicates.add(criteriaBuilder.equal(titleRoot.get("role").get("Id"), titleSearchCriteria.getRoleId()));
         }
 
+        if (titleSearchCriteria.isWorkplaceNotSet()) {
+            predicates.add(criteriaBuilder.isNull(titleRoot.get("workplace")));
+        } else if (titleSearchCriteria.getWorkplace() != null) {
+            predicates.add(criteriaBuilder.equal(titleRoot.get("workplace"), titleSearchCriteria.getWorkplace()));
+        }
+
+        /*
+         * The department is optional, so the id comparison goes through an explicit LEFT JOIN
+         * (trap #1). It is created only when the filter needs it, once per query.
+         */
+        if (titleSearchCriteria.getDepartmentId() != null) {
+            Join<Title, Department> department = titleRoot.join("department", JoinType.LEFT);
+            predicates.add(criteriaBuilder.equal(department.get("id"), titleSearchCriteria.getDepartmentId()));
+        } else if (titleSearchCriteria.isNoDepartment()) {
+            predicates.add(criteriaBuilder.isNull(titleRoot.get("department")));
+        }
+
         return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
     }
 
@@ -112,13 +134,15 @@ public class TitleSearchDao {
             TitlePage titlePage,
             CriteriaQuery<Title> criteriaQuery,
             Root<Title> titleRoot) {
-        Sort.Direction sortDirection = sortDirection(titlePage) != null ? sortDirection(titlePage)
-                : Sort.Direction.ASC;
-        if (sortDirection.equals(Sort.Direction.ASC)) {
-            criteriaQuery.orderBy(criteriaBuilder.asc(titleRoot.get(sortBy(titlePage))));
-        } else {
-            criteriaQuery.orderBy(criteriaBuilder.desc(titleRoot.get(sortBy(titlePage))));
-        }
+        Sort.Direction sortDirection = sortDirection(titlePage);
+        String column = sortBy(titlePage);
+        Order primary = sortDirection.equals(Sort.Direction.ASC)
+                ? criteriaBuilder.asc(titleRoot.get(column))
+                : criteriaBuilder.desc(titleRoot.get(column));
+        // Always end in id (trap #3): names repeat, and ties paged with OFFSET repeat and drop titles.
+        criteriaQuery.orderBy(column.equals("id")
+                ? List.of(primary)
+                : List.of(primary, criteriaBuilder.asc(titleRoot.get("id"))));
     }
 
     /**
@@ -164,8 +188,15 @@ public class TitleSearchDao {
      * @param titlePage the criteria to determine the sorting criteria.
      * @return the field to sort, page size or page number of the record.
      */
+    /**
+     * Only columns a title has. {@code sortBy} reaches {@code root.get(...)}, which throws on anything
+     * else, so a stale link or a typo would otherwise fail the listing outright.
+     */
+    private static final Set<String> SORTABLE = Set.of("id", "name", "shortCode", "workplace");
+
     private String sortBy(TitlePage titlePage) {
-        return titlePage.getSortBy() != null ? titlePage.getSortBy() : DEFAULT_SORT_FIELD;
+        String requested = titlePage.getSortBy();
+        return requested != null && SORTABLE.contains(requested) ? requested : "id";
     }
 
     private Integer pageSize(TitlePage titlePage) {

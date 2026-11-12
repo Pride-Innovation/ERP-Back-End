@@ -28,4 +28,10 @@ public class TitleRequestDTO {
     @NotNull(message = "Role is required")
     private Long role; // E.g. Officer, supervisor manager etc.
 
+    /** Optional, for filtering only. Absent clears it: an update replaces the whole title. */
+    private TitleWorkplace workplace;
+
+    /** Optional, for filtering only. Absent clears it. */
+    private Long departmentId;
+
 }

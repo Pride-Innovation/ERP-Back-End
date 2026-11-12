@@ -16,4 +16,16 @@ public class TitleQueryParams {
     private String shortCode;
     private Long reportsToId;
     private Long roleId;
+
+    /**
+     * {@code HEAD_OFFICE}, {@code BRANCH} or {@code NOT_SET}. Bound as text so {@code NOT_SET} - which
+     * is a filter value, not a workplace - can be expressed; anything else is refused with a 400
+     * rather than read as "no filter".
+     */
+    private String workplace;
+
+    private Long departmentId;
+
+    /** Titles with no department. Ignored when {@link #departmentId} is given. */
+    private Boolean noDepartment;
 }
