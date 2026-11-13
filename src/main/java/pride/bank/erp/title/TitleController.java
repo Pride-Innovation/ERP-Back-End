@@ -23,6 +23,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.helper.DeleteResponse;
+import pride.bank.erp.user.TitleOccupancyService;
+import org.springframework.security.access.prepost.PreAuthorize;
+
+import java.util.List;
 
 import static pride.bank.erp.helper.Constants.GENERAL_ROUTE;
 
@@ -104,6 +108,17 @@ public class TitleController {
             throws NotFoundException {
         Title response = titleService.updateTitle(titleRequestDTO, id);
         return new ResponseEntity<>(response, HttpStatus.OK);
+    }
+
+    @Operation(
+            summary = "Single-holder titles held twice",
+            description = "Every location where a title marked single-holder has more than one active "
+                    + "holder (not blocked; enabled or on leave). Empty when the rule holds everywhere."
+    )
+    @GetMapping("/titles/occupancy-conflicts")
+    @PreAuthorize("hasAuthority('READ_SETTING')")
+    public ResponseEntity<List<TitleOccupancyService.Conflict>> occupancyConflicts() {
+        return ResponseEntity.ok(titleService.occupancyConflicts());
     }
 
     @Operation(

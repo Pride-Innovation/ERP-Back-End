@@ -28,6 +28,16 @@ public interface TitleRepository extends JpaRepository<Title, Long> {
 
     Optional<Title> findByNameIgnoreCase(String name);
 
+    /**
+     * Locks one title row for the rest of the transaction, so two people giving the same
+     * single-holder title at the same location at the same moment queue instead of both passing the
+     * check. Native and on the id alone: an entity lock would also lock every row the title's eager
+     * associations join to.
+     */
+    @Query(value = "SELECT id FROM title WHERE id = :id FOR UPDATE", nativeQuery = true)
+    @org.springframework.transaction.annotation.Transactional // joins the caller's; never read-only
+    Long lockRow(@Param("id") Long id);
+
     List<Title> findAllByNameIgnoreCaseOrderByIdAsc(String name);
 
 }

@@ -60,6 +60,8 @@ public class UserService {
     /** The one resolver for how far a person may see — see AccessScopeService. */
     private final pride.bank.erp.access.AccessScopeService accessScopeService;
     private final TitleService titleService;
+    /** One active holder per location for single-holder titles - see TitleOccupancyService. */
+    private final TitleOccupancyService titleOccupancyService;
     private final BranchRepository branchRepository;
     private final DepartmentRepository departmentRepository;
     private final UnitRepository unitRepository;
@@ -286,6 +288,8 @@ public class UserService {
         Title title = titleService.findTitle(user.getTitle());
         Branch branch = branchRepository.findById(user.getBranch())
                 .orElseThrow(() -> new NotFoundException("Duty Station / Branch with ID " + user.getBranch() + " not found."));
+        // Before the verification email goes out: a refused account must not have been told it exists.
+        titleOccupancyService.requireAssignable(title, branch, null);
 
         Department department = null;
         if (user.getDepartment() != null) {
@@ -372,6 +376,8 @@ public class UserService {
         // Captured before the setters overwrite it — the audit sentence below names the change, and a
         // title change re-routes this person's approval ladder.
         Title previousTitle = user.getTitle();
+        Branch previousBranch = user.getBranch();
+        boolean wasHolder = titleOccupancyService.isActiveHolder(user);
         Title title = titleService.findTitle(request.getTitle());
 
         // Duplicate checks excluding the current user's own values
@@ -409,6 +415,18 @@ public class UserService {
         user.setEmail(request.getEmail());
         user.setBlocked(request.isBlocked());
         user.setBranch(branch);
+
+        /*
+         * Single-holder titles are checked only when this edit changes who holds what where: a new
+         * title, a new location, or an account becoming active again. Editing anything else - a
+         * phone number, a department, the person's own profile - never re-checks, so a Branch
+         * Manager is not refused an edit to their own record because they hold the title.
+         */
+        boolean placeChanged = !sameId(previousTitle, title) || !sameBranch(previousBranch, branch);
+        boolean isHolder = titleOccupancyService.isActiveHolder(user);
+        if (isHolder && (placeChanged || !wasHolder)) {
+            titleOccupancyService.requireAssignable(title, branch, userId);
+        }
 
         User saved = userRepository.save(user);
         /*
@@ -452,11 +470,20 @@ public class UserService {
         return saved;
     }
 
+    /**
+     * Refused when the account would become a second active holder of a single-holder title at its
+     * location - the holder in post has to be disabled or blocked first.
+     */
+    @Transactional
     public User enableUser(Long userId) throws NotFoundException {
         User user = findUserInScope(userId);
+        boolean wasHolder = titleOccupancyService.isActiveHolder(user);
         user.setEnabled(true);
         user.setAccountNonLocked(true);
         user.setBlocked(false);
+        if (!wasHolder) {
+            titleOccupancyService.requireAssignable(user.getTitle(), user.getBranch(), user.getId());
+        }
         User saved = userRepository.save(user);
         audit(pride.bank.erp.auditing.trail.AuditEventType.UPDATED, "USER_ENABLED", saved,
                 "Enabled account " + describe(saved),
@@ -467,9 +494,14 @@ public class UserService {
     @Transactional
     public User unblockUser(Long userID) throws NotFoundException {
         User user = findUserInScope(userID);
+        boolean wasHolder = titleOccupancyService.isActiveHolder(user);
         user.setAccountNonLocked(true);
         user.setBlocked(false);
         user.setFailedLoginAttempts(0);
+        // Same rule as enabling: unblocking can bring back a second holder of a single-holder title.
+        if (!wasHolder && titleOccupancyService.isActiveHolder(user)) {
+            titleOccupancyService.requireAssignable(user.getTitle(), user.getBranch(), user.getId());
+        }
         User saved = userRepository.save(user);
         // Pairs with ACCOUNT_AUTO_BLOCKED: the trail should show both the lockout and who lifted it.
         audit(pride.bank.erp.auditing.trail.AuditEventType.UPDATED, "USER_UNBLOCKED", saved,
@@ -704,6 +736,12 @@ public class UserService {
         List<Map<String, Object>> errors = new ArrayList<>();
         int successCount = 0;
         int total = userList == null ? 0 : userList.size();
+        /*
+         * Single-holder titles already given out by this file, as "titleId:branchId". Imported
+         * accounts start unverified and so do not count as holders yet, which means the database
+         * check alone would let two rows of one file both make a Gulu Branch Manager.
+         */
+        Set<String> claimedInFile = new HashSet<>();
 
         for (int i = 0; i < total; i++) {
             BulkUserDTO dto = userList.get(i);
@@ -711,7 +749,7 @@ public class UserService {
             long rowNumber = dto.getNo() != null ? dto.getNo() : (i + 1);
 
             try {
-                insertSingleUserRow(dto);
+                insertSingleUserRow(dto, claimedInFile);
                 successCount++;
             } catch (Exception e) {
                 Map<String, Object> err = new LinkedHashMap<>();
@@ -739,7 +777,7 @@ public class UserService {
     // Each row commits independently because bulkInsertUsers is not @Transactional
     // and Spring Data's save() opens its own implicit transaction per call. A row
     // failure throws out of here and is caught by the loop without affecting earlier rows.
-    private void insertSingleUserRow(BulkUserDTO dto) {
+    private void insertSingleUserRow(BulkUserDTO dto, Set<String> claimedInFile) {
         // Required field presence
         if (isBlank(dto.getFirstName())) throw new BadRequestException("First Name is required.");
         if (isBlank(dto.getLastName())) throw new BadRequestException("Last Name is required.");
@@ -768,6 +806,16 @@ public class UserService {
 
         Branch branch = branchRepository.findByNameIgnoreCase(dto.getDutyStation())
                 .orElseThrow(() -> new BadRequestException("Duty Station / Branch '" + dto.getDutyStation() + "' not found."));
+
+        String place = title.getId() + ":" + branch.getId();
+        if (title.isSingleHolder()) {
+            titleOccupancyService.requireAssignable(title, branch, null);
+            if (claimedInFile.contains(place)) {
+                throw new pride.bank.erp.exception.TitleOccupiedException(
+                        "Another row in this file already makes someone " + title.getName() + " at "
+                                + branch.getName() + ", which can only have one holder per location.");
+            }
+        }
 
         Department department = null;
         if (!isBlank(dto.getDepartment())) {
@@ -807,6 +855,8 @@ public class UserService {
                 .build();
 
         userRepository.save(user);
+        // Claimed only once the row is saved, so a row refused later does not block the next one.
+        if (title.isSingleHolder()) claimedInFile.add(place);
 
         String recipientFullName = firstName + " " + lastName;
         emailService.sendEmailVerification(
@@ -823,6 +873,14 @@ public class UserService {
 
     private static boolean isBlank(String s) {
         return s == null || s.trim().isEmpty();
+    }
+
+    private static boolean sameId(Title a, Title b) {
+        return Objects.equals(a == null ? null : a.getId(), b == null ? null : b.getId());
+    }
+
+    private static boolean sameBranch(Branch a, Branch b) {
+        return Objects.equals(a == null ? null : a.getId(), b == null ? null : b.getId());
     }
 
     private static String buildFullName(BulkUserDTO dto) {

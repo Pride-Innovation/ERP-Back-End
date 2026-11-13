@@ -50,6 +50,8 @@ import java.util.Optional;
 public class AuthenticationService {
 
     private final UserRepository userRepository;
+    /** Verifying an account is when a newly created holder of a single-holder title becomes active. */
+    private final pride.bank.erp.user.TitleOccupancyService titleOccupancyService;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
@@ -411,6 +413,7 @@ public class AuthenticationService {
         }
     }
 
+    @org.springframework.transaction.annotation.Transactional
     public Map<String, Object> verifyAccount(String token) {
         String email = jwtService.extractUserEmail(token);
 
@@ -424,6 +427,19 @@ public class AuthenticationService {
         }
 
         User user = optionalUser.get();
+        /*
+         * An unverified account does not hold its title yet, so two accounts can be created for one
+         * single-holder title at one location before either verifies. Whichever verifies second is
+         * stopped here, with the reason - before it is switched on.
+         */
+        if (!titleOccupancyService.isActiveHolder(user)) {
+            try {
+                titleOccupancyService.requireAssignable(user.getTitle(), user.getBranch(), user.getId());
+            } catch (pride.bank.erp.exception.TitleOccupiedException occupied) {
+                return createResponse("failed", "This account cannot be activated yet. " + occupied.getMessage()
+                        + " Please contact the system administrator.");
+            }
+        }
         user.setEnabled(true);
         userRepository.save(user);
 

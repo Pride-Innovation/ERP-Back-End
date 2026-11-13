@@ -1116,7 +1116,7 @@ public class RequestService {
         Long managerTitleId = requester.getTitle().getReportsTo().getId();
         Long branchId = requester.getBranch().getId();
 
-        List<User> possibleManagers = userRepository.findByTitleIdAndBranchId(managerTitleId, branchId);
+        List<User> possibleManagers = userRepository.findActiveHoldersInBranch(managerTitleId, branchId);
 
         if (possibleManagers.isEmpty()) {
             log.warn("No manager found with title ID: {} in branch ID: {}", managerTitleId, branchId);

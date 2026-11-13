@@ -34,4 +34,10 @@ public class TitleRequestDTO {
     /** Optional, for filtering only. Absent clears it. */
     private Long departmentId;
 
+    /**
+     * One active holder per location. Absent keeps the current value on an update (false on
+     * create): unlike the filtering fields above, silently clearing this would loosen a rule.
+     */
+    private Boolean singleHolder;
+
 }

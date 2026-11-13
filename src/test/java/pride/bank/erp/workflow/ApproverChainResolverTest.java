@@ -288,7 +288,7 @@ class ApproverChainResolverTest {
     }
 
     private void holder(long titleId, long branchId, User u) {
-        when(userRepository.findByTitleIdAndBranchId(titleId, branchId)).thenReturn(List.of(u));
+        when(userRepository.findActiveHoldersInBranch(titleId, branchId)).thenReturn(List.of(u));
     }
 
     private void onLeaveNoActing(User u) {

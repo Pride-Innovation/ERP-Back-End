@@ -519,10 +519,14 @@ public class ApproverChainResolver {
         return out;
     }
 
-    /** First user holding {@code title} in the requester's branch, or null. */
+    /**
+     * The active holder of {@code title} in the requester's branch (oldest account first), or null.
+     * Active includes being on leave, so {@link #effectiveApprover} can still hand the step to the
+     * acting officer.
+     */
     private User holderInBranch(Title title, Long branchId) {
         if (title == null || title.getId() == null || branchId == null) return null;
-        List<User> holders = userRepository.findByTitleIdAndBranchId(title.getId(), branchId);
+        List<User> holders = userRepository.findActiveHoldersInBranch(title.getId(), branchId);
         return (holders == null || holders.isEmpty()) ? null : holders.get(0);
     }
 

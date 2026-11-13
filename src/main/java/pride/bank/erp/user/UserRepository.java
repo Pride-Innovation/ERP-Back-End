@@ -41,8 +41,6 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     boolean existsByStaffNumberAndIdNot(String staffNumber, Long id);
 
-    List<User> findByTitleId(Long tileId);
-
     boolean existsByTitle_Id(Long titleId);
 
     boolean existsByActingTitle_Id(Long titleId);
@@ -82,8 +80,40 @@ public interface UserRepository extends JpaRepository<User, Long> {
     List<Long> findUserIdsByTitleIdsAndBranchId(@Param("titleIds") List<Long> titleIds,
                                                 @Param("branchId") Long branchId);
 
-    @Query("SELECT u FROM User u WHERE u.title.id = :titleId AND u.branch.id = :branchId")
-    List<User> findByTitleIdAndBranchId(@Param("titleId") Long titleId, @Param("branchId") Long branchId);
+    /**
+     * Who actually holds a title: not blocked, and either enabled or <b>on leave</b>.
+     *
+     * <p>"Disabled" means three things in this application - switched off by an administrator, away
+     * on leave ({@code LeaveService} disables the account until the return), and not yet verified.
+     * Only the first ends someone's hold on a title. A Branch Manager on leave is still the Branch
+     * Manager: their requests go to the acting officer through {@code effectiveApprover}, and the
+     * title must not look vacant to whoever creates the next account. A new account awaiting its
+     * verification is not counted, so verifying it is checked instead (see
+     * {@code AuthenticationService.verifyAccount}).
+     */
+    String ACTIVE_HOLDER = "u.blocked = false AND (u.isEnabled = true OR EXISTS "
+            + "(SELECT l.id FROM leave_request l WHERE l.onLeaveUser = u AND l.active = true))";
+
+    /**
+     * The holders of a title at one location, oldest account first.
+     *
+     * <p>Replaces an unordered, unfiltered lookup whose callers took {@code get(0)}: with two holders
+     * MySQL chose the approver, and a departed holder's disabled account could be chosen and leave a
+     * request waiting on someone who cannot sign in.
+     */
+    @Query("SELECT u FROM User u WHERE u.title.id = :titleId AND u.branch.id = :branchId AND "
+            + ACTIVE_HOLDER + " ORDER BY u.id")
+    List<User> findActiveHoldersInBranch(@Param("titleId") Long titleId, @Param("branchId") Long branchId);
+
+    /** Every active holder of a title that has a location, grouped by location. */
+    @Query("SELECT u FROM User u WHERE u.title.id = :titleId AND u.branch IS NOT NULL AND "
+            + ACTIVE_HOLDER + " ORDER BY u.branch.id, u.id")
+    List<User> findActiveHoldersOfTitle(@Param("titleId") Long titleId);
+
+    /** Every active holder of a single-holder title, for the conflicts report. */
+    @Query("SELECT u FROM User u WHERE u.title.singleHolder = true AND u.branch IS NOT NULL AND "
+            + ACTIVE_HOLDER + " ORDER BY u.title.id, u.branch.id, u.id")
+    List<User> findActiveHoldersOfSingleHolderTitles();
 
     @Query("SELECT u.id FROM User u WHERE u.branch.id = :branchId")
     List<Long> findUserIdsByBranchId(@Param("branchId") Long branchId);

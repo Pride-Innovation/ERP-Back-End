@@ -664,16 +664,15 @@ public class IssuanceService {
     private User getAdminManager() throws NotFoundException {
         User currentUser = currentUserService.getCurrentUser();
 
-        Role role = currentUser.getTitle().getRole();
         Long supervisorTitleId = currentUser.getTitle().getReportsTo().getId();
 
-        List<User> supervisors;
-
-        if (Objects.equals(role.getName(), "Branch Operations Manager")) {
-            supervisors = userRepository.findByTitleIdAndBranchId(supervisorTitleId, currentUser.getBranch().getId());
-        } else {
-            supervisors = userRepository.findByTitleId(supervisorTitleId);
-        }
+        /*
+         * Always the issuer's own branch. Everyone but a BOM used to be looked up across the whole
+         * bank, so with the supervisor title held at several branches this mail could go to a
+         * manager somewhere else entirely.
+         */
+        List<User> supervisors = currentUser.getBranch() == null ? List.of()
+                : userRepository.findActiveHoldersInBranch(supervisorTitleId, currentUser.getBranch().getId());
 
         if (supervisors.isEmpty()) {
             throw new NotFoundException("No supervisor found for title ID: " + supervisorTitleId);
