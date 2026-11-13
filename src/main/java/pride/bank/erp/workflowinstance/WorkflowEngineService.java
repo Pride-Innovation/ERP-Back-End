@@ -1030,7 +1030,7 @@ public class WorkflowEngineService {
         Long branchId = (requester.getBranch() != null) ? requester.getBranch().getId() : null;
         if (branchId == null) return null;
 
-        List<User> supervisors = userRepository.findByTitleIdAndBranchId(supervisorTitleId, branchId);
+        List<User> supervisors = userRepository.findActiveHoldersInBranch(supervisorTitleId, branchId);
         return supervisors.isEmpty() ? null : supervisors.get(0);
     }
 
@@ -1074,12 +1074,15 @@ public class WorkflowEngineService {
         return null;
     }
 
-    /** First user holding {@code title} in the requester's branch (no leave substitution here). */
+    /**
+     * The active holder of {@code title} in the requester's branch, oldest account first (no leave
+     * substitution here). Never a disabled or blocked account, and the same one every time.
+     */
     private User firstHolderInBranch(Title title, User requester) {
         if (title == null || title.getId() == null) return null;
         Long branchId = (requester.getBranch() != null) ? requester.getBranch().getId() : null;
         if (branchId == null) return null;
-        List<User> holders = userRepository.findByTitleIdAndBranchId(title.getId(), branchId);
+        List<User> holders = userRepository.findActiveHoldersInBranch(title.getId(), branchId);
         return holders.isEmpty() ? null : holders.get(0);
     }
 

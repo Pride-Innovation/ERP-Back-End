@@ -298,7 +298,7 @@ public class WorkflowResolveService {
         Long branchId = (requester.getBranch() != null) ? requester.getBranch().getId() : null;
         if (branchId == null) return null;
 
-        List<User> supervisors = userRepository.findByTitleIdAndBranchId(supervisorTitleId, branchId);
+        List<User> supervisors = userRepository.findActiveHoldersInBranch(supervisorTitleId, branchId);
         return supervisors.isEmpty() ? null : supervisors.get(0);
     }
 

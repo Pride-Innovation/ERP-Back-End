@@ -36,6 +36,13 @@ public class TitleService {
      * looked up from the user side too, so going through it invites a construction cycle.
      */
     private final DepartmentRepository departmentRepository;
+    /** Repositories only behind it, so no construction cycle with UserService. */
+    private final pride.bank.erp.user.TitleOccupancyService titleOccupancyService;
+
+    /** Every location where a single-holder title has more than one active holder. */
+    public java.util.List<pride.bank.erp.user.TitleOccupancyService.Conflict> occupancyConflicts() {
+        return titleOccupancyService.allConflicts();
+    }
 
     public Page<Title> fetchAllTitles(
             TitleQueryParams params
@@ -109,6 +116,7 @@ public class TitleService {
                 .role(role)
                 .workplace(request.getWorkplace())
                 .department(department)
+                .singleHolder(Boolean.TRUE.equals(request.getSingleHolder()))
                 .build();
         return titleRepository.save(title);
     }
@@ -130,6 +138,13 @@ public class TitleService {
         title.setRole(role);
         title.setWorkplace(request.getWorkplace());
         title.setDepartment(department);
+        if (request.getSingleHolder() != null) {
+            // Switching it on is refused while any location already has two active holders.
+            if (request.getSingleHolder() && !title.isSingleHolder()) {
+                titleOccupancyService.requireCanBecomeSingleHolder(title);
+            }
+            title.setSingleHolder(request.getSingleHolder());
+        }
         return titleRepository.save(title);
 
     }

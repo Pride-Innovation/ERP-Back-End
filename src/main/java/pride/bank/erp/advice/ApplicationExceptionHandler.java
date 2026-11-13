@@ -38,6 +38,7 @@ import pride.bank.erp.exception.BadRequestException;
 import pride.bank.erp.exception.NoApproverException;
 import pride.bank.erp.exception.NotFoundException;
 import pride.bank.erp.exception.SignInException;
+import pride.bank.erp.exception.TitleOccupiedException;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -198,6 +199,19 @@ public class ApplicationExceptionHandler {
                 HttpStatus.CONFLICT,
                 "Someone else updated this record while you were working on it. "
                         + "Refresh the page to pick up their change, then try again.");
+        errorDetail.setProperty("request_failure", "Conflict");
+        return errorDetail;
+    }
+
+    /**
+     * A single-holder title is already held at that location. 409, which the firewall admits, and
+     * no {@code errorCode}, so the interceptor shows the message wherever the refusal comes from.
+     */
+    @ResponseStatus(HttpStatus.CONFLICT)
+    @ExceptionHandler(TitleOccupiedException.class)
+    public ProblemDetail handleTitleOccupied(TitleOccupiedException ex) {
+        ProblemDetail errorDetail = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+        errorDetail.setProperty("message", ex.getMessage());
         errorDetail.setProperty("request_failure", "Conflict");
         return errorDetail;
     }

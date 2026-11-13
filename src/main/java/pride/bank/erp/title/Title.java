@@ -58,6 +58,16 @@ public class Title {
     @JoinColumn(name = "reports_to_id")
     private Title reportsTo;
 
+    /**
+     * Only one active account (enabled, not blocked) per location may hold this title - see
+     * {@code TitleOccupancyService}. False allows any number, and is what every title starts as.
+     *
+     * <p>Not {@code isSingleHolder}: a primitive boolean named with an {@code is} prefix publishes
+     * under the stripped name, which this codebase has been bitten by four times.
+     */
+    @Column(name = "single_holder", nullable = false)
+    private boolean singleHolder;
+
     /** Where the title is used. For filtering only; null is "not set". See {@link TitleWorkplace}. */
     @Enumerated(EnumType.STRING)
     @Column(length = 20)
