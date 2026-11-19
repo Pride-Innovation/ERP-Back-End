@@ -50,6 +50,13 @@ public class Asset {
     private String make;
     private String unitOfMeasure;
     /**
+     * An LPO number recorded as text, for an asset with no stock order (one brought in by the bulk
+     * import). Optional and a reference only: a received asset's LPO is its stock order's, and nothing
+     * looks an order up by this. See V33.
+     */
+    @Column(name = "lpo_reference", length = 100)
+    private String lpoReference;
+    /**
      * Purchase cost and book cost in UGX. Previously stored as free-text {@code String}, so no
      * arithmetic was possible without parsing, and nothing prevented a non-numeric value being
      * saved — untenable for depreciation, which has to multiply and divide these.

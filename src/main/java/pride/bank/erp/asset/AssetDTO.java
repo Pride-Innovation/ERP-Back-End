@@ -24,6 +24,11 @@ public class AssetDTO {
     private String dateReceipt;
     private String make;
     private String unitOfMeasure;
+    /**
+     * Editable only on an asset with no stock order. Optional; blank clears it. A received asset's LPO
+     * is its order's and is not changed by an edit.
+     */
+    private String lpoReference;
     private String purchaseCost;
     private String costOfTheAsset;
     private String netValueB;

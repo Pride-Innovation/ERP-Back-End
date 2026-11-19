@@ -121,11 +121,30 @@ public class StockTakeController {
     @GetMapping("/stock-adjustments")
     public ResponseEntity<VarianceReport> varianceReport(
             @RequestParam(required = false) Long storeId,
+            @RequestParam(required = false) Long branchId,
+            @RequestParam(required = false) String reason,
+            @RequestParam(required = false) Long assetTypeId,
+            @RequestParam(required = false) String search,
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
             @RequestParam(required = false)
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to,
+            @RequestParam(defaultValue = "0") int pageNumber,
+            @RequestParam(defaultValue = "25") int pageSize
     ) {
-        return new ResponseEntity<>(stockTakeService.varianceReport(storeId, from, to), HttpStatus.OK);
+        return new ResponseEntity<>(stockTakeService.varianceReport(AdjustmentQuery.builder()
+                .storeId(storeId).branchId(branchId).reason(parseReason(reason)).assetTypeId(assetTypeId)
+                .search(search).from(from).to(to).pageNumber(pageNumber).pageSize(pageSize)
+                .build()), HttpStatus.OK);
+    }
+
+    /** An unknown reason is a 400, never "no filter": ignoring it would answer with every reason. */
+    static AdjustmentReason parseReason(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        try {
+            return AdjustmentReason.valueOf(raw.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Unknown adjustment reason '" + raw + "'.");
+        }
     }
 }

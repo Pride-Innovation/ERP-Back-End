@@ -282,6 +282,13 @@ public class AssetService {
                 branch != null ? branch.getId() : null,
                 null);
 
+        // Registering an asset counts it against a stock order, so creation needs one. Refused as a 400
+        // rather than left to the lookup: NotFoundException answers 200 in this application.
+        if (request.getLpoNumber() == null || request.getLpoNumber().isBlank()) {
+            throw new BadRequestException("Choose the stock order (LPO) this asset was received on. "
+                    + "Assets with no stock order are brought in through the import, where an LPO "
+                    + "reference may be recorded.");
+        }
         Stock stock = findStockByLPONumber(request.getLpoNumber());
         assert commodity != null;
         checkIfStockContainsCommodityNotYetRegistered(stock, commodity);
@@ -360,6 +367,16 @@ public class AssetService {
 
     private Sort.Direction determineSortDirection(String direction) {
         return Objects.equals(direction, DESCENDING_SORT_DIRECTION) ? Sort.Direction.DESC : Sort.Direction.ASC;
+    }
+
+    /** A typed LPO reference: trimmed, blank as none, at most the column's 100 characters. */
+    static String lpoReferenceOf(String raw) {
+        String value = raw == null ? null : raw.trim();
+        if (value == null || value.isEmpty()) return null;
+        if (value.length() > 100) {
+            throw new BadRequestException("The LPO reference may be at most 100 characters.");
+        }
+        return value;
     }
 
     private Stock findStockByLPONumber(String lpoNumber) throws
@@ -540,11 +557,23 @@ public class AssetService {
         User oldAssignedTo = asset.getAssignedTo();
         Status oldStatus = asset.getAssetStatus();
 
-        // Set Stock to not be deleted if an asset in the stock is already updated.
-        Stock stock = findStockByLPONumber(request.getLpoNumber());
-        if (!stock.isCanNotBeDeleted()) {
-            stock.setCanNotBeDeleted(true);
-            stockRepository.save(stock);
+        /*
+         * An asset's stock order is fixed at receipt and is never changed by an edit, so the order is
+         * the asset's own - not one looked up by an LPO the form sends. That lookup used to make the
+         * LPO required on every edit and refuse any asset with no order at all: every imported asset
+         * could not be edited. It also never relinked anything; it only locked whichever order matched.
+         *
+         * Once an asset from an order has been edited, the order may no longer be deleted (deleting it
+         * reverses its receipt). An asset with no order keeps its LPO as text instead.
+         */
+        Stock stock = asset.getStock();
+        if (stock != null) {
+            if (!stock.isCanNotBeDeleted()) {
+                stock.setCanNotBeDeleted(true);
+                stockRepository.save(stock);
+            }
+        } else {
+            asset.setLpoReference(lpoReferenceOf(request.getLpoReference()));
         }
 
         /*
@@ -839,6 +868,7 @@ public class AssetService {
                 .dateReceipt(asset.getDateReceipt())
                 .make(asset.getMake())
                 .unitOfMeasure(asset.getUnitOfMeasure())
+                .lpoReference(asset.getLpoReference())
                 .purchaseCost(formatMoney(asset.getPurchaseCost()))
                 .costOfTheAsset(formatMoney(asset.getCostOfTheAsset()))
                 .netValueB(dep.grossValue())
@@ -1718,6 +1748,7 @@ public class AssetService {
                 .netValueB(AssetImportParsing.trimToNull(dto.getNetBookValue()))
                 .assetDepreciationRate(AssetImportParsing.trimToNull(dto.getDepreciationRate()))
                 .unitOfMeasure(AssetImportParsing.trimToNull(dto.getUnitOfMeasure()))
+                .lpoReference(lpoReferenceOf(dto.getLpoReference()))
                 .make(AssetImportParsing.trimToNull(dto.getMake()))
                 .model(AssetImportParsing.trimToNull(dto.getModel()))
                 .description(AssetImportParsing.trimToNull(dto.getDescription()))

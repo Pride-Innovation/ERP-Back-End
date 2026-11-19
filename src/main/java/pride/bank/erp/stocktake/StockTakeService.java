@@ -63,6 +63,8 @@ public class StockTakeService {
     private final StockTakePostingService postingService;
     private final AuditService auditService;
     private final StockCountApprovalNotifier approvalNotifier;
+    /** Names who posted each adjustment in the history (the row stores only an id). */
+    private final pride.bank.erp.user.UserRepository userRepository;
 
     /** The one resolver for how far a person may reach — see AccessScopeService. */
     private final pride.bank.erp.access.AccessScopeService accessScopeService;
@@ -135,9 +137,26 @@ public class StockTakeService {
     }
 
     /**
+     * Whether a stock line belongs on a count sheet: consumables only.
+     *
+     * <p>Goods received in a category that tracks assets (Computers, Furniture, Equipment, …) are
+     * recorded twice - as a quantity line here and as one asset record per unit - and only the asset
+     * records follow the item afterwards: a movement, a repair or a write-off relocates the asset and
+     * leaves the quantity line as it was. So "Laptop: 5" in the Admin store is not a count of the
+     * laptops on its shelf, and counting against it reports perfectly ordinary transfers as losses,
+     * then "corrects" a number nothing else agrees with without saying which laptop is missing.
+     * Those categories are verified asset by asset, not counted here.
+     */
+    static boolean isCountableLine(StoreBalance balance) {
+        AssetType type = balance.getCommodity() != null ? balance.getCommodity().getAssetType() : null;
+        return type == null || !type.isTracksAssets();
+    }
+
+    /**
      * The stores the caller may open a count for: at their own branch, not a courier, and holding at
-     * least one stock line - the IT and Disposal stores hold only serialized assets, which a stock take
-     * does not count, so a sheet for them would be empty.
+     * least one countable line. The IT and Disposal stores hold only serialized assets, and a store
+     * holding only asset-tracked lines has nothing a stock take counts, so a sheet for either would be
+     * empty.
      */
     @Transactional(readOnly = true)
     public List<CountableStore> countableStores() {
@@ -157,7 +176,8 @@ public class StockTakeService {
                         .name(s.getName())
                         .storeType(s.getStoreType() != null ? s.getStoreType().name() : null)
                         .branchName(s.getLocation() != null ? s.getLocation().getName() : null)
-                        .lineCount(storeBalanceRepository.findByStore_Id(s.getId()).size())
+                        .lineCount((int) storeBalanceRepository.findByStore_Id(s.getId()).stream()
+                                .filter(StockTakeService::isCountableLine).count())
                         .build())
                 .filter(s -> s.getLineCount() > 0)
                 .sorted(java.util.Comparator.comparing(CountableStore::getName, java.util.Comparator.nullsLast(String::compareTo)))
@@ -209,11 +229,16 @@ public class StockTakeService {
             assetType = assetTypeRepository.findById(request.getAssetTypeId())
                     .orElseThrow(() -> new NotFoundException(
                             "Asset category " + request.getAssetTypeId() + " not found"));
+            if (assetType.isTracksAssets()) {
+                throw new IllegalArgumentException(assetType.getName() + " tracks individual assets, which are "
+                        + "verified one by one rather than counted on a stock take sheet.");
+            }
         }
 
         // The lines this sheet will hold, decided before anything is saved.
         final AssetType scope = assetType;
         List<StoreBalance> toCount = storeBalanceRepository.findByStore_Id(store.getId()).stream()
+                .filter(StockTakeService::isCountableLine)
                 .filter(balance -> {
                     if (scope == null) return true;
                     AssetType lineType = balance.getCommodity() != null ? balance.getCommodity().getAssetType() : null;
@@ -224,10 +249,10 @@ public class StockTakeService {
         // An empty sheet counts nothing and would sit in the store's one open slot. Refused before the
         // count is created, so nothing is left behind - not even inside a caller's transaction.
         if (toCount.isEmpty()) {
-            throw new IllegalArgumentException(store.getName() + " holds no stock lines"
+            throw new IllegalArgumentException(store.getName() + " holds no consumable stock lines"
                     + (assetType != null ? " in " + assetType.getName() : "")
-                    + " to count. A stock take counts consumable stock; serialized assets such as "
-                    + "laptops are not counted here.");
+                    + " to count. A stock take counts consumable stock; categories that track individual "
+                    + "assets, such as Computers and Furniture, are not counted here.");
         }
 
         StockCount count = countRepository.save(StockCount.builder()
@@ -557,15 +582,81 @@ public class StockTakeService {
      * already narrowed to the caller's stores. Narrowed silently when no store is named; refused when
      * one is named that the caller cannot reach, as the listing of a named store would be.
      */
+    /** Largest page the history will return; generous enough for an export. */
+    static final int MAX_ADJUSTMENT_PAGE = 5000;
+
+    /**
+     * <h2>Paged and filtered after scoping, in memory</h2>
+     * The scope rule ({@link #storeIsInScope}) is the count listing's, applied per row; writing it into
+     * SQL as well would be a second copy of it. So every adjustment is read, narrowed to the viewer's
+     * stores, then filtered, totalled and cut into a page - the order is forced, since a page cut
+     * before the scope would give wrong totals and uneven pages. Adjustments are written only by a
+     * posted count line that differed or a stock-order reversal, so this stays in the thousands.
+     *
+     * <p>The totals are over everything matching the filters, never the page: a headline beside a
+     * paged table that described only the page would read as the whole history.
+     */
     @Transactional(readOnly = true)
-    public VarianceReport varianceReport(Long storeId, LocalDateTime from, LocalDateTime to) {
-        if (storeId != null) {
-            storeRepository.findById(storeId)
+    public VarianceReport varianceReport(AdjustmentQuery query) {
+        if (query.getStoreId() != null) {
+            storeRepository.findById(query.getStoreId())
                     .ifPresent(store -> requireStoreCountable(store, pride.bank.erp.access.ScopeAction.VIEW));
         }
+        if (query.getBranchId() != null) {
+            // Refused rather than narrowed to nothing: naming a branch you cannot see is a question
+            // the page never offers, and an empty table would read as "no adjustments there".
+            accessScopeService.requireCanView(
+                    pride.bank.erp.access.ScopeSubject.INVENTORY, query.getBranchId(), null);
+        }
 
-        List<StockAdjustment> adjustments = adjustmentRepository.findForReport(storeId, from, to).stream()
+        List<StockAdjustment> visible = adjustmentRepository.findForReport(null, null, null).stream()
                 .filter(a -> storeIsInScope(a.getStore()))
+                .toList();
+
+        // Offered values come from everything the viewer can see, not narrowed by the active filters,
+        // or picking a store would empty the store list and the panel could never be widened again.
+        List<AdjustmentStoreOption> storeOptions = visible.stream()
+                .map(StockAdjustment::getStore)
+                .filter(java.util.Objects::nonNull)
+                .collect(java.util.stream.Collectors.toMap(Store::getId, s -> s, (a, b) -> a, LinkedHashMap::new))
+                .values().stream()
+                .map(s -> AdjustmentStoreOption.builder()
+                        .id(s.getId()).name(s.getName())
+                        .branchId(s.getLocation() != null ? s.getLocation().getId() : null)
+                        .branchName(s.getLocation() != null ? s.getLocation().getName() : null)
+                        .build())
+                .sorted(java.util.Comparator.comparing(AdjustmentStoreOption::getName,
+                        java.util.Comparator.nullsLast(String::compareToIgnoreCase)))
+                .toList();
+
+        List<AdjustmentCategoryOption> categoryOptions = visible.stream()
+                .map(a -> a.getCommodity() != null ? a.getCommodity().getAssetType() : null)
+                .filter(java.util.Objects::nonNull)
+                .collect(java.util.stream.Collectors.toMap(AssetType::getId, t -> t, (a, b) -> a, LinkedHashMap::new))
+                .values().stream()
+                .map(t -> AdjustmentCategoryOption.builder().id(t.getId()).name(t.getName()).build())
+                .sorted(java.util.Comparator.comparing(AdjustmentCategoryOption::getName,
+                        java.util.Comparator.nullsLast(String::compareToIgnoreCase)))
+                .toList();
+
+        String search = query.getSearch() == null || query.getSearch().isBlank()
+                ? null : query.getSearch().trim().toLowerCase();
+        List<StockAdjustment> adjustments = visible.stream()
+                .filter(a -> query.getStoreId() == null
+                        || (a.getStore() != null && query.getStoreId().equals(a.getStore().getId())))
+                .filter(a -> query.getBranchId() == null
+                        || (a.getStore() != null && a.getStore().getLocation() != null
+                        && query.getBranchId().equals(a.getStore().getLocation().getId())))
+                .filter(a -> query.getReason() == null || query.getReason() == a.getReason())
+                .filter(a -> query.getAssetTypeId() == null
+                        || (a.getCommodity() != null && a.getCommodity().getAssetType() != null
+                        && query.getAssetTypeId().equals(a.getCommodity().getAssetType().getId())))
+                .filter(a -> search == null || (a.getCommodity() != null && a.getCommodity().getName() != null
+                        && a.getCommodity().getName().toLowerCase().contains(search)))
+                .filter(a -> query.getFrom() == null
+                        || (a.getPostedAt() != null && !a.getPostedAt().isBefore(query.getFrom())))
+                .filter(a -> query.getTo() == null
+                        || (a.getPostedAt() != null && !a.getPostedAt().isAfter(query.getTo())))
                 .toList();
 
         // From the scoped list, not a separate aggregate — which would total stores the list withholds.
@@ -585,12 +676,32 @@ public class StockTakeService {
         long down = adjustments.stream().filter(a -> a.getQuantityDelta() < 0)
                 .mapToLong(a -> -a.getQuantityDelta()).sum();
 
+        int pageSize = Math.max(1, Math.min(query.getPageSize() <= 0 ? 25 : query.getPageSize(), MAX_ADJUSTMENT_PAGE));
+        int totalPages = (int) Math.ceil(adjustments.size() / (double) pageSize);
+        int pageNumber = Math.max(0, query.getPageNumber());
+        // Already ordered newest first with id as the tie-break, so a page is a stable slice.
+        List<StockAdjustment> page = adjustments.stream()
+                .skip((long) pageNumber * pageSize).limit(pageSize).toList();
+
+        // Who posted each line, in one query for the page rather than one per row.
+        Map<Long, String> posters = new java.util.HashMap<>();
+        java.util.Set<Long> posterIds = page.stream().map(StockAdjustment::getPostedBy)
+                .filter(java.util.Objects::nonNull).collect(java.util.stream.Collectors.toSet());
+        if (!posterIds.isEmpty()) {
+            userRepository.findAllById(posterIds).forEach(u -> posters.put(u.getId(), fullName(u)));
+        }
+
         return VarianceReport.builder()
                 .byReason(byReason)
-                .adjustments(adjustments.stream().map(this::toAdjustmentView).toList())
+                .adjustments(page.stream().map(a -> toAdjustmentView(a, posters)).toList())
                 .totalLines(adjustments.size())
                 .unitsWrittenUp(up)
                 .unitsWrittenDown(down)
+                .pageNumber(pageNumber)
+                .pageSize(pageSize)
+                .totalPages(totalPages)
+                .storeOptions(storeOptions)
+                .categoryOptions(categoryOptions)
                 .build();
     }
 
@@ -683,11 +794,17 @@ public class StockTakeService {
                 .build();
     }
 
-    private AdjustmentView toAdjustmentView(StockAdjustment a) {
+    private AdjustmentView toAdjustmentView(StockAdjustment a, Map<Long, String> posters) {
         return AdjustmentView.builder()
                 .id(a.getId())
+                .storeId(a.getStore() != null ? a.getStore().getId() : null)
                 .storeName(a.getStore() != null ? a.getStore().getName() : null)
+                .branchName(a.getStore() != null && a.getStore().getLocation() != null
+                        ? a.getStore().getLocation().getName() : null)
                 .commodityName(a.getCommodity() != null ? a.getCommodity().getName() : null)
+                .assetTypeName(a.getCommodity() != null && a.getCommodity().getAssetType() != null
+                        ? a.getCommodity().getAssetType().getName() : null)
+                .postedByName(a.getPostedBy() != null ? posters.get(a.getPostedBy()) : null)
                 .quantityDelta(a.getQuantityDelta())
                 .quantityBefore(a.getQuantityBefore())
                 .quantityAfter(a.getQuantityAfter())
