@@ -47,6 +47,7 @@ class StockTakeBranchRuleTest {
     @Autowired StockTakeService stockTakeService;
     @Autowired StoreRepository storeRepository;
     @Autowired StoreBalanceRepository storeBalanceRepository;
+    @Autowired StockCountRepository countRepository;
     @Autowired UserRepository userRepository;
     @Autowired JwtService jwtService;
 
@@ -68,7 +69,11 @@ class StockTakeBranchRuleTest {
         return storeRepository.findAll().stream()
                 .filter(s -> s.getStoreType() != StoreType.COURIER && s.getLocation() != null)
                 .filter(s -> s.getLocation().isHeadOffice() == headOffice)
-                .filter(s -> !storeBalanceRepository.findByStore_Id(s.getId()).isEmpty())
+                .filter(s -> storeBalanceRepository.findByStore_Id(s.getId()).stream()
+                        .anyMatch(StockTakeService::isCountableLine))
+                // A store with an unfinished count cannot be opened again - that is a real count
+                // somebody is doing, so skip it rather than fail on it.
+                .filter(s -> countRepository.findOpenForStore(s.getId()).isEmpty())
                 .toList();
     }
 
@@ -156,7 +161,7 @@ class StockTakeBranchRuleTest {
         int before = stockTakeService.list(null).size();
         assertThatThrownBy(() -> open(empty.get()))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("serialized assets");
+                .hasMessageContaining("track individual assets");
         assertThat(stockTakeService.list(null)).hasSize(before);
         assertThat(stockTakeService.countableStores()).extracting(CountableStore::getId).doesNotContain(empty.get().getId());
     }

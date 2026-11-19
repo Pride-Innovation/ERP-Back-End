@@ -31,6 +31,8 @@ public class AssetDAO {
     private String dateReceipt;
     private String make;
     private String unitOfMeasure;
+    /** The text LPO of an asset with no stock order; null where the stock order supplies it. */
+    private String lpoReference;
     private String purchaseCost;
     private String costOfTheAsset;
     private String netValueB;

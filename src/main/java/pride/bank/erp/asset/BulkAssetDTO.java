@@ -62,6 +62,8 @@ public class BulkAssetDTO {
     private String netBookValue;
     private String depreciationRate;
     private String unitOfMeasure;
+    /** Optional. The LPO, where an old record still has one; never required, never a link to an order. */
+    private String lpoReference;
 
     // ── Descriptive ──────────────────────────────────────────────────────────
     private String make;

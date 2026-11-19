@@ -145,8 +145,11 @@ public final class StockTakeDTOs {
     @NoArgsConstructor
     public static class AdjustmentView {
         private Long id;
+        private Long storeId;
         private String storeName;
+        private String branchName;
         private String commodityName;
+        private String assetTypeName;
         private int quantityDelta;
         private int quantityBefore;
         private int quantityAfter;
@@ -154,6 +157,40 @@ public final class StockTakeDTOs {
         private String note;
         private String countReference;
         private LocalDateTime postedAt;
+        private String postedByName;
+    }
+
+    /** A store the viewer's adjustments come from, for the Store / Branch filters. */
+    @Data
+    @Builder
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class AdjustmentStoreOption {
+        private Long id;
+        private String name;
+        private Long branchId;
+        private String branchName;
+    }
+
+    /**
+     * The Adjustment History filters. Every one is declared on {@code GET /stock-adjustments}, so none
+     * is dropped silently (trap #2).
+     */
+    @Data
+    @Builder
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class AdjustmentQuery {
+        private Long storeId;
+        private Long branchId;
+        private AdjustmentReason reason;
+        private Long assetTypeId;
+        /** Commodity name, partial and case-insensitive. */
+        private String search;
+        private LocalDateTime from;
+        private LocalDateTime to;
+        private int pageNumber;
+        private int pageSize;
     }
 
     @Data
@@ -171,10 +208,29 @@ public final class StockTakeDTOs {
     @AllArgsConstructor
     @NoArgsConstructor
     public static class VarianceReport {
+        /** Totals over every adjustment matching the filters - not just this page. */
         private List<ReasonSummary> byReason;
+        /** One page of the matching adjustments, newest first. */
         private List<AdjustmentView> adjustments;
+        /** How many adjustments match the filters (the pager's total). */
         private long totalLines;
         private long unitsWrittenUp;
         private long unitsWrittenDown;
+        private int pageNumber;
+        private int pageSize;
+        private int totalPages;
+        /** Stores the viewer has adjustments in, not narrowed by the active filters. */
+        private List<AdjustmentStoreOption> storeOptions;
+        /** Categories the viewer's adjustments fall in, likewise - so every offered value can match. */
+        private List<AdjustmentCategoryOption> categoryOptions;
+    }
+
+    @Data
+    @Builder
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class AdjustmentCategoryOption {
+        private Long id;
+        private String name;
     }
 }
