@@ -50,6 +50,8 @@ public class AssetImportTemplateDTO {
     private List<String> statuses;
     /** "PBL0001 — Jane Doe": the staff number the importer matches on, plus a name to pick by. */
     private List<String> staff;
+    /** Active units from Settings → Units of Measure. A blank cell takes the commodity's unit. */
+    private List<String> unitsOfMeasure;
 
     // ── Limits, so the browser can enforce them before uploading anything ─────
 
