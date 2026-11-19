@@ -17,6 +17,7 @@ import pride.bank.erp.assetType.AssetType;
 import pride.bank.erp.assetType.AssetTypeRepository;
 import pride.bank.erp.commodity.Commodity;
 import pride.bank.erp.commodity.CommodityRepository;
+import pride.bank.erp.unitofmeasure.UnitOfMeasureService;
 
 import java.io.IOException;
 import java.util.HashSet;
@@ -142,9 +143,19 @@ public class AssetTypeCommoditySeeder {
         }
     }
 
+    /*
+     * Found by name within its category - never by unit as well.
+     *
+     * The lookup used to include the unit, and an existing commodity's unit was overwritten from this
+     * file. With units managed in Settings → Units of Measure that would be wrong twice: a commodity
+     * whose unit an administrator changed would no longer match, so every restart would create a
+     * second commodity with the file's unit beside it; and one that did match would have its unit put
+     * back. The unit in this file is now only the starting value for a commodity it creates.
+     */
     private Commodity findOrCreateCommodity(AssetType assetType, CommoditySeedNode node) {
         Optional<Commodity> existingCommodity = commodityRepository
-                .findByNameIgnoreCaseAndGroupNameIgnoreCaseAndAssetType_Id(node.getName(), node.getGroupName(), assetType.getId());
+                .findAllByNameIgnoreCaseAndAssetType_IdOrderByIdAsc(node.getName(), assetType.getId())
+                .stream().findFirst();
 
         if (existingCommodity.isPresent()) {
             Commodity commodity = existingCommodity.get();
@@ -152,11 +163,6 @@ public class AssetTypeCommoditySeeder {
 
             if (!Objects.equals(commodity.getName(), node.getName())) {
                 commodity.setName(node.getName());
-                requiresUpdate = true;
-            }
-
-            if (!Objects.equals(commodity.getGroupName(), node.getGroupName())) {
-                commodity.setGroupName(node.getGroupName());
                 requiresUpdate = true;
             }
 
@@ -175,15 +181,14 @@ public class AssetTypeCommoditySeeder {
         return commodityRepository.save(
                 Commodity.builder()
                         .name(node.getName())
-                        .groupName(node.getGroupName())
+                        .groupName(UnitOfMeasureService.normalise(node.getGroupName()))
                         .assetType(assetType)
                         .build()
         );
     }
 
     private String buildCommodityKey(CommoditySeedNode node) {
-        String commodityName = node.getName() == null ? "" : node.getName().trim().toLowerCase();
-        String groupName = node.getGroupName() == null ? "" : node.getGroupName().trim().toLowerCase();
-        return commodityName + "::" + groupName;
+        // By name alone, matching the lookup above.
+        return node.getName() == null ? "" : node.getName().trim().toLowerCase();
     }
 }

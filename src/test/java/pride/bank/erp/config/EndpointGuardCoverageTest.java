@@ -96,6 +96,12 @@ class EndpointGuardCoverageTest {
             // discloses nothing either: column names, for tables the caller can already open, whose
             // columns are already on their screen. The write is guarded (UPDATE_EXPORT_COLUMNS).
             "GET /api/v1/export-columns",
+            // The units of measure a commodity or asset may be counted in. The commodity form, the
+            // asset form and the import template all offer them, so gating the read on READ_SETTING
+            // would empty those dropdowns for everyone outside Settings - the same reason the
+            // commodity and category lists stay open. A list of words like "pieces"; the writes are
+            // guarded (CREATE_SETTING / UPDATE_SETTING).
+            "GET /api/v1/units-of-measure",
             // Changing your own password. The handler resolves the account from the JWT and can only
             // ever touch the caller's own record, so authentication is not a weaker guard here — it
             // is the whole question. It previously sat under the /users/** POST matcher and so

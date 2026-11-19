@@ -1012,6 +1012,8 @@ public class StockService {
                 Asset asset = Asset.builder()
                         .assetName(commodity.getName())
                         .commodity(commodity)
+                        // Received assets used to get no unit at all; they start with the commodity's.
+                        .unitOfMeasure(pride.bank.erp.unitofmeasure.UnitOfMeasureService.normalise(commodity.getGroupName()))
                         .assetType(assetType)
                         .supplier(stock.getSupplier())
                         .branch(stock.getBranch())

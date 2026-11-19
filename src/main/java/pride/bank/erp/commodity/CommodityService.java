@@ -14,7 +14,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pride.bank.erp.assetType.AssetType;
 import pride.bank.erp.assetType.AssetTypeService;
+import pride.bank.erp.exception.BadRequestException;
 import pride.bank.erp.exception.NotFoundException;
+import pride.bank.erp.unitofmeasure.UnitOfMeasureService;
 import pride.bank.erp.helper.Constants;
 import pride.bank.erp.helper.DeleteResponse;
 
@@ -30,6 +32,7 @@ public class CommodityService {
     private final CommodityRepository commodityRepository;
     private final CommoditySearchDao commoditySearchDao;
     private final AssetTypeService assetTypeService;
+    private final UnitOfMeasureService unitOfMeasureService;
 
     public Page<Commodity> fetchAllCommodities(CommodityQueryParams params) {
         CommodityPage commodityPage = CommodityPage.builder()
@@ -52,10 +55,11 @@ public class CommodityService {
     public Commodity createCommodity(CommodityDTO request)
             throws NotFoundException {
         AssetType assetType = assetTypeService.findOneAssetType(request.getAssetType());
-        ensureNoDuplicateCommodity(request.getName(), request.getGroupName(), request.getAssetType(), null);
+        String unit = requireUnit(request.getGroupName(), null);
+        ensureNoDuplicateCommodity(request.getName(), unit, request.getAssetType(), null);
         Commodity commodity = Commodity.builder()
                 .name(request.getName())
-                .groupName(request.getGroupName())
+                .groupName(unit)
                 .assetType(assetType)
                 .build();
         return commodityRepository.save(commodity);
@@ -65,10 +69,12 @@ public class CommodityService {
     public Commodity updateCommodity(CommodityDTO request, Long id) throws NotFoundException {
         Commodity commodity = findCommodity(id);
         AssetType assetType = assetTypeService.findOneAssetType(request.getAssetType());
-        ensureNoDuplicateCommodity(request.getName(), request.getGroupName(), request.getAssetType(), id);
+        // A unit the commodity already carries is accepted even if since switched off.
+        String unit = requireUnit(request.getGroupName(), commodity.getGroupName());
+        ensureNoDuplicateCommodity(request.getName(), unit, request.getAssetType(), id);
 
         commodity.setName(request.getName());
-        commodity.setGroupName(request.getGroupName());
+        commodity.setGroupName(unit);
         commodity.setAssetType(assetType);
         return commodityRepository.save(commodity);
     }
@@ -85,6 +91,13 @@ public class CommodityService {
         }
         commodityRepository.deleteById(id);
         return new DeleteResponse(Constants.DELETED_SUCCESSFULLY, true);
+    }
+
+    /** A commodity's unit: required, and one from Settings → Units of Measure. */
+    private String requireUnit(String raw, String current) {
+        String unit = unitOfMeasureService.resolve(raw, current);
+        if (unit == null) throw new BadRequestException("Choose the commodity's unit of measure.");
+        return unit;
     }
 
     private Sort.Direction determineSortDirection(String direction) {

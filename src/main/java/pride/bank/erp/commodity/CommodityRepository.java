@@ -29,4 +29,7 @@ public interface CommodityRepository extends JpaRepository<Commodity, Long> {
 	List<Commodity> findAllByAssetType_Id(Long assetTypeId);
 
 	Optional<Commodity> findByNameIgnoreCaseAndAssetType_Id(String name, Long assetTypeId);
+
+	/** Every commodity of that name in the category, oldest first - the seeder's lookup, tolerant of duplicates. */
+	List<Commodity> findAllByNameIgnoreCaseAndAssetType_IdOrderByIdAsc(String name, Long assetTypeId);
 }

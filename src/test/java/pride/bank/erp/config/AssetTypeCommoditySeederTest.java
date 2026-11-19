@@ -62,8 +62,8 @@ class AssetTypeCommoditySeederTest {
         when(assetTypeRepository.findByShortCode("E")).thenReturn(Optional.empty());
         when(assetTypeRepository.findByNameIgnoreCase("Equipment")).thenReturn(Optional.empty());
         when(assetTypeRepository.save(any(AssetType.class))).thenReturn(savedAssetType);
-        when(commodityRepository.findByNameIgnoreCaseAndGroupNameIgnoreCaseAndAssetType_Id("Note counter", "pieces", 1L))
-                .thenReturn(Optional.empty());
+        when(commodityRepository.findAllByNameIgnoreCaseAndAssetType_IdOrderByIdAsc("Note counter", 1L))
+                .thenReturn(List.of());
         when(commodityRepository.save(any(Commodity.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         assetTypeCommoditySeeder.seedAssetTypesAndCommodities(assetTypes);
@@ -101,8 +101,8 @@ class AssetTypeCommoditySeederTest {
 
         when(assetTypeRepository.findByShortCode("C")).thenReturn(Optional.of(existingAssetType));
         when(assetTypeRepository.save(any(AssetType.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(commodityRepository.findByNameIgnoreCaseAndGroupNameIgnoreCaseAndAssetType_Id("Tablet", "pieces", 2L))
-                .thenReturn(Optional.empty());
+        when(commodityRepository.findAllByNameIgnoreCaseAndAssetType_IdOrderByIdAsc("Tablet", 2L))
+                .thenReturn(List.of());
         when(commodityRepository.save(any(Commodity.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         assetTypeCommoditySeeder.seedAssetTypesAndCommodities(assetTypes);
@@ -110,6 +110,30 @@ class AssetTypeCommoditySeederTest {
         assertEquals("Computers", existingAssetType.getName());
         assertEquals("Computers (C)", existingAssetType.getDescription());
         verify(commodityRepository, times(1)).save(any(Commodity.class));
-        verify(commodityRepository).findByNameIgnoreCaseAndGroupNameIgnoreCaseAndAssetType_Id(eq("Tablet"), eq("pieces"), eq(2L));
+        verify(commodityRepository).findAllByNameIgnoreCaseAndAssetType_IdOrderByIdAsc(eq("Tablet"), eq(2L));
+    }
+
+    /**
+     * Units are managed in Settings, so a commodity found by name keeps the unit it has. Matching on
+     * the unit as well (the old lookup) would miss it and create a duplicate on every restart.
+     */
+    @Test
+    void anExistingCommodityKeepsItsUnitAndIsNotDuplicated() {
+        assetTypeCommoditySeeder = new AssetTypeCommoditySeeder(assetTypeRepository, commodityRepository, objectMapper);
+        List<AssetTypeSeedNode> assetTypes = List.of(
+                new AssetTypeSeedNode("Stationery", "Stationery (S)", "S",
+                        List.of(new CommoditySeedNode("Printing paper", "Reams"))));
+
+        AssetType type = AssetType.builder().id(3L).name("Stationery").description("Stationery (S)").shortCode("S").build();
+        Commodity existing = Commodity.builder().id(9L).name("Printing paper").groupName("boxes").assetType(type).build();
+
+        when(assetTypeRepository.findByShortCode("S")).thenReturn(Optional.of(type));
+        when(commodityRepository.findAllByNameIgnoreCaseAndAssetType_IdOrderByIdAsc("Printing paper", 3L))
+                .thenReturn(List.of(existing));
+
+        assetTypeCommoditySeeder.seedAssetTypesAndCommodities(assetTypes);
+
+        assertEquals("boxes", existing.getGroupName());
+        verify(commodityRepository, times(0)).save(any(Commodity.class));
     }
 }

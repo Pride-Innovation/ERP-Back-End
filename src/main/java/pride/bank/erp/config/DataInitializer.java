@@ -141,6 +141,7 @@ public class DataInitializer {
     private final DepartmentSeeder departmentSeeder;
     private final UnitSeeder unitSeeder;
     private final AssetTypeCommoditySeeder assetTypeCommoditySeeder;
+    private final pride.bank.erp.unitofmeasure.UnitOfMeasureService unitOfMeasureService;
     private final SupplierCommoditySeeder supplierCommoditySeeder;
     private final RoleSeeder roleSeeder;
     private final RolePermissionSeeder rolePermissionSeeder;
@@ -221,6 +222,9 @@ public class DataInitializer {
 
             initializeDistricts();
             assetTypeCommoditySeeder.seedAssetTypesAndCommodities();
+            // After the commodities: any unit a commodity uses joins the list (create-only, so a unit
+            // switched off in Settings stays off).
+            unitOfMeasureService.seedFromCommodities();
             supplierCommoditySeeder.seedSuppliersAndCommodityLinks();
             roleSeeder.seedRoles();
             rolePermissionSeeder.seedRolePermissions();

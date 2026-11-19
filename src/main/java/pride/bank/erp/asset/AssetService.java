@@ -26,6 +26,7 @@ import pride.bank.erp.branch.Branch;
 import pride.bank.erp.branch.BranchRepository;
 import pride.bank.erp.branch.BranchService;
 import pride.bank.erp.commodity.Commodity;
+import pride.bank.erp.unitofmeasure.UnitOfMeasureService;
 import pride.bank.erp.commodity.CommodityRepository;
 import pride.bank.erp.commodity.CommodityService;
 import pride.bank.erp.config.CurrentUserService;
@@ -108,6 +109,7 @@ public class AssetService {
     private final UserRepository userRepository;
     private final SupplierRepository supplierRepository;
     private final CommodityRepository commodityRepository;
+    private final UnitOfMeasureService unitOfMeasureService;
     private final StatusRepository statusRepository;
     /** Decides how far a dashboard query may reach — see DashboardScopeService. */
     private final pride.bank.erp.dashboard.DashboardScopeService dashboardScopeService;
@@ -320,7 +322,7 @@ public class AssetService {
                 .netValueB(request.getNetValueB())
                 .purchaseCost(parseMoneyDecimal(request.getPurchaseCost()))
                 .serialNumber(request.getSerialNumber())
-                .unitOfMeasure(request.getUnitOfMeasure())
+                .unitOfMeasure(unitFor(request.getUnitOfMeasure(), null, commodity))
                 .cpuSpeed(request.getCpuSpeed())
                 .detailNetBookValue(request.getDetailNetBookValue())
                 .description(request.getDescription())
@@ -367,6 +369,18 @@ public class AssetService {
 
     private Sort.Direction determineSortDirection(String direction) {
         return Objects.equals(direction, DESCENDING_SORT_DIRECTION) ? Sort.Direction.DESC : Sort.Direction.ASC;
+    }
+
+    /**
+     * An asset's unit of measure: the one chosen, if any, from Settings → Units of Measure; otherwise
+     * its commodity's. Decision recorded with V34: the commodity's unit is the default and an asset
+     * may differ from it. {@code current} is the unit the asset already carries, accepted on a re-save
+     * even if it has since been switched off.
+     */
+    private String unitFor(String chosen, String current, Commodity commodity) {
+        String unit = unitOfMeasureService.resolve(chosen, current);
+        if (unit != null) return unit;
+        return commodity != null ? UnitOfMeasureService.normalise(commodity.getGroupName()) : null;
     }
 
     /** A typed LPO reference: trimmed, blank as none, at most the column's 100 characters. */
@@ -630,7 +644,9 @@ public class AssetService {
         asset.setNetValueB(request.getNetValueB());
         asset.setPurchaseCost(parseMoneyDecimal(request.getPurchaseCost()));
         asset.setSerialNumber(request.getSerialNumber());
-        asset.setUnitOfMeasure(request.getUnitOfMeasure());
+        // The asset's own unit if one is chosen (a unit it already carries is kept even if since
+        // switched off), else its commodity's.
+        asset.setUnitOfMeasure(unitFor(request.getUnitOfMeasure(), asset.getUnitOfMeasure(), asset.getCommodity()));
         asset.setCpuSpeed(request.getCpuSpeed());
         asset.setDetailNetBookValue(request.getDetailNetBookValue());
         asset.setDescription(request.getDescription());
@@ -1558,6 +1574,7 @@ public class AssetService {
                         .map(Commodity::getName).filter(Objects::nonNull).distinct().sorted().toList())
                 .statuses(statusNames)
                 .staff(staff)
+                .unitsOfMeasure(unitOfMeasureService.activeNameList())
                 .batchSize(BULK_IMPORT_BATCH_LIMIT)
                 .maxRows(BULK_IMPORT_MAX_ROWS)
                 .build();
@@ -1754,7 +1771,7 @@ public class AssetService {
                 .costOfTheAsset(AssetImportParsing.parseMoney(dto.getCostOfTheAsset(), "Cost of the Asset"))
                 .netValueB(AssetImportParsing.trimToNull(dto.getNetBookValue()))
                 .assetDepreciationRate(AssetImportParsing.trimToNull(dto.getDepreciationRate()))
-                .unitOfMeasure(AssetImportParsing.trimToNull(dto.getUnitOfMeasure()))
+                .unitOfMeasure(unitFor(dto.getUnitOfMeasure(), null, commodity))
                 .lpoReference(lpoReferenceOf(dto.getLpoReference()))
                 .make(AssetImportParsing.trimToNull(dto.getMake()))
                 .model(AssetImportParsing.trimToNull(dto.getModel()))
