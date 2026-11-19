@@ -901,6 +901,13 @@ public class AssetService {
                                 .build() : null)
                 .assignedTo(asset.getAssignedTo() != null ?
                         User.builder()
+                                /*
+                                 * The id was missing, so the edit form - which binds the holder by id -
+                                 * opened with Assigned To empty, and saving it sent no holder. The
+                                 * history row that change writes has a NOT NULL user, so every such
+                                 * save failed outright. The supplier beside it always carried its id.
+                                 */
+                                .id(asset.getAssignedTo().getId())
                                 .availability(asset.getAssignedTo().getAvailability())
                                 .branch(asset.getAssignedTo().getBranch())
                                 .email(asset.getAssignedTo().getEmail())
