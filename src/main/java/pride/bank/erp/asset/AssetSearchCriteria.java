@@ -20,7 +20,13 @@ public class AssetSearchCriteria {
     private String assetName;
     private Long assetTypeId;
     private Long assetStatusId;
+    /** The asset's sub-category (its commodity - Laptop, Chair, …). */
     private Long commodityId;
+    /**
+     * Only assets with no sub-category recorded - the register's "Sub-category: Not set" filter.
+     * Matched through a LEFT join, so the assets it exists to find are not dropped before the check.
+     */
+    private Boolean noCommodity;
     private String engravedNumber;
     private Long assignedToId;
     private Boolean disposed;

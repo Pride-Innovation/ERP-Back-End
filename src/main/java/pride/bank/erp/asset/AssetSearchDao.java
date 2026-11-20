@@ -173,10 +173,15 @@ public class AssetSearchDao {
             );
         }
 
+        // Sub-category. Both go through the one LEFT join (shared with the sort): a dotted path would
+        // inner-join and remove exactly the assets "no sub-category" is asking for (trap #1).
         if (Objects.nonNull(assetSearchCriteria.getCommodityId())) {
             predicates.add(
-                    criteriaBuilder.equal(assetRoot.get("commodity").get("id"), assetSearchCriteria.getCommodityId())
+                    criteriaBuilder.equal(commodityJoin(assetRoot).get("id"), assetSearchCriteria.getCommodityId())
             );
+        }
+        if (Boolean.TRUE.equals(assetSearchCriteria.getNoCommodity())) {
+            predicates.add(criteriaBuilder.isNull(commodityJoin(assetRoot).get("id")));
         }
 
         if (Objects.nonNull(assetSearchCriteria.getAssignedToId())) {
@@ -375,6 +380,11 @@ public class AssetSearchDao {
         return reuseJoin(assetRoot, "branch");
     }
 
+    /** The asset's sub-category (commodity). Shared by its filters and its sort. */
+    private Join<Object, Object> commodityJoin(Root<Asset> assetRoot) {
+        return reuseJoin(assetRoot, "commodity");
+    }
+
     /** The holder's department. Shared with {@code locationPredicate}, so the joins stay flat. */
     private Join<Object, Object> holderDepartment(Root<Asset> assetRoot) {
         return reuseJoin(holderJoin(assetRoot), "department");
@@ -407,9 +417,12 @@ public class AssetSearchDao {
         String field = sortBy(assetPage);
         boolean ascending = sortDirection(assetPage).equals(Sort.Direction.ASC);
 
-        Order primary = ascending
-                ? criteriaBuilder.asc(assetRoot.get(field))
-                : criteriaBuilder.desc(assetRoot.get(field));
+        // The sub-category sorts by its name through the same LEFT join the filters use, so assets
+        // with none still appear (first ascending, last descending) instead of being joined away.
+        jakarta.persistence.criteria.Expression<?> key = SORT_BY_COMMODITY_NAME.equals(field)
+                ? commodityJoin(assetRoot).get("name")
+                : assetRoot.get(field);
+        Order primary = ascending ? criteriaBuilder.asc(key) : criteriaBuilder.desc(key);
 
         /*
          * A tie-break on the primary key, always.
@@ -495,8 +508,15 @@ public class AssetSearchDao {
      */
     private static final java.util.Set<String> SORTABLE = java.util.Set.of(
             "id", "assetName", "engravedNumber", "serialNumber", "tagName", "make", "model",
-            "hostname", "dateReceipt", "purchaseCost", "costOfTheAsset", "createDate", "lastModified"
+            "hostname", "dateReceipt", "purchaseCost", "costOfTheAsset", "createDate", "lastModified",
+            AssetSearchDao.SORT_BY_COMMODITY_NAME
     );
+
+    /**
+     * Sort key for the sub-category column: the commodity's name. Not an Asset attribute - setOrder
+     * resolves it through the commodity join rather than {@code assetRoot.get(...)}.
+     */
+    static final String SORT_BY_COMMODITY_NAME = "commodityName";
 
     private String sortBy(AssetPage assetPage) {
         String requested = assetPage.getSortBy();
