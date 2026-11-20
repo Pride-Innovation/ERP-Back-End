@@ -125,6 +125,21 @@ public class AssetService {
     /** Upper bound on assets scanned in-memory when computing the derived "due for disposal" list. */
     private static final int DISPOSAL_SCAN_LIMIT = 10_000;
 
+    /** As below, without the "no sub-category" filter - kept so existing callers are unchanged. */
+    public Page<AssetDAO> fetchAllAssets(
+            int pageSize, String sortDirection, int pageNumber, String sortBy, String assetName,
+            Long assetTypeId, Long assetStatusId, Long commodityId, String engravedNumber,
+            Long assignedToId, Boolean disposed, String model, String assignedTo, String location,
+            Long departmentId, LocalDateTime startDate, LocalDateTime endDate, Boolean dueForDisposal,
+            Boolean includeDeleted, Long branchId, LocalDateTime disposedFrom, LocalDateTime disposedTo,
+            Boolean includeAwayFromBranch, Boolean byDisposingBranch
+    ) {
+        return fetchAllAssets(pageSize, sortDirection, pageNumber, sortBy, assetName, assetTypeId,
+                assetStatusId, commodityId, engravedNumber, assignedToId, disposed, model, assignedTo,
+                location, departmentId, startDate, endDate, dueForDisposal, includeDeleted, branchId,
+                disposedFrom, disposedTo, includeAwayFromBranch, byDisposingBranch, false);
+    }
+
     public Page<AssetDAO> fetchAllAssets(
             int pageSize,
             String sortDirection,
@@ -149,7 +164,8 @@ public class AssetService {
             LocalDateTime disposedFrom,
             LocalDateTime disposedTo,
             Boolean includeAwayFromBranch,
-            Boolean byDisposingBranch
+            Boolean byDisposingBranch,
+            Boolean noCommodity
     ) {
         // Whose write-off it was only means something on the disposed register.
         boolean disposalOwnership = Boolean.TRUE.equals(byDisposingBranch) && Boolean.TRUE.equals(disposed);
@@ -188,6 +204,7 @@ public class AssetService {
                     .engravedNumber(engravedNumber)
                     .assignedToId(assignedToId)
                     .commodityId(commodityId)
+                    .noCommodity(Boolean.TRUE.equals(noCommodity))
                     .disposed(disposed)
                     .model(model)
                     .startDate(startDate)

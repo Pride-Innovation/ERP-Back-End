@@ -112,7 +112,14 @@ public class AssetController {
              * the newest disposal transfer - rather than where the asset stands, which for every
              * disposed asset is Head Office. Honoured only with disposed=true; read-only.
              */
-            @RequestParam(required = false, defaultValue = "false") Boolean byDisposingBranch
+            @RequestParam(required = false, defaultValue = "false") Boolean byDisposingBranch,
+
+            /*
+             * Only assets with no sub-category (commodity) recorded - the register's
+             * "Sub-category: Not set" filter. `commodityId` picks one sub-category; this finds the
+             * assets that have none, which no commodity id can express.
+             */
+            @RequestParam(required = false, defaultValue = "false") Boolean noCommodity
     ) {
         Page<AssetDAO> response = assetService.fetchAllAssets(
                 pageSize,
@@ -138,7 +145,8 @@ public class AssetController {
                 disposedFrom,
                 disposedTo,
                 includeAwayFromBranch,
-                byDisposingBranch
+                byDisposingBranch,
+                noCommodity
         );
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
